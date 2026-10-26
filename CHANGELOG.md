@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3
+
+### Patch Changes
+
+- [`a9cc45f`](https://github.com/davidamunga/handset/commit/a9cc45fc0c2245c8d2afb4178e5aa62b9eebf76a) Thanks [@davidamunga](https://github.com/davidamunga)! - The connect screen has a new look and buttons. It uses the Handset icon and colours and a proper typeface instead of pixel letters. **Wi-Fi** lists paired phones found on your network, lets you type an address, and switches a USB phone to Wi-Fi. **QR code** shows a code to scan on the phone (Wireless debugging, Pair device with QR code) and pairs and connects without typing.
+
 ## 0.1.2
 
 ### Patch Changes
