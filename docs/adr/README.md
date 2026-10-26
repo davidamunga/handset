@@ -29,3 +29,4 @@ Copy [`0000-template.md`](0000-template.md) to start a new one.
 | [0017](0017-draw-the-connect-screen-with-inter-and-the-app-icon.md) | Draw the connect screen with Inter and the app icon | accepted |
 | [0018](0018-decode-h264-with-videotoolbox.md) | Decode H.264 with VideoToolbox | proposed |
 | [0019](0019-support-windows.md) | Support Windows | accepted |
+| [0020](0020-publish-an-unsigned-windows-zip-with-each-release.md) | Publish an unsigned Windows zip with each release | accepted |

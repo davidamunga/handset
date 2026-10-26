@@ -34,7 +34,8 @@ A release happens only when you start it. Merging a version pull request does no
 4. The workflow first checks that `v<version>` does not exist yet and that `CHANGELOG.md` has a section
    for it, then builds the release files on macOS with `scripts/package-release.sh`
    (`Handset-X.Y.Z-macos.zip`, the universal app bundle; `handset-X.Y.Z-macos.tar.gz`, the command line
-   tool with the licence and notice; and `SHA256SUMS`). It then tags `vX.Y.Z`, creates a normal GitHub
+   tool with the licence and notice; and `SHA256SUMS`) and, on Windows, `scripts/package-windows.ps1`
+   (`Handset-X.Y.Z-windows.zip`, unsigned, and `SHA256SUMS-windows`). It then tags `vX.Y.Z`, creates a normal GitHub
    release with the changelog section as its notes and the files attached, and bumps the Homebrew cask.
 5. Check the release page. With the signing secrets set (below) the app is Developer ID signed,
    notarised and stapled, so it opens without a Gatekeeper warning. Without them the files are

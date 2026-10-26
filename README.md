@@ -12,7 +12,7 @@ so it can draw things a plain window cannot: phone bezels on a transparent windo
 framed screenshots and recordings with audio.
 
 > **Status: early work in progress.** It works on the author's Mac with one phone. Expect rough edges.
-> macOS is the only platform that has been tested.
+> It has been tested on macOS and on Windows 11.
 
 ## What it looks like
 
@@ -57,6 +57,11 @@ Or download `Handset-<version>-macos.zip` from the
 Applications. The zip is a universal build (Apple Silicon and Intel). Check it against `SHA256SUMS` if you
 like. Install `adb` yourself in that case (`brew install --cask android-platform-tools`), and `ffmpeg` if
 you want recordings.
+
+On Windows, download `Handset-<version>-windows.zip` from the same page, unzip it and run `handset.exe`.
+The build is not code-signed yet, so SmartScreen warns on first run (More info, Run anyway), and a PC
+with Smart App Control turned on blocks it. Install `adb` (`winget install Google.PlatformTools`) and
+`ffmpeg` for recordings (`winget install Gyan.FFmpeg`); the app finds both without any setup.
 
 ## Requirements
 
