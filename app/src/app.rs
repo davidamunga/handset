@@ -84,6 +84,8 @@ struct Waiting {
     busy: bool,
     /// A line of progress or trouble for the Wi-Fi and QR views.
     note: Option<String>,
+    /// The doctor's results, `None` while it runs.
+    doctor: Option<Vec<crate::doctor::Check>>,
     /// Phones connected to over Wi-Fi before, newest first.
     recent: Vec<crate::recent::Recent>,
     /// After a Wi-Fi phone went away: its address, and when to try connecting to it next.
@@ -114,6 +116,7 @@ impl Waiting {
             paired_ip: None,
             busy: false,
             note: None,
+            doctor: None,
             retry_addr: None,
             next_retry: Instant::now() + RECONNECT_EVERY,
             paused: false,
@@ -276,6 +279,7 @@ impl App {
                 qr: wt.qr.as_ref(),
                 recent: &wt.recent,
                 note: wt.note.as_deref(),
+                doctor: wt.doctor.as_deref(),
             };
             connect::render(pw, ph, &model)
         };
@@ -409,6 +413,7 @@ impl App {
                 connect::connect_async(proxy, addr);
             }
             LandingEvent::Typed(None) => redraw = false,
+            LandingEvent::Doctor(checks) => wt.doctor = Some(checks),
         }
         if redraw {
             self.draw_connect();
@@ -432,6 +437,12 @@ impl App {
                 wt.paired_ip = None;
                 wt.qr = Qr::new().ok();
                 connect::want_mdns(true);
+            }
+            Action::Open(View::Doctor) | Action::RunChecks => {
+                wt.view = View::Doctor;
+                wt.note = None;
+                wt.doctor = None;
+                connect::doctor_async(proxy);
             }
             Action::Open(View::Home) | Action::Back => {
                 wt.view = View::Home;

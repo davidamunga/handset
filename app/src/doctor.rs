@@ -17,6 +17,16 @@ pub struct Check {
     pub hint: Option<String>,
 }
 
+impl Check {
+    /// The title without a trailing `(path)`, which is too long for the connect screen.
+    pub fn short_title(&self) -> &str {
+        match self.title.rsplit_once(" (") {
+            Some((head, tail)) if tail.contains(['/', '\\']) => head,
+            _ => &self.title,
+        }
+    }
+}
+
 fn check(level: Level, title: impl Into<String>, hint: Option<&str>) -> Check {
     Check { level, title: title.into(), hint: hint.map(str::to_string) }
 }
@@ -168,8 +178,8 @@ fn tools() -> Vec<Check> {
     out
 }
 
-/// Run every check, print the report and return the process exit code.
-pub fn run() -> i32 {
+/// Run every check (slow: it talks to adb and the phones).
+pub fn checks() -> Vec<Check> {
     let mut checks = tools();
     if checks[0].level == Level::Ok {
         match adb::list() {
@@ -187,6 +197,12 @@ pub fn run() -> i32 {
         }
     }
     checks.push(check(Level::Ok, format!("embedded scrcpy server {}", crate::server::SERVER_VERSION), None));
+    checks
+}
+
+/// Run every check, print the report and return the process exit code.
+pub fn run() -> i32 {
+    let checks = checks();
     print!("{}", render(&checks));
     i32::from(checks.iter().any(|c| c.level == Level::Fail))
 }
@@ -232,6 +248,17 @@ mod tests {
     fn no_phone_depends_on_whether_one_is_on_wifi() {
         assert_eq!(no_phone(false).level, Level::Fail);
         assert_eq!(no_phone(true).level, Level::Warn);
+    }
+
+    #[test]
+    fn short_titles_drop_paths_only() {
+        let c = |t: &str| check(Level::Ok, t, None);
+        assert_eq!(
+            c("Android Debug Bridge version 1.0.41 (/opt/x/adb)").short_title(),
+            "Android Debug Bridge version 1.0.41"
+        );
+        assert_eq!(c("adb (C:\\tools\\adb.exe)").short_title(), "adb");
+        assert_eq!(c("Android 14 (API 34)").short_title(), "Android 14 (API 34)");
     }
 
     #[test]

@@ -74,6 +74,8 @@ pub enum View {
     Home,
     Wifi,
     Qr,
+    /// The results of `handset --doctor`.
+    Doctor,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -87,6 +89,8 @@ pub enum Action {
     SwitchToWifi(String),
     /// Mirror this ready phone (when mirroring was ended on purpose).
     Mirror(String),
+    /// Run the checks again.
+    RunChecks,
 }
 
 pub struct Button {
@@ -107,6 +111,8 @@ pub enum LandingEvent {
     Connected(Result<String, String>),
     /// The address typed into the prompt, or `None` if it was cancelled.
     Typed(Option<String>),
+    /// The doctor finished.
+    Doctor(Vec<crate::doctor::Check>),
 }
 
 static STOP: AtomicBool = AtomicBool::new(false);
@@ -157,6 +163,10 @@ pub fn wifi_async(proxy: EventLoopProxy<UserEvent>, usb_serial: String) {
     std::thread::spawn(move || {
         send(&proxy, LandingEvent::Connected(adb::wifi(&usb_serial).map_err(|e| e.to_string())))
     });
+}
+
+pub fn doctor_async(proxy: EventLoopProxy<UserEvent>) {
+    std::thread::spawn(move || send(&proxy, LandingEvent::Doctor(crate::doctor::checks())));
 }
 
 pub fn pair_async(proxy: EventLoopProxy<UserEvent>, addr: String, password: String) {
@@ -587,6 +597,8 @@ pub struct Model<'a> {
     pub recent: &'a [Recent],
     /// A line of progress or trouble, shown in the Wi-Fi and QR views.
     pub note: Option<&'a str>,
+    /// The doctor's results; `None` while it is still running.
+    pub doctor: Option<&'a [crate::doctor::Check]>,
 }
 
 pub struct Screen {
@@ -613,7 +625,11 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
         y += c.line(54.0) + 14.0 * u;
     } else {
         c.logo(56.0, 70.0, 92.0);
-        let title = if m.view == View::Wifi { "Phones on Wi-Fi" } else { "Scan to pair" };
+        let title = match m.view {
+            View::Wifi => "Phones on Wi-Fi",
+            View::Doctor => "Checks",
+            _ => "Scan to pair",
+        };
         c.text(
             margin + 92.0 * u + 24.0 * u,
             70.0 * u + (92.0 * u - c.line(46.0)) / 2.0,
@@ -639,6 +655,7 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
 
     match m.view {
         View::Home => {
+            stack("Run checks", Action::Open(View::Doctor), &mut buttons);
             stack("QR code", Action::Open(View::Qr), &mut buttons);
             stack("Wi-Fi", Action::Open(View::Wifi), &mut buttons);
             if let Some(phone) = m.usb {
@@ -805,6 +822,50 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
             };
             c.para(margin, y, content_w, Style(Weight::Semibold, 32.0, colour), &text);
         }
+        View::Doctor => {
+            stack("Back", Action::Back, &mut buttons);
+            stack("Run again", Action::RunChecks, &mut buttons);
+            match m.doctor {
+                None => {
+                    c.text(margin, y, Weight::Semibold, 34.0, AMBER, &format!("Checking{dots}"));
+                }
+                Some(checks) => {
+                    let room = bottom - 10.0 * u;
+                    let text_x = margin + 38.0 * u;
+                    let text_w = content_w - 38.0 * u;
+                    let mut shown = 0;
+                    for ch in checks {
+                        let hint = ch.hint.as_deref().unwrap_or_default();
+                        let title = ch.short_title();
+                        let t = wrap(Weight::Semibold, c.px(30.0), text_w, title).len().max(1) as f32;
+                        let hl = if hint.is_empty() {
+                            0.0
+                        } else {
+                            wrap(Weight::Regular, c.px(26.0), text_w, hint).len() as f32
+                        };
+                        let need = t * c.line(30.0) + hl * c.line(26.0) + 26.0 * u;
+                        if y + need > room - c.line(26.0) && shown < checks.len() {
+                            break;
+                        }
+                        let colour = match ch.level {
+                            crate::doctor::Level::Ok => GREEN,
+                            crate::doctor::Level::Warn => AMBER,
+                            crate::doctor::Level::Fail => RED,
+                        };
+                        c.disc(margin + 11.0 * u, y + c.line(30.0) / 2.0, 10.0 * u, colour);
+                        y = c.para(text_x, y, text_w, Style(Weight::Semibold, 30.0, TEXT), title);
+                        if !hint.is_empty() {
+                            y = c.para(text_x, y + 2.0 * u, text_w, Style(Weight::Regular, 26.0, MUTED), hint);
+                        }
+                        y += 24.0 * u;
+                        shown += 1;
+                    }
+                    if shown < checks.len() {
+                        c.text(margin, y, Weight::Regular, 26.0, MUTED, "More in handset --doctor");
+                    }
+                }
+            }
+        }
     }
 
     // read top to bottom, and indexed that way for hover
@@ -963,12 +1024,40 @@ mod tests {
         qr: Option<&'a Qr>,
         note: Option<&'a str>,
     ) -> Model<'a> {
-        Model { status, view, tick: 1, hover: None, nearby, usb, qr, recent: &[], note }
+        Model { status, view, tick: 1, hover: None, nearby, usb, qr, recent: &[], note, doctor: None }
+    }
+
+    fn sample_checks() -> Vec<crate::doctor::Check> {
+        use crate::doctor::{Check, Level};
+        let c =
+            |level, title: &str, hint: Option<&str>| Check { level, title: title.into(), hint: hint.map(Into::into) };
+        vec![
+            c(
+                Level::Ok,
+                "Android Debug Bridge version 1.0.41 (/Users/me/Library/Android/sdk/platform-tools/adb)",
+                None,
+            ),
+            c(
+                Level::Warn,
+                "ffmpeg was not found, so recording is unavailable",
+                Some("install it (brew install ffmpeg), or set the FFMPEG environment variable"),
+            ),
+            c(
+                Level::Fail,
+                "R58M12ABCDE has not authorised this computer",
+                Some(
+                    "unlock the phone and accept \"Allow USB debugging?\". If nothing appears, unplug it, run adb kill-server, plug it in again",
+                ),
+            ),
+            c(Level::Ok, "Android 14 (API 34)", None),
+            c(Level::Ok, "embedded scrcpy server 5.0.1", None),
+        ]
     }
 
     #[test]
     fn buttons_stay_inside_the_picture_and_do_not_overlap() {
         let (w, h) = (720u32, 1560u32);
+        let checks = sample_checks();
         let qr = Qr::new().unwrap();
         let nearby = [
             svc(adb::ServiceKind::Connect, "192.168.0.20:41789"),
@@ -982,6 +1071,8 @@ mod tests {
             model(&looking, View::Wifi, &nearby, Some("W82202003817"), None, Some("Connecting to 192.168.0.20...")),
             model(&looking, View::Qr, &[], None, Some(&qr), None),
             model(&looking, View::Qr, &[], None, None, Some("PAIRING...")),
+            model(&looking, View::Doctor, &[], None, None, None),
+            Model { doctor: Some(&checks), ..model(&looking, View::Doctor, &[], None, None, None) },
         ] {
             let screen = render(w, h, &m);
             assert_eq!(screen.rgb.len(), (w * h * 3) as usize);
@@ -1041,6 +1132,7 @@ mod tests {
         let failed = Status::Failed("Could not start mirroring: adb push: no such file".into());
         let lost = Status::Lost("192.168.0.20:5555".into());
         let disconnected = Status::Disconnected;
+        let checks = sample_checks();
         let screens = [
             model(&disconnected, View::Home, &[], Some("W82202003817"), None, None),
             model(&lost, View::Home, &[], None, None, None),
@@ -1050,6 +1142,7 @@ mod tests {
             model(&looking, View::Wifi, &[], None, None, None),
             model(&looking, View::Wifi, &nearby, Some("R58M12ABCDE"), None, Some("Connecting to 192.168.1.23...")),
             model(&looking, View::Qr, &[], None, Some(&qr), None),
+            Model { doctor: Some(&checks), ..model(&looking, View::Doctor, &[], None, None, None) },
         ];
         for (n, m) in screens.iter().enumerate() {
             let (w, h) = (702, 1560); // the aspect of the frame's screen

@@ -153,6 +153,8 @@ mirroring by itself as soon as a phone is ready. Two buttons cover connecting wi
 - **QR code** shows a code to scan on the phone (Developer options, Wireless debugging, Pair device with
   QR code; Android 11 or later). Handset pairs with the phone that scans it and connects, with nothing to
   type.
+- **Run checks** runs the same checks as `handset --doctor` and shows what to fix (a missing `adb`, a phone that has
+  not authorised this computer, a sleeping screen) right in the frame.
 
 Over Wi-Fi: on Android 11 or later, open Developer options > Wireless debugging > Pair device with pairing
 code, run `handset --pair <ip:port> <code>` with what it shows, then `handset --connect <ip:port>` with the
@@ -178,7 +180,7 @@ rebuilding the server, releasing and debugging are in [docs/runbooks](docs/runbo
 Ideas, not promises:
 
 - Keyboard-to-touch mapping profiles (a long-standing request in the scrcpy world)
-- A device picker, and the doctor's checks on the connect screen
+- A device picker
 - OBS-friendly output (Syphon or a virtual camera)
 - Microphone to phone, and Linux
 
