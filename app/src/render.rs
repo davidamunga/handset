@@ -36,6 +36,19 @@ struct OverlayGpu {
     opacity: f32,
 }
 
+/// One finger on the screen, as a fraction of the video, for the touch indicator.
+struct Dot {
+    u: f32,
+    v: f32,
+    /// Still held down; otherwise it fades from `released`.
+    down: bool,
+    released: std::time::Instant,
+}
+
+/// How long a released touch takes to fade.
+const DOT_FADE: std::time::Duration = std::time::Duration::from_millis(350);
+const DOT_MAX: usize = 6;
+
 struct BezelGpu {
     layer: Layer,
     hole: [f32; 4],
@@ -58,6 +71,10 @@ pub struct Renderer {
     overlay: Option<OverlayGpu>,
     /// The toolbar beside the phone (window only).
     toolbar: Option<OverlayGpu>,
+    /// Touch indicators (window and captures), when switched on: one layer per dot that can show at once.
+    dot_layers: Vec<Layer>,
+    dots: Vec<Dot>,
+    show_touches: bool,
     toolbar_on: bool,
     /// The device is in landscape: the bezel is drawn rotated by 90 degrees.
     landscape: bool,
@@ -222,6 +239,9 @@ impl Renderer {
             video: None,
             bezel: None,
             overlay: None,
+            dot_layers: Vec::new(),
+            dots: Vec::new(),
+            show_touches: false,
             toolbar: None,
             toolbar_on: true,
             landscape: false,
@@ -302,6 +322,78 @@ impl Renderer {
     pub fn set_overlay(&mut self, pill: Option<&crate::overlay::Pill>) {
         let opacity = self.overlay.as_ref().map_or(1.0, |o| o.opacity);
         self.overlay = pill.map(|p| self.build_overlay(p, opacity));
+    }
+
+    pub fn show_touches(&self) -> bool {
+        self.show_touches
+    }
+
+    pub fn set_show_touches(&mut self, on: bool) {
+        self.show_touches = on;
+        if !on {
+            self.dots.clear();
+        } else if self.dot_layers.is_empty() {
+            let pill = crate::overlay::touch_dot(96);
+            // one texture, a layer (own position) per dot
+            let tex = self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("touch dot"),
+                size: wgpu::Extent3d { width: pill.width, height: pill.height, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            self.queue.write_texture(
+                tex.as_image_copy(),
+                &pill.rgba,
+                wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(pill.width * 4), rows_per_image: None },
+                wgpu::Extent3d { width: pill.width, height: pill.height, depth_or_array_layers: 1 },
+            );
+            let view = tex.create_view(&Default::default());
+            self.dot_layers = (0..DOT_MAX).map(|_| self.make_layer([&view, &view, &view])).collect();
+        }
+    }
+
+    /// A finger went down at (`u`, `v`), fractions of the video.
+    pub fn touch_down(&mut self, u: f32, v: f32) {
+        if !self.show_touches {
+            return;
+        }
+        self.dots.retain(|d| d.down || d.released.elapsed() < DOT_FADE);
+        if self.dots.len() == DOT_MAX {
+            self.dots.remove(0);
+        }
+        self.dots.push(Dot { u, v, down: true, released: std::time::Instant::now() });
+    }
+
+    pub fn touch_move(&mut self, u: f32, v: f32) {
+        if let Some(d) = self.dots.iter_mut().rev().find(|d| d.down) {
+            (d.u, d.v) = (u, v);
+        }
+    }
+
+    pub fn touch_up(&mut self) {
+        if let Some(d) = self.dots.iter_mut().rev().find(|d| d.down) {
+            d.down = false;
+            d.released = std::time::Instant::now();
+        }
+    }
+
+    /// Is a touch indicator still fading, so the picture needs redrawing?
+    pub fn touches_animating(&self) -> bool {
+        self.dots.iter().any(|d| !d.down && d.released.elapsed() < DOT_FADE)
+    }
+
+    /// Opacity and size factor of a dot now.
+    fn dot_look(d: &Dot) -> (f32, f32) {
+        if d.down {
+            (1.0, 1.0)
+        } else {
+            let t = (d.released.elapsed().as_secs_f32() / DOT_FADE.as_secs_f32()).min(1.0);
+            (1.0 - t, 1.0 + 0.4 * t)
+        }
     }
 
     /// Replace (or clear) the toolbar image.
@@ -468,6 +560,14 @@ impl Renderer {
         if let Some(b) = &self.bezel {
             write(&b.layer.ubuf, br, if self.landscape { 1.0 } else { 0.0 }, 1.0);
         }
+        // touch indicators follow the video, in the window and in captures
+        let size = video_rect[2] * ww * 0.1;
+        for (d, layer) in self.dots.iter().zip(&self.dot_layers) {
+            let (opacity, grow) = Self::dot_look(d);
+            let (dw, dh) = (size * grow / ww, size * grow / wh);
+            let (cx, cy) = (video_rect[0] + d.u * video_rect[2], video_rect[1] + d.v * video_rect[3]);
+            write(&layer.ubuf, [cx - dw / 2.0, cy - dh / 2.0, dw, dh], 0.0, opacity);
+        }
         // the overlay is only laid out for the window: bottom centre of the screen
         if remember {
             if let Some(t) = &self.toolbar {
@@ -511,6 +611,15 @@ impl Renderer {
                 pass.set_pipeline(&self.p_bezel);
                 pass.set_bind_group(0, &b.layer.bind, &[]);
                 pass.draw(0..6, 0..1);
+            }
+            if self.show_touches {
+                for (d, layer) in self.dots.iter().zip(&self.dot_layers) {
+                    if Self::dot_look(d).0 > 0.0 {
+                        pass.set_pipeline(&self.p_bezel);
+                        pass.set_bind_group(0, &layer.bind, &[]);
+                        pass.draw(0..6, 0..1);
+                    }
+                }
             }
             // window only: captures must not contain the toolbar or overlay
             if remember {

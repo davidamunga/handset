@@ -45,6 +45,8 @@ pub struct Init {
     pub start_app: Option<String>,
     /// Show the toolbar at start (a saved setting).
     pub toolbar: bool,
+    /// Show touch indicators at start (a saved setting or `--show-touches`).
+    pub touches: bool,
 }
 
 /// What the connect screen is waiting for.
@@ -168,6 +170,7 @@ pub struct App {
     notifications_open: bool,
     /// Whether the toolbar starts visible.
     toolbar_start: bool,
+    touches_start: bool,
     /// Window height at start (physical pixels), what Default Size returns to.
     home_height: u32,
     mirror: Option<Mirror>,
@@ -237,6 +240,7 @@ impl App {
             hint: None,
             notifications_open: false,
             toolbar_start: init.toolbar,
+            touches_start: init.touches,
             home_height: 0,
             mirror: init.mirror,
             waiting: init.wait.map(|w| Waiting::new(w.serial, w.wifi, Status::Looking)),
@@ -726,6 +730,7 @@ impl App {
             audio: self.with_audio,
             muted: audio::is_muted(),
             toolbar: self.renderer.as_ref().is_some_and(|r| r.toolbar_visible()),
+            touches: self.renderer.as_ref().is_some_and(|r| r.show_touches()),
             clipboard: self.cap.clipboard,
             mirroring: self.mirror.is_some(),
             usb: self.mirror.as_ref().is_some_and(|m| !connect::is_wireless(m.session.serial())),
@@ -831,6 +836,13 @@ impl App {
                     let _ = self.window.as_ref().unwrap().request_inner_size(size);
                 }
             }
+            "touches" => {
+                if let Some(r) = self.renderer.as_mut() {
+                    let on = !r.show_touches();
+                    r.set_show_touches(on);
+                    settings::save_bool("touches", on);
+                }
+            }
             "mute" => {
                 audio::set_muted(!audio::is_muted());
                 settings::save_bool("mute", audio::is_muted());
@@ -908,6 +920,20 @@ impl App {
         }
         self.hint = on.then(|| BLACK_HINT.to_string());
         self.refresh_overlay();
+    }
+
+    /// Mark a touch on the screen for the touch indicator (device pixels in, fractions of the video out).
+    fn show_touch(&mut self, phase: Touch, x: i32, y: i32) {
+        let (dw, dh) = (self.device.0.max(1) as f32, self.device.1.max(1) as f32);
+        let Some(r) = self.renderer.as_mut() else { return };
+        match phase {
+            Touch::Down => r.touch_down(x as f32 / dw, y as f32 / dh),
+            Touch::Move => r.touch_move(x as f32 / dw, y as f32 / dh),
+            Touch::Up => r.touch_up(),
+        }
+        if let Some(w) = &self.window {
+            w.request_redraw();
+        }
     }
 
     /// Install a dropped APK or copy another file to the phone's Downloads.
@@ -1187,6 +1213,7 @@ impl ApplicationHandler<UserEvent> for App {
         match Renderer::new(window.clone(), self.bezel.as_ref()) {
             Ok(mut r) => {
                 r.set_toolbar_visible(self.toolbar_start);
+                r.set_show_touches(self.touches_start);
                 self.renderer = Some(r);
             }
             Err(e) => {
@@ -1233,7 +1260,11 @@ impl ApplicationHandler<UserEvent> for App {
             self.waiting.as_ref().is_some_and(|w| w.starting.is_some() || matches!(w.status, Status::Connecting(_)));
         crate::dock::set(crate::dock::state_for(self.recorder.is_some(), self.mirror.is_some(), connecting));
         self.refresh_toolbar();
-        let animating = self.refresh_overlay();
+        let fading = self.renderer.as_ref().is_some_and(|r| r.touches_animating());
+        if fading && let Some(w) = &self.window {
+            w.request_redraw();
+        }
+        let animating = self.refresh_overlay() || fading;
         let Some(rec) = &self.recorder else {
             let mut next = animating.then(|| Instant::now() + Duration::from_millis(33));
             if let Some(t) = connect_wake {
@@ -1418,12 +1449,14 @@ impl ApplicationHandler<UserEvent> for App {
                         eprintln!("move -> device ({x}, {y})");
                     }
                     let _ = self.control.touch(Touch::Move, x, y, self.device.0, self.device.1);
+                    self.show_touch(Touch::Move, x, y);
                 }
             }
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Right, .. } => {
                 if self.touching {
                     self.touching = false;
                     let _ = self.control.touch(Touch::Up, 0, 0, self.device.0, self.device.1);
+                    self.show_touch(Touch::Up, 0, 0);
                 }
                 self.show_menu();
             }
@@ -1480,6 +1513,7 @@ impl ApplicationHandler<UserEvent> for App {
                     (ElementState::Pressed, Some((x, y))) => {
                         self.touching = true;
                         let _ = self.control.touch(Touch::Down, x, y, self.device.0, self.device.1);
+                        self.show_touch(Touch::Down, x, y);
                     }
                     (ElementState::Pressed, None) => {
                         if self.on_bezel(p)
@@ -1493,6 +1527,7 @@ impl ApplicationHandler<UserEvent> for App {
                         // release at the last known position inside the screen
                         let (x, y) = dev.unwrap_or((0, 0));
                         let _ = self.control.touch(Touch::Up, x, y, self.device.0, self.device.1);
+                        self.show_touch(Touch::Up, x, y);
                     }
                     _ => {}
                 }

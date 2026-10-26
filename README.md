@@ -111,6 +111,8 @@ instead: `cargo install --path app --locked`.
   background a few seconds after the phone connects.
 - **Shortcuts** (Cmd or Ctrl): `S` screenshot, `E` start or stop recording, `R` rotate the phone.
   `Esc` is Back, `Home` is Home, `End` is Recents.
+- **Show Touches** (right-click menu, or `--show-touches`) draws a translucent dot where you touch the phone, fading
+  when you let go. It is part of screenshots and recordings too, which makes demos easier to follow.
 - **Drop a file** on the window: an `.apk` is installed, anything else is copied to the phone's Downloads folder.
 - **Move** the window by dragging the bezel. **Resize** by dragging a corner of the phone (it keeps the frame's proportions), with Cmd or Ctrl and scroll, or `+`, `-` and `0` (default size), also in the menu.
 - Screenshots are saved to `~/Pictures/handset`, recordings to `~/Movies/handset`, and both are copied to
@@ -164,8 +166,8 @@ connection in one step. The phone and the Mac must be on the same network.
 With no arguments, `~/.config/handset/args` is used if it exists. `HANDSET_DEBUG=1` prints diagnostics, and `HANDSET_LANDING=wifi` or `qr` opens that view of the connect screen first.
 `ADB` and `FFMPEG` override where the tools are found.
 
-Choices made in the menus (frame, toolbar, capture format, audio normalisation, clipboard copy and sync,
-mute) are remembered in `~/.config/handset/settings`, a plain `key=value` file you can edit. Command-line
+Choices made in the menus (frame, toolbar, touches, capture format, audio normalisation, clipboard copy and
+sync, mute) are remembered in `~/.config/handset/settings`, a plain `key=value` file you can edit. Command-line
 options win for the run they are given and are never saved.
 
 ## How it works

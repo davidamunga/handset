@@ -2,7 +2,7 @@
 //! person changed in the menus or on the toolbar; command-line options still win for the run they are given.
 //!
 //! Keys: `frame` (a built-in name, a path, or `none`), `toolbar`, `clipboard` (copy captures to the
-//! clipboard), `normalize` (recorded audio), `sync-clipboard`, `mute`, `format` (`mp4` or `gif`).
+//! clipboard), `normalize` (recorded audio), `sync-clipboard`, `mute`, `touches` (show where the phone is touched), `format` (`mp4` or `gif`).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

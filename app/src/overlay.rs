@@ -125,8 +125,34 @@ pub fn pill(text: &str, dot: Option<[u8; 3]>, s: u32) -> Pill {
     Pill { width: w, height: h, rgba }
 }
 
+/// A translucent white disc with a light ring and a thin dark edge, `size` pixels across: where a finger is.
+pub fn touch_dot(size: u32) -> Pill {
+    let mut rgba = vec![0u8; (size * size * 4) as usize];
+    let r = size as f32 / 2.0;
+    for y in 0..size {
+        for x in 0..size {
+            let d = ((x as f32 + 0.5 - r).powi(2) + (y as f32 + 0.5 - r).powi(2)).sqrt() / r;
+            let cover = ((1.0 - d) * r + 0.5).clamp(0.0, 1.0);
+            // a see-through fill with a brighter ring at the edge
+            let a = if d > 0.9 { 0.95 } else { 0.42 };
+            let i = ((y * size + x) * 4) as usize;
+            rgba[i..i + 4].copy_from_slice(&[255, 255, 255, (cover * a * 255.0) as u8]);
+        }
+    }
+    Pill { width: size, height: size, rgba }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_touch_dot_is_round_and_translucent() {
+        let p = super::touch_dot(96);
+        let alpha = |x: u32, y: u32| p.rgba[((y * 96 + x) * 4 + 3) as usize];
+        assert_eq!(alpha(0, 0), 0, "corners are clear");
+        assert!(alpha(48, 48) > 60 && alpha(48, 48) < 160, "the middle shows what is below");
+        assert!(alpha(48, 3) > 200, "the ring is bright");
+    }
+
     /// Writes the long toast to `$HANDSET_TEST_OUT` (if set) so it can be looked at.
     #[test]
     fn long_toast_renders() {
