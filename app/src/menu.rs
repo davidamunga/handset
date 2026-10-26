@@ -128,14 +128,14 @@ pub fn show(window: &Window, s: &State) {
     let _ = menu.append(&frame);
     let _ = menu.append(&open_app);
     let _ = menu.append(&PredefinedMenuItem::separator());
-    let _ = menu.append(&MenuItem::with_id("shot", "Take Screenshot    \u{2318}S", true, None));
+    let _ = menu.append(&MenuItem::with_id("shot", format!("Take Screenshot    {MOD}S"), true, None));
     let rec_label = format!("{} Recording    {MOD}E", if s.recording { "Stop" } else { "Start" });
     let _ = menu.append(&MenuItem::with_id("rec", &rec_label, true, None));
     let _ = menu.append(&recent);
     let _ = menu.append(&record);
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&CheckMenuItem::with_id("mute", audio_label, s.audio, s.audio && s.muted, None));
-    let _ = menu.append(&MenuItem::with_id("rotate", "Rotate Device    \u{2318}R", true, None));
+    let _ = menu.append(&MenuItem::with_id("rotate", format!("Rotate Device    {MOD}R"), true, None));
     let _ = menu.append(&CheckMenuItem::with_id("sync", "Share Clipboard With Phone", true, s.sync, None));
     let _ = menu.append(&CheckMenuItem::with_id("toolbar", "Show Toolbar", true, s.toolbar, None));
     let _ = menu.append(&PredefinedMenuItem::separator());
