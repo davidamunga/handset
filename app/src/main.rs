@@ -17,6 +17,7 @@ mod overlay;
 mod recent;
 mod render;
 mod server;
+mod settings;
 mod stream;
 mod toolbar;
 mod tools;
@@ -40,16 +41,27 @@ fn usage() -> ! {
 fn main() {
     #[cfg(windows)]
     tools::attach_console();
-    let mut frame_spec = Some("obsidian".to_string());
+    // what was changed in the menus last time; the command line below overrides it
+    let saved = settings::Settings::load();
+    let mut frame_spec = match saved.get("frame") {
+        Some("none") => None,
+        Some(spec) => Some(spec.to_string()),
+        None => Some("obsidian".to_string()),
+    };
     let mut opts = server::Options::default();
     let mut serial = None;
     let mut cap = capture::Settings::default();
-    let mut mute = false;
+    if let Some(f) = saved.get("format").and_then(capture::Format::parse) {
+        cap.format = f;
+    }
+    cap.normalize = saved.get_bool("normalize").unwrap_or(cap.normalize);
+    cap.clipboard = saved.get_bool("clipboard").unwrap_or(cap.clipboard);
+    let mut mute = saved.get_bool("mute").unwrap_or(false);
     let mut record_for: Option<f32> = None;
     let mut connect: Option<String> = None;
     let mut wifi = false;
     let mut last = false;
-    let mut sync_clipboard = true;
+    let mut sync_clipboard = saved.get_bool("sync-clipboard").unwrap_or(true);
     let mut start_app: Option<String> = None;
     // no arguments: use the saved defaults (and `--audio` inside the app bundle)
     let given: Vec<String> = std::env::args().skip(1).collect();
@@ -165,6 +177,7 @@ fn main() {
         mute,
         sync,
         start_app,
+        toolbar: saved.get_bool("toolbar").unwrap_or(true),
     });
     app.auto_record = record_for.map(std::time::Duration::from_secs_f32);
     if waiting {

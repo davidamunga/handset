@@ -11,6 +11,7 @@ use crate::mirror::Mirror;
 use crate::overlay;
 use crate::render::Renderer;
 use crate::server;
+use crate::settings;
 use crate::stream::{Slot, UserEvent};
 use crate::toolbar::{self, Button};
 use std::sync::{Arc, Mutex};
@@ -41,6 +42,8 @@ pub struct Init {
     pub sync: Arc<Mutex<crate::clipboard::Sync>>,
     /// `--start-app`: open this app once the phone is mirrored.
     pub start_app: Option<String>,
+    /// Show the toolbar at start (a saved setting).
+    pub toolbar: bool,
 }
 
 /// What the connect screen is waiting for.
@@ -156,6 +159,9 @@ pub struct App {
     /// How long the screen has been black, and the message about it while it is.
     black: crate::black::BlackWatch,
     hint: Option<String>,
+    notifications_open: bool,
+    /// Whether the toolbar starts visible.
+    toolbar_start: bool,
     mirror: Option<Mirror>,
     waiting: Option<Waiting>,
     proxy: EventLoopProxy<UserEvent>,
@@ -220,6 +226,8 @@ impl App {
             overlay_opacity: 1.0,
             black: Default::default(),
             hint: None,
+            notifications_open: false,
+            toolbar_start: init.toolbar,
             mirror: init.mirror,
             waiting: init.wait.map(|w| Waiting::new(w.serial, w.wifi, Status::Looking)),
             proxy: init.proxy,
@@ -453,6 +461,7 @@ impl App {
         self.stop_recording();
         drop(mirror); // kills the server and removes the adb forward
         self.control = Control::disconnected();
+        self.notifications_open = false;
         self.with_audio = false;
         self.touching = false;
         self.device = (0, 0);
@@ -635,6 +644,33 @@ impl App {
             eprintln!("toolbar: {b:?}");
         }
         match b {
+            Button::Back => {
+                let _ = self.control.key(keycode::BACK);
+            }
+            Button::Home => {
+                let _ = self.control.key(keycode::HOME);
+            }
+            Button::Recents => {
+                let _ = self.control.key(keycode::APP_SWITCH);
+            }
+            Button::Power => {
+                let _ = self.control.key(keycode::POWER);
+            }
+            Button::VolumeUp => {
+                let _ = self.control.key(keycode::VOLUME_UP);
+            }
+            Button::VolumeDown => {
+                let _ = self.control.key(keycode::VOLUME_DOWN);
+            }
+            Button::Notifications => {
+                // the phone does not tell us whether the shade is open, so this toggles what we last asked for
+                self.notifications_open = !self.notifications_open;
+                let _ = if self.notifications_open {
+                    self.control.expand_notifications()
+                } else {
+                    self.control.collapse_panels()
+                };
+            }
             Button::Screenshot => self.on_menu(el, "shot"),
             Button::Record => self.on_menu(el, "rec"),
             Button::Rotate => self.on_menu(el, "rotate"),
@@ -702,6 +738,7 @@ impl App {
             b.rgba = Vec::new(); // already on the GPU
             b
         });
+        settings::save("frame", self.frame_spec_name(&spec));
         self.frame_spec = spec;
         // keep the height, follow the new aspect ratio
         let height = w.inner_size().height;
@@ -710,6 +747,11 @@ impl App {
         }
         self.toolbar_key = None;
         self.window.as_ref().unwrap().request_redraw();
+    }
+
+    /// How a frame choice is written in the settings file.
+    fn frame_spec_name<'a>(&self, spec: &'a Option<String>) -> &'a str {
+        spec.as_deref().unwrap_or("none")
     }
 
     fn on_menu(&mut self, el: &ActiveEventLoop, id: &str) {
@@ -722,21 +764,35 @@ impl App {
                     self.start_recording();
                 }
             }
-            "fmt:mp4" => self.cap.format = capture::Format::Mp4,
-            "fmt:gif" => self.cap.format = capture::Format::Gif,
-            "norm" => self.cap.normalize = !self.cap.normalize,
-            "clip" => self.cap.clipboard = !self.cap.clipboard,
+            "fmt:mp4" => {
+                self.cap.format = capture::Format::Mp4;
+                settings::save("format", "mp4");
+            }
+            "fmt:gif" => {
+                self.cap.format = capture::Format::Gif;
+                settings::save("format", "gif");
+            }
+            "norm" => {
+                self.cap.normalize = !self.cap.normalize;
+                settings::save_bool("normalize", self.cap.normalize);
+            }
+            "clip" => {
+                self.cap.clipboard = !self.cap.clipboard;
+                settings::save_bool("clipboard", self.cap.clipboard);
+            }
             "sync" => {
                 let mut s = self.sync.lock().unwrap();
                 s.enabled = !s.enabled;
                 let on = s.enabled;
                 drop(s);
+                settings::save_bool("sync-clipboard", on);
                 self.show_toast(if on { "CLIPBOARD SYNC ON" } else { "CLIPBOARD SYNC OFF" });
             }
             "toolbar" => {
                 if let Some(r) = self.renderer.as_mut() {
                     let on = !r.toolbar_visible();
                     r.set_toolbar_visible(on);
+                    settings::save_bool("toolbar", on);
                 }
                 self.toolbar_key = None;
                 if let Some(h) = self.window.as_ref().map(|w| w.inner_size().height)
@@ -745,7 +801,10 @@ impl App {
                     let _ = self.window.as_ref().unwrap().request_inner_size(size);
                 }
             }
-            "mute" => audio::set_muted(!audio::is_muted()),
+            "mute" => {
+                audio::set_muted(!audio::is_muted());
+                settings::save_bool("mute", audio::is_muted());
+            }
             "conn:disconnect" => {
                 self.leave_session(View::Home);
             }
@@ -848,6 +907,9 @@ impl App {
             let left = t.ttl.saturating_sub(now.duration_since(t.since));
             let opacity = (left.as_secs_f32() / TOAST_FADE.as_secs_f32()).min(1.0);
             Some((t.text.clone(), None, opacity))
+        } else if let Some(b) = self.hover {
+            // what the toolbar button under the pointer does
+            Some((b.label().to_string(), None, 1.0))
         } else if self.recorder.is_none()
             && let Some(h) = &self.hint
         {
@@ -968,7 +1030,8 @@ impl ApplicationHandler<UserEvent> for App {
         if self.window.is_some() {
             return;
         }
-        let aspect = (self.bezel.as_ref().map_or(9.0 / 20.0, |b| b.aspect()) + toolbar::SIDE_FRAC) as f64;
+        let side = if self.toolbar_start { toolbar::SIDE_FRAC } else { 0.0 };
+        let aspect = (self.bezel.as_ref().map_or(9.0 / 20.0, |b| b.aspect()) + side) as f64;
         // fit the screen (leaving room for a taskbar or menu bar) rather than a fixed size
         let monitor = el.primary_monitor().or_else(|| el.available_monitors().next());
         let scale = monitor.as_ref().map_or(1.0, |m| m.scale_factor());
@@ -999,7 +1062,10 @@ impl ApplicationHandler<UserEvent> for App {
         }
         let window = Arc::new(el.create_window(attrs).expect("create window"));
         match Renderer::new(window.clone(), self.bezel.as_ref()) {
-            Ok(r) => self.renderer = Some(r),
+            Ok(mut r) => {
+                r.set_toolbar_visible(self.toolbar_start);
+                self.renderer = Some(r);
+            }
             Err(e) => {
                 eprintln!("renderer: {e}");
                 el.exit();
@@ -1164,6 +1230,7 @@ impl ApplicationHandler<UserEvent> for App {
                 if hover != self.hover {
                     self.hover = hover;
                     self.refresh_toolbar();
+                    self.refresh_overlay();
                 }
                 if self.waiting.is_some() {
                     let over = self.landing_hit();

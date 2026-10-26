@@ -7,12 +7,19 @@ use crate::overlay::Pill;
 /// Width reserved beside the phone, as a fraction of the window height.
 pub const SIDE_FRAC: f32 = 0.075;
 /// Width of the pill itself, as a fraction of the window height.
-const WIDTH_FRAC: f32 = 0.052;
+const WIDTH_FRAC: f32 = 0.05;
 
-pub const BUTTONS: usize = 6;
+pub const BUTTONS: usize = 13;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Button {
+    Back,
+    Home,
+    Recents,
+    Power,
+    VolumeUp,
+    VolumeDown,
+    Notifications,
     Screenshot,
     Record,
     Rotate,
@@ -21,8 +28,43 @@ pub enum Button {
     Quit,
 }
 
-pub const ORDER: [Button; BUTTONS] =
-    [Button::Screenshot, Button::Record, Button::Rotate, Button::NextFrame, Button::More, Button::Quit];
+/// Top to bottom: the phone's own buttons first, then Handset's.
+pub const ORDER: [Button; BUTTONS] = [
+    Button::Back,
+    Button::Home,
+    Button::Recents,
+    Button::Power,
+    Button::VolumeUp,
+    Button::VolumeDown,
+    Button::Notifications,
+    Button::Screenshot,
+    Button::Record,
+    Button::Rotate,
+    Button::NextFrame,
+    Button::More,
+    Button::Quit,
+];
+
+impl Button {
+    /// Shown while the pointer is over the button.
+    pub fn label(self) -> &'static str {
+        match self {
+            Button::Back => "BACK",
+            Button::Home => "HOME",
+            Button::Recents => "RECENTS",
+            Button::Power => "POWER",
+            Button::VolumeUp => "VOLUME UP",
+            Button::VolumeDown => "VOLUME DOWN",
+            Button::Notifications => "NOTIFICATIONS",
+            Button::Screenshot => "SCREENSHOT",
+            Button::Record => "RECORD",
+            Button::Rotate => "ROTATE",
+            Button::NextFrame => "NEXT FRAME",
+            Button::More => "MENU",
+            Button::Quit => "QUIT",
+        }
+    }
+}
 
 /// Size of one button cell, in pixels, for a window `wh` pixels high.
 fn cell(wh: f32) -> f32 {
@@ -86,6 +128,45 @@ const RED: [f32; 3] = [235.0, 60.0, 60.0];
 /// the button centre, y down).
 fn icon(button: Button, p: V, px: f32, recording: bool) -> Option<(f32, [f32; 3])> {
     match button {
+        Button::Back => {
+            // a filled triangle pointing left
+            let t = triangle(p, (-0.11, 0.0), (0.09, -0.13), (0.09, 0.13));
+            Some((cov(t, px), WHITE))
+        }
+        Button::Home => Some((cov(circle(p, (0.0, 0.0), 0.12), px), WHITE)),
+        Button::Recents => Some((cov(rrect(p, (0.0, 0.0), (0.105, 0.105), 0.03), px), WHITE)),
+        Button::Power => {
+            let r = len(p);
+            let ang = p.1.atan2(p.0).to_degrees();
+            // a ring open at the top, with a bar through the gap
+            let gap = ang > -125.0 && ang < -55.0;
+            let ring = cov((r - 0.15).abs() - 0.02, px) * if gap { 0.0 } else { 1.0 };
+            let bar = cov(seg(p, (0.0, -0.19), (0.0, -0.02)) - 0.02, px);
+            Some((ring.max(bar), WHITE))
+        }
+        Button::VolumeUp | Button::VolumeDown => {
+            // a speaker, and a plus or a minus beside it
+            let body = cov(rrect(p, (-0.13, 0.0), (0.04, 0.06), 0.01), px);
+            let cone = cov(triangle(p, (-0.1, -0.06), (-0.1, 0.06), (-0.015, 0.14)), px)
+                .max(cov(triangle(p, (-0.1, -0.06), (-0.1, 0.06), (-0.015, -0.14)), px));
+            let dash = cov(seg(p, (0.06, 0.0), (0.18, 0.0)) - 0.016, px);
+            let sign = if button == Button::VolumeUp {
+                dash.max(cov(seg(p, (0.12, -0.06), (0.12, 0.06)) - 0.016, px))
+            } else {
+                dash
+            };
+            Some((body.max(cone).max(sign), WHITE))
+        }
+        Button::Notifications => {
+            // a bell: a dome, a flared skirt and a clapper
+            let dome = cov(circle(p, (0.0, -0.04), 0.1), px);
+            let skirt = cov(triangle(p, (-0.1, -0.04), (0.1, -0.04), (0.0, 0.09)), px)
+                .max(cov(rrect(p, (0.0, 0.075), (0.14, 0.022), 0.02), px));
+            let hang = cov(triangle(p, (-0.1, -0.04), (-0.14, 0.075), (0.0, 0.075)), px)
+                .max(cov(triangle(p, (0.1, -0.04), (0.14, 0.075), (0.0, 0.075)), px));
+            let clapper = cov(circle(p, (0.0, 0.14), 0.03), px);
+            Some((dome.max(skirt).max(hang).max(clapper), WHITE))
+        }
         Button::Screenshot => {
             let body =
                 cov(rrect(p, (0.0, 0.03), (0.2, 0.13), 0.04), px) * (1.0 - cov(circle(p, (0.0, 0.03), 0.085), px));
@@ -179,4 +260,50 @@ pub fn raster(wh: f32, hover: Option<Button>, recording: bool) -> Pill {
         }
     }
     Pill { width: w, height: h, rgba }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_button_is_hit_in_its_own_cell() {
+        let (ww, wh) = (700.0, 820.0);
+        let [rx, ry, rw, rh] = rect(ww, wh);
+        for (i, b) in ORDER.iter().enumerate() {
+            let y = ry + rh / BUTTONS as f32 * (i as f32 + 0.5);
+            assert_eq!(button_at(ww, wh, rx + rw / 2.0, y), Some(*b), "{b:?}");
+        }
+        assert_eq!(button_at(ww, wh, rx - 5.0, ry + 3.0), None);
+        // the pill fits in the window with room to spare
+        assert!(rh < wh * 0.8, "toolbar is {rh} px in a {wh} px window");
+        assert_eq!(ORDER.len(), BUTTONS);
+    }
+
+    #[test]
+    fn every_button_draws_an_icon_and_has_a_label() {
+        for b in ORDER {
+            let covered: f32 = (0..21)
+                .flat_map(|y| (0..21).map(move |x| (x, y)))
+                .filter_map(|(x, y)| icon(b, ((x as f32 - 10.0) / 40.0, (y as f32 - 10.0) / 40.0), 1.0 / 40.0, false))
+                .map(|(k, _)| k)
+                .sum();
+            assert!(covered > 6.0, "{b:?} draws almost nothing ({covered})");
+            assert!(!b.label().is_empty());
+        }
+    }
+
+    /// Writes the toolbar to `$HANDSET_TEST_OUT/toolbar.png` (if set) so it can be looked at.
+    #[test]
+    fn toolbar_renders() {
+        let p = raster(820.0, Some(Button::Notifications), false);
+        assert_eq!(p.rgba.len(), (p.width * p.height * 4) as usize);
+        if let Some(dir) = std::env::var_os("HANDSET_TEST_OUT") {
+            let path = std::path::Path::new(&dir).join("toolbar.png");
+            let mut enc = png::Encoder::new(std::fs::File::create(path).unwrap(), p.width, p.height);
+            enc.set_color(png::ColorType::Rgba);
+            enc.set_depth(png::BitDepth::Eight);
+            enc.write_header().unwrap().write_image_data(&p.rgba).unwrap();
+        }
+    }
 }

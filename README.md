@@ -105,8 +105,9 @@ instead: `cargo install --path app --locked`.
 
 ## Using it
 
-- **Right-click** the phone, or use the toolbar beside it: frames, **Open App**, screenshot, recording, recent
-  captures, rotate, quit. Open App lists the phone's apps (yours first, system apps in a submenu), fetched in the
+- **Right-click** the phone, or use the toolbar beside it: Back, Home, Recents, Power, Volume, the notification
+  shade, frames, **Open App**, screenshot, recording, recent captures, rotate, quit. Hover a toolbar button for
+  its name. Open App lists the phone's apps (yours first, system apps in a submenu), fetched in the
   background a few seconds after the phone connects.
 - **Shortcuts** (Cmd or Ctrl): `S` screenshot, `E` start or stop recording, `R` rotate the phone.
   `Esc` is Back, `Home` is Home, `End` is Recents.
@@ -159,6 +160,10 @@ connection in one step. The phone and the Mac must be on the same network.
 With no arguments, `~/.config/handset/args` is used if it exists. `HANDSET_DEBUG=1` prints diagnostics, and `HANDSET_LANDING=wifi` or `qr` opens that view of the connect screen first.
 `ADB` and `FFMPEG` override where the tools are found.
 
+Choices made in the menus (frame, toolbar, capture format, audio normalisation, clipboard copy and sync,
+mute) are remembered in `~/.config/handset/settings`, a plain `key=value` file you can edit. Command-line
+options win for the run they are given and are never saved.
+
 ## How it works
 
 adb forwards a port to the scrcpy server on the phone. Handset reads the video, audio and control
@@ -173,7 +178,6 @@ Ideas, not promises:
 - Keyboard-to-touch mapping profiles (a long-standing request in the scrcpy world)
 - Wireless pairing, a device picker and a connection "doctor" that explains common failures
 - OBS-friendly output (Syphon or a virtual camera)
-- Back, Home and Recents on the toolbar, and saved settings
 - Microphone to phone, Linux and Windows
 
 ## Contributing

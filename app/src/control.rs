@@ -8,6 +8,8 @@ const TYPE_KEYCODE: u8 = 0;
 const TYPE_TEXT: u8 = 1;
 const TYPE_TOUCH: u8 = 2;
 const TYPE_SCROLL: u8 = 3;
+const TYPE_EXPAND_NOTIFICATION_PANEL: u8 = 5;
+const TYPE_COLLAPSE_PANELS: u8 = 7;
 const TYPE_ROTATE_DEVICE: u8 = 11;
 const TYPE_START_APP: u8 = 16;
 
@@ -21,6 +23,9 @@ pub enum Touch {
 pub mod keycode {
     pub const HOME: u32 = 3;
     pub const BACK: u32 = 4;
+    pub const VOLUME_UP: u32 = 24;
+    pub const VOLUME_DOWN: u32 = 25;
+    pub const POWER: u32 = 26;
     pub const DPAD_UP: u32 = 19;
     pub const DPAD_DOWN: u32 = 20;
     pub const DPAD_LEFT: u32 = 21;
@@ -101,6 +106,16 @@ impl Control {
             self.send(&m)?;
         }
         Ok(())
+    }
+
+    /// Pull down the notification shade.
+    pub fn expand_notifications(&mut self) -> io::Result<()> {
+        self.send(&[TYPE_EXPAND_NOTIFICATION_PANEL])
+    }
+
+    /// Close the notification shade and the quick settings.
+    pub fn collapse_panels(&mut self) -> io::Result<()> {
+        self.send(&[TYPE_COLLAPSE_PANELS])
     }
 
     /// Toggle the device between portrait and landscape.
