@@ -32,5 +32,9 @@ updates:
       prefix: build
       include: scope
     ignore:
+      # the Changesets packages move together: changelog-github 1.x and changesets/action 2 need CLI 3, and
+      # that migration (inputs renamed, new config) is done by hand, not by a bot
       - dependency-name: "@changesets/cli"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@changesets/changelog-github"
         update-types: ["version-update:semver-major"]
