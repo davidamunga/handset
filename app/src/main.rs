@@ -10,6 +10,7 @@ mod clipboard;
 mod connect;
 mod control;
 mod dock;
+mod doctor;
 mod frame;
 mod menu;
 mod mirror;
@@ -31,6 +32,7 @@ fn usage() -> ! {
         "usage: handset [--frame <name|path|none>] [--max-size <px>]\n\
          \x20                  [--connect <ip[:port]> | --last | --wifi] [--start-app <package>] [serial]\n\
          \x20      handset --pair <ip:port> <code>\n\
+         \x20      handset --doctor\n\
          \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
          built-in frames: {}\n\
          right-click the phone for the menu; keys: Cmd/Ctrl+S screenshot, Cmd/Ctrl+E record, Cmd/Ctrl+R rotate",
@@ -101,6 +103,7 @@ fn main() {
                     Err(e) => tools::die(&e.to_string()),
                 }
             }
+            "--doctor" => std::process::exit(doctor::run()),
             "-h" | "--help" => usage(),
             s if s.starts_with('-') => usage(),
             s => serial = Some(s.to_string()),

@@ -134,6 +134,7 @@ instead: `cargo install --path app --locked`.
 | `--connect <ip[:port]>` | Connect to a phone over Wi-Fi (`adb connect`, default port 5555) and mirror it |
 | `--last` | Reconnect to the phone you last used over Wi-Fi (Handset remembers the last few in `~/.config/handset/recent`) |
 | `--pair <ip:port> <code>` | Pair with a phone using its Wireless debugging pairing code, then exit |
+| `--doctor` | Check `adb`, `ffmpeg` and each connected phone (authorised, online, Android version, screen on) and say what to fix; exits 1 when something blocks mirroring |
 | `--wifi` | Switch a USB-connected phone to Wi-Fi, connect, and mirror (you can unplug the cable) |
 | `--start-app <package>` | Open an app on the phone once it is mirrored, e.g. `--start-app com.android.chrome` (a leading `?` searches app names) |
 | `[serial]` | Pick a device when several are connected |
@@ -177,7 +178,7 @@ rebuilding the server, releasing and debugging are in [docs/runbooks](docs/runbo
 Ideas, not promises:
 
 - Keyboard-to-touch mapping profiles (a long-standing request in the scrcpy world)
-- A device picker and a connection "doctor" that explains common failures
+- A device picker, and the doctor's checks on the connect screen
 - OBS-friendly output (Syphon or a virtual camera)
 - Microphone to phone, and Linux
 
