@@ -2,6 +2,7 @@ mod adb;
 mod app;
 mod audio;
 mod capture;
+mod clipboard;
 mod connect;
 mod control;
 mod frame;
@@ -23,7 +24,7 @@ fn usage() -> ! {
         "usage: handset [--frame <name|path|none>] [--max-size <px>]\n\
          \x20                  [--connect <ip[:port]> | --last | --wifi] [serial]\n\
          \x20      handset --pair <ip:port> <code>\n\
-         \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
+         \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
          built-in frames: {}\n\
          right-click the phone for the menu; keys: Cmd/Ctrl+S screenshot, Cmd/Ctrl+E record, Cmd/Ctrl+R rotate",
         frame::builtin_names().collect::<Vec<_>>().join(", ")
@@ -41,6 +42,7 @@ fn main() {
     let mut connect: Option<String> = None;
     let mut wifi = false;
     let mut last = false;
+    let mut sync_clipboard = true;
     // no arguments: use the saved defaults (and `--audio` inside the app bundle)
     let given: Vec<String> = std::env::args().skip(1).collect();
     let mut args = if given.is_empty() { tools::default_args() } else { given }.into_iter();
@@ -60,6 +62,7 @@ fn main() {
             "--gain" => cap.gain_db = args.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage()),
             "--no-normalize" => cap.normalize = false,
             "--no-clipboard" => cap.clipboard = false,
+            "--no-clipboard-sync" => sync_clipboard = false,
             "--mute" => mute = true,
             "--record-for" => record_for = Some(args.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage())),
             "--connect" => connect = Some(args.next().unwrap_or_else(|| usage())),
@@ -90,6 +93,7 @@ fn main() {
     menu::install(event_loop.create_proxy());
     let slot = Arc::new(Mutex::new(stream::Slot::default()));
     let audio_sink: audio::RecSink = Arc::new(Mutex::new(None));
+    let sync = Arc::new(Mutex::new(clipboard::Sync::new(sync_clipboard)));
 
     // Which phone: `--connect` makes its own; otherwise one that is ready now (the one asked for, or the
     // first). With none, the window opens on the connect screen and waits for a phone.
@@ -119,9 +123,16 @@ fn main() {
             serial = adb::wifi(&serial).unwrap_or_else(|e| tools::die(&e.to_string()));
             eprintln!("on Wi-Fi as {serial}: you can unplug the cable");
         }
-        let (m, c) =
-            mirror::Mirror::start(&serial, &opts, mute, event_loop.create_proxy(), slot.clone(), audio_sink.clone())
-                .unwrap_or_else(|e| tools::die(&e));
+        let (m, c) = mirror::Mirror::start(
+            &serial,
+            &opts,
+            mute,
+            event_loop.create_proxy(),
+            slot.clone(),
+            audio_sink.clone(),
+            sync.clone(),
+        )
+        .unwrap_or_else(|e| tools::die(&e));
         title = m.session.device_name.clone();
         with_audio = m.with_audio();
         control = c;
@@ -143,6 +154,7 @@ fn main() {
         proxy: event_loop.create_proxy(),
         opts,
         mute,
+        sync,
     });
     app.auto_record = record_for.map(std::time::Duration::from_secs_f32);
     if waiting {

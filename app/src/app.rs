@@ -38,6 +38,7 @@ pub struct Init {
     pub proxy: EventLoopProxy<UserEvent>,
     pub opts: server::Options,
     pub mute: bool,
+    pub sync: Arc<Mutex<crate::clipboard::Sync>>,
 }
 
 /// What the connect screen is waiting for.
@@ -155,6 +156,7 @@ pub struct App {
     proxy: EventLoopProxy<UserEvent>,
     opts: server::Options,
     mute: bool,
+    sync: Arc<Mutex<crate::clipboard::Sync>>,
 }
 
 /// A short message pill. With a `path` it is clickable and reveals that file.
@@ -210,6 +212,7 @@ impl App {
             proxy: init.proxy,
             opts: init.opts,
             mute: init.mute,
+            sync: init.sync,
         }
     }
 
@@ -524,6 +527,7 @@ impl App {
             self.proxy.clone(),
             self.slot.clone(),
             self.audio_sink.clone(),
+            self.sync.clone(),
         ) {
             Ok((mirror, control)) => {
                 self.with_audio = mirror.with_audio();
@@ -634,6 +638,7 @@ impl App {
             clipboard: self.cap.clipboard,
             mirroring: self.mirror.is_some(),
             usb: self.mirror.as_ref().is_some_and(|m| !connect::is_wireless(m.session.serial())),
+            sync: self.sync.lock().unwrap().enabled,
             recent: capture::recent_captures(5),
         };
         menu::show(&w, &state);
@@ -682,6 +687,13 @@ impl App {
             "fmt:gif" => self.cap.format = capture::Format::Gif,
             "norm" => self.cap.normalize = !self.cap.normalize,
             "clip" => self.cap.clipboard = !self.cap.clipboard,
+            "sync" => {
+                let mut s = self.sync.lock().unwrap();
+                s.enabled = !s.enabled;
+                let on = s.enabled;
+                drop(s);
+                self.show_toast(if on { "CLIPBOARD SYNC ON" } else { "CLIPBOARD SYNC OFF" });
+            }
             "toolbar" => {
                 if let Some(r) = self.renderer.as_mut() {
                     let on = !r.toolbar_visible();
@@ -732,6 +744,18 @@ impl App {
                     self.set_frame(Some(name.to_string()));
                 }
             }
+        }
+    }
+
+    /// The window got focus: if the Mac's clipboard changed since the last sync, send it to the phone.
+    fn send_clipboard(&mut self) {
+        if self.mirror.is_none() || !self.sync.lock().unwrap().enabled {
+            return;
+        }
+        let Some(current) = crate::clipboard::read_mac() else { return };
+        let to_send = self.sync.lock().unwrap().mac_changed(&current);
+        if let Some(text) = to_send {
+            let _ = self.control.set_clipboard(&text);
         }
     }
 
@@ -1026,6 +1050,7 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::ModifiersChanged(m) => self.mods = m.state(),
+            WindowEvent::Focused(true) => self.send_clipboard(),
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = (position.x, position.y);
                 let hover = self.toolbar_button();

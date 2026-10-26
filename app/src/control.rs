@@ -33,16 +33,18 @@ pub mod keycode {
 pub struct Control {
     /// `None` until a phone is connected: messages are dropped meanwhile.
     stream: Option<TcpStream>,
+    /// Sequence number of the next clipboard we send.
+    clip_seq: u64,
 }
 
 impl Control {
     pub fn new(stream: TcpStream) -> Self {
-        Self { stream: Some(stream) }
+        Self { stream: Some(stream), clip_seq: 0 }
     }
 
     /// A control that is not connected to a phone yet.
     pub fn disconnected() -> Self {
-        Self { stream: None }
+        Self { stream: None, clip_seq: 0 }
     }
 
     fn send(&mut self, msg: &[u8]) -> io::Result<()> {
@@ -103,6 +105,12 @@ impl Control {
     /// Toggle the device between portrait and landscape.
     pub fn rotate_device(&mut self) -> io::Result<()> {
         self.send(&[TYPE_ROTATE_DEVICE])
+    }
+
+    /// Put `text` on the phone's clipboard (without pasting it).
+    pub fn set_clipboard(&mut self, text: &str) -> io::Result<()> {
+        self.clip_seq += 1;
+        self.send(&crate::clipboard::encode_set(self.clip_seq, text, false))
     }
 
     pub fn text(&mut self, text: &str) -> io::Result<()> {

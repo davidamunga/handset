@@ -22,6 +22,8 @@ pub struct State {
     pub mirroring: bool,
     /// ...and it is connected by USB, so it can be switched to Wi-Fi.
     pub usb: bool,
+    /// Clipboard text is shared with the phone.
+    pub sync: bool,
     /// Newest captures, for the Recent Captures submenu.
     pub recent: Vec<std::path::PathBuf>,
 }
@@ -97,6 +99,7 @@ pub fn show(window: &Window, s: &State) {
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&CheckMenuItem::with_id("mute", audio_label, s.audio, s.audio && s.muted, None));
     let _ = menu.append(&MenuItem::with_id("rotate", "Rotate Device    \u{2318}R", true, None));
+    let _ = menu.append(&CheckMenuItem::with_id("sync", "Share Clipboard With Phone", true, s.sync, None));
     let _ = menu.append(&CheckMenuItem::with_id("toolbar", "Show Toolbar", true, s.toolbar, None));
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&MenuItem::with_id("quit", "Quit", true, None));

@@ -33,6 +33,8 @@ and Wi-Fi and QR code options for connecting without a cable.
 - Touch, scroll, keyboard and text input; landscape rotation
 - Framed screenshots (transparent PNG) and recordings (MP4 with audio, or GIF) via ffmpeg
 - A toolbar beside the phone and a native right-click menu
+- Clipboard text is shared with the phone: copy on the phone and paste on the Mac, or copy on the Mac, click the
+  Handset window and paste on the phone
 - A clickable "saved" toast, a recent captures menu and automatic clipboard copy
 - A small binary (about 5 MB) with the scrcpy server embedded
 
@@ -101,6 +103,7 @@ instead: `cargo install --path app --locked`.
 | `--mute` | With `--audio`, record the audio but do not play it |
 | `--gain <dB>`, `--no-normalize` | Recorded audio is normalised to about -16 LUFS; adjust or turn off |
 | `--no-clipboard` | Do not copy captures to the clipboard |
+| `--no-clipboard-sync` | Do not share clipboard text with the phone (also in the right-click menu) |
 | `--record-for <seconds>` | Record from the first frame, then quit |
 | `--record-format mp4\|gif` | Recording format |
 | `--record-size <px>` | Longest side of recordings (default 1280) |
