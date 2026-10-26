@@ -32,6 +32,8 @@ and Wi-Fi and QR code options for connecting without a cable.
   switchable while running
 - Touch, scroll, keyboard and text input; landscape rotation
 - Framed screenshots (transparent PNG) and recordings (MP4 with audio, or GIF) via ffmpeg
+- A Dock icon that shows what Handset is doing: grey while waiting for a phone, amber while connecting, green
+  while mirroring, red with a dot while recording
 - A toolbar beside the phone and a native right-click menu
 - Clipboard text is shared with the phone: copy on the phone and paste on the Mac, or copy on the Mac, click the
   Handset window and paste on the phone

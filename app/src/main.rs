@@ -7,6 +7,7 @@ mod capture;
 mod clipboard;
 mod connect;
 mod control;
+mod dock;
 mod frame;
 mod menu;
 mod mirror;

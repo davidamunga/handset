@@ -38,5 +38,6 @@ Needs `rsvg-convert` (`brew install librsvg`) and macOS (`iconutil`).
 scripts/make-icon.sh
 ```
 
-It writes `app/packaging/AppIcon.icns` and `app/packaging/icon/handset-icon-512.png` (used by the
-README). Check the small sizes by eye after changing the artwork. Commit the SVGs and both outputs.
+It writes `app/packaging/AppIcon.icns`, `app/packaging/icon/handset-icon-512.png` (used by the README) and the
+four Dock status icons `state-idle|connecting|live|recording.png` (the antennae recoloured, plus a red dot for
+recording), which `dock.rs` embeds. Check the small sizes by eye after changing the artwork. Commit the SVGs and both outputs.
