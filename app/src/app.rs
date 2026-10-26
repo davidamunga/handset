@@ -14,6 +14,7 @@ use crate::server;
 use crate::settings;
 use crate::stream::{Slot, UserEvent};
 use crate::toolbar::{self, Button};
+use crate::transfer;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
@@ -898,6 +899,23 @@ impl App {
         self.refresh_overlay();
     }
 
+    /// Install a dropped APK or copy another file to the phone's Downloads.
+    fn drop_file(&mut self, path: std::path::PathBuf) {
+        let Some(serial) = self.mirror.as_ref().map(|m| m.session.serial().to_string()) else {
+            self.show_toast("CONNECT A PHONE FIRST");
+            return;
+        };
+        let verb = if transfer::kind(&path) == transfer::Kind::Install { "INSTALLING" } else { "COPYING" };
+        self.show_toast(&format!("{verb} {}...", transfer::name(&path).to_uppercase()));
+        if let Some(t) = self.toast.as_mut() {
+            t.ttl = Duration::from_secs(600);
+        }
+        let proxy = self.proxy.clone();
+        std::thread::spawn(move || {
+            let _ = proxy.send_event(UserEvent::Transfer(transfer::send(&serial, &path)));
+        });
+    }
+
     fn show_toast(&mut self, text: &str) {
         self.toast = Some(Toast { text: text.to_string(), since: Instant::now(), ttl: TOAST, path: None });
         self.refresh_overlay();
@@ -1256,6 +1274,13 @@ impl ApplicationHandler<UserEvent> for App {
                     Err(e) => eprintln!("could not list the phone's apps: {e}"),
                 }
             }
+            UserEvent::Transfer(result) => match result {
+                Ok(text) => self.show_toast(&text.to_uppercase()),
+                Err(e) => {
+                    eprintln!("drop failed: {e}");
+                    self.show_toast(&format!("FAILED: {}", e.to_uppercase()));
+                }
+            },
             UserEvent::Adb(result) => self.on_adb(result),
             UserEvent::Landing(event) => self.on_landing(event),
             UserEvent::Frame => {
@@ -1325,6 +1350,15 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::ModifiersChanged(m) => self.mods = m.state(),
+            WindowEvent::HoveredFile(path) => {
+                let verb = if transfer::kind(&path) == transfer::Kind::Install { "INSTALL" } else { "COPY" };
+                self.show_toast(&format!("DROP TO {verb} {}", transfer::name(&path).to_uppercase()));
+            }
+            WindowEvent::HoveredFileCancelled => {
+                self.toast = None;
+                self.refresh_overlay();
+            }
+            WindowEvent::DroppedFile(path) => self.drop_file(path),
             WindowEvent::Focused(true) => self.send_clipboard(),
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = (position.x, position.y);

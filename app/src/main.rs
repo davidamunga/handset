@@ -21,6 +21,7 @@ mod settings;
 mod stream;
 mod toolbar;
 mod tools;
+mod transfer;
 
 use std::sync::{Arc, Mutex};
 use winit::event_loop::EventLoop;
