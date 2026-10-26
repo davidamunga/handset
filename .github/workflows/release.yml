@@ -1,19 +1,14 @@
 name: release
 
-# Publishes a release, only when you run it by hand: Actions > release > Run workflow, or
+# Publishes a release. It only runs when you start it by hand: Actions > release > Run workflow, or
 # `gh workflow run release.yml`. It releases the version in package.json on main (the one a merged
 # "Version packages" pull request set), after checking that it has not been released yet and that
-# CHANGELOG.md has a section for it. It builds the macOS files (signed and notarised) and the Windows zip.
-# With "dry run" it builds the files and keeps them as an artifact, and tags, publishes and changes nothing
-# else. See docs/runbooks/release.md.
+# CHANGELOG.md has a section for it. It builds the files (see build-release-files.yml), tags vX.Y.Z,
+# creates the GitHub release and bumps the Homebrew cask.
+# To rehearse without publishing anything, run `release-dry-run` instead. See docs/runbooks/release.md.
 
 on:
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: Build the files and keep them as an artifact; do not tag, publish or update the cask
-        type: boolean
-        default: false
 
 concurrency:
   group: release
@@ -33,108 +28,27 @@ jobs:
         with:
           fetch-depth: 0
       - id: check
-        env:
-          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           version="$(node -p "require('./package.json').version")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          if [ "$DRY_RUN" != "true" ]; then
-            [ "$GITHUB_REF" = "refs/heads/main" ] || { echo "::error::Run the release from main"; exit 1; }
-            if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
-              echo "::error::v$version is already released. Merge a version pull request first."; exit 1
-            fi
-            grep -q "^## $version\$" CHANGELOG.md || { echo "::error::CHANGELOG.md has no section for $version"; exit 1; }
+          [ "$GITHUB_REF" = "refs/heads/main" ] || { echo "::error::Run the release from main"; exit 1; }
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "::error::v$version is already released. Merge a version pull request first."; exit 1
           fi
+          grep -q "^## $version\$" CHANGELOG.md || { echo "::error::CHANGELOG.md has no section for $version"; exit 1; }
           if ls .changeset/*.md 2>/dev/null | grep -qv README.md; then
             echo "::warning::Changesets are pending: they are not part of v$version."
           fi
 
   build:
-    name: build the files (macOS)
+    name: build the files
     needs: prepare
-    outputs:
-      version: ${{ steps.release-files.outputs.version }}
-      sha256: ${{ steps.release-files.outputs.sha256 }}
-    runs-on: macos-latest
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # Optional: without them the build is ad-hoc signed. See docs/runbooks/release.md.
-      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
-      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
-      MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
-      NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
-      NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
-      NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: app
-      - name: Import the Developer ID certificate
-        if: env.MACOS_CERT_P12 != ''
-        run: |
-          keychain="$RUNNER_TEMP/signing.keychain-db"
-          password="$(uuidgen)"
-          security create-keychain -p "$password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$password" "$keychain"
-          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          security import "$RUNNER_TEMP/certificate.p12" -P "$MACOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
-          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" >/dev/null
-          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
-          rm "$RUNNER_TEMP/certificate.p12"
-          echo "CODESIGN_IDENTITY=$MACOS_CODESIGN_IDENTITY" >> "$GITHUB_ENV"
-      - name: Write the notarisation key
-        if: env.NOTARY_KEY_P8 != ''
-        run: |
-          echo "$NOTARY_KEY_P8" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
-          echo "NOTARY_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
-      - id: release-files
-        run: |
-          scripts/package-release.sh
-          version="$(node -p "require('./package.json').version")"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "sha256=$(shasum -a 256 "dist/release/Handset-$version-macos.zip" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - name: Remove signing material
-        if: always()
-        run: |
-          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
-          rm -f "$RUNNER_TEMP/AuthKey.p8"
-      - name: Keep the files for the next job
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-files
-          path: dist/release/*
-
-  build-windows:
-    name: build the files (Windows)
-    needs: prepare
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: app
-      - name: Build the zip
-        shell: pwsh
-        run: scripts/package-windows.ps1
-      - name: Name the checksum file after its platform
-        shell: pwsh
-        run: Move-Item dist/windows/SHA256SUMS dist/windows/SHA256SUMS-windows
-      - name: Keep the files for the next job
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-files-windows
-          path: dist/windows/*
+    uses: ./.github/workflows/build-release-files.yml
+    secrets: inherit
 
   publish:
     name: tag and publish
-    needs: [prepare, build, build-windows]
-    if: ${{ !inputs.dry_run }}
+    needs: [prepare, build]
     runs-on: ubuntu-24.04
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -156,7 +70,6 @@ jobs:
   homebrew:
     name: update the Homebrew cask
     needs: [prepare, build, publish]
-    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-24.04
     env:
       TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}

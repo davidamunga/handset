@@ -1,0 +1,100 @@
+name: build release files
+
+# Builds the files a release attaches: the signed and notarised macOS app and command line tool, and the
+# Windows zip. Called by `release` (which then publishes them) and by `release-dry-run` (which only keeps
+# them as artifacts). It does not run by itself. See docs/runbooks/release.md.
+
+on:
+  workflow_call:
+    outputs:
+      version:
+        description: The version in package.json that the files were built for
+        value: ${{ jobs.build.outputs.version }}
+      sha256:
+        description: SHA-256 of the macOS app zip, for the Homebrew cask
+        value: ${{ jobs.build.outputs.sha256 }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build the files (macOS)
+    outputs:
+      version: ${{ steps.release-files.outputs.version }}
+      sha256: ${{ steps.release-files.outputs.sha256 }}
+    runs-on: macos-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Optional: without them the build is ad-hoc signed. See docs/runbooks/release.md.
+      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+      NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+      NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+      NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+      - name: Import the Developer ID certificate
+        if: env.MACOS_CERT_P12 != ''
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password="$(uuidgen)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$MACOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/certificate.p12"
+          echo "CODESIGN_IDENTITY=$MACOS_CODESIGN_IDENTITY" >> "$GITHUB_ENV"
+      - name: Write the notarisation key
+        if: env.NOTARY_KEY_P8 != ''
+        run: |
+          echo "$NOTARY_KEY_P8" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          echo "NOTARY_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+      - id: release-files
+        run: |
+          scripts/package-release.sh
+          version="$(node -p "require('./package.json').version")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(shasum -a 256 "dist/release/Handset-$version-macos.zip" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Remove signing material
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/AuthKey.p8"
+      - name: Keep the files for the next job
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-files
+          path: dist/release/*
+
+  build-windows:
+    name: build the files (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+      - name: Build the zip
+        shell: pwsh
+        run: scripts/package-windows.ps1
+      - name: Name the checksum file after its platform
+        shell: pwsh
+        run: Move-Item dist/windows/SHA256SUMS dist/windows/SHA256SUMS-windows
+      - name: Keep the files for the next job
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-files-windows
+          path: dist/windows/*
+

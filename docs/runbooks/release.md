@@ -42,9 +42,11 @@ A release happens only when you start it. Merging a version pull request does no
    ad-hoc signed and Gatekeeper blocks a downloaded copy until it is opened with right-click, Open
    (or `xattr -dr com.apple.quarantine`).
 
-Releases are normal releases, not pre-releases. To rehearse one first, tick **dry run** (or
-`gh workflow run release.yml -f dry_run=true`): it builds, signs and notarises the files and keeps them as the
-`release-files` artifact, and tags, publishes and changes nothing else.
+Releases are normal releases, not pre-releases. To rehearse one first, run the separate `release-dry-run`
+workflow (Actions > release-dry-run > Run workflow, or `gh workflow run release-dry-run.yml`, optionally with
+`--ref <branch>`): it builds, signs and notarises the macOS files and builds the Windows zip, and keeps them as the
+`release-files` and `release-files-windows` artifacts. It tags, publishes and changes nothing else. Both workflows
+build through the shared `build-release-files.yml`, so a rehearsal builds exactly what a release would.
 
 ## One-time repository settings
 
