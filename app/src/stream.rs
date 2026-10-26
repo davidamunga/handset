@@ -28,6 +28,8 @@ pub struct Slot {
     pub yuv: Yuv,
     /// A frame is waiting to be picked up by the UI thread.
     pub fresh: bool,
+    /// The frame in `yuv` is (almost) all black.
+    pub black: bool,
 }
 
 /// Consecutive decode failures tolerated (each one rebuilds the decoder) before giving up.
@@ -122,6 +124,7 @@ pub fn spawn(mut video: TcpStream, slot: Arc<Mutex<Slot>>, proxy: EventLoopProxy
                     s.yuv.u.extend_from_slice(img.u());
                     s.yuv.v.clear();
                     s.yuv.v.extend_from_slice(img.v());
+                    s.black = crate::black::is_black(img.y());
                     s.fresh = true;
                     drop(s);
                     if !was_fresh {

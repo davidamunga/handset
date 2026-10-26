@@ -70,6 +70,9 @@ Errors are printed to the terminal. When launched from Finder they appear in an 
   ([rebuild runbook](rebuild-scrcpy-server.md)).
 - **Stale port forwards.** List them with `adb forward --list` and clear with
   `adb forward --remove-all`.
+- **"Black screen" pill.** Handset shows it when every frame has been black for three seconds: the phone is
+  asleep, or the app on screen forbids screen capture (banking, DRM video). Wake the phone; if it stays black, the
+  app is blocking capture and nothing in Handset can change that.
 - **Black rectangle inside an app.** Apps that mark their window as secure (banking, some streaming)
   are not captured by the server. That is expected.
 - **No audio.** Audio is opt-in (`--audio`) and needs Android 11 or later. Without it Handset prints

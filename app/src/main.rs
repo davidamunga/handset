@@ -1,6 +1,7 @@
 mod adb;
 mod app;
 mod audio;
+mod black;
 mod capture;
 mod clipboard;
 mod connect;

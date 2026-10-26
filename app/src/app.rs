@@ -151,6 +151,9 @@ pub struct App {
     /// What the renderer's overlay currently shows (text, dot colour).
     overlay_key: Option<(String, Option<[u8; 3]>)>,
     overlay_opacity: f32,
+    /// How long the screen has been black, and the message about it while it is.
+    black: crate::black::BlackWatch,
+    hint: Option<String>,
     mirror: Option<Mirror>,
     waiting: Option<Waiting>,
     proxy: EventLoopProxy<UserEvent>,
@@ -176,6 +179,8 @@ type Located = ((f32, f32), Option<(i32, i32)>);
 /// What the overlay should show: text, optional dot colour, opacity.
 type OverlayWant = (String, Option<[u8; 3]>, f32);
 
+const AMBER_DOT: [u8; 3] = [255, 190, 60];
+const BLACK_HINT: &str = "BLACK SCREEN: PHONE ASLEEP OR APP BLOCKS CAPTURE";
 const REC_RED: [u8; 3] = [235, 60, 60];
 const REC_DIM: [u8; 3] = [110, 35, 35];
 
@@ -207,6 +212,8 @@ impl App {
             toast: None,
             overlay_key: None,
             overlay_opacity: 1.0,
+            black: Default::default(),
+            hint: None,
             mirror: init.mirror,
             waiting: init.wait.map(|w| Waiting::new(w.serial, w.wifi, Status::Looking)),
             proxy: init.proxy,
@@ -537,6 +544,8 @@ impl App {
                 }
                 self.title = mirror.session.device_name.clone();
                 self.mirror = Some(mirror);
+                self.black = Default::default();
+                self.hint = None;
                 self.waiting = None;
                 connect::stop_poll();
                 connect::want_mdns(false);
@@ -759,6 +768,15 @@ impl App {
         }
     }
 
+    /// Show or hide the "black screen" message.
+    fn set_black_hint(&mut self, on: bool) {
+        if self.debug {
+            eprintln!("black screen hint: {}", if on { "shown" } else { "cleared" });
+        }
+        self.hint = on.then(|| BLACK_HINT.to_string());
+        self.refresh_overlay();
+    }
+
     fn show_toast(&mut self, text: &str) {
         self.toast = Some(Toast { text: text.to_string(), since: Instant::now(), ttl: TOAST, path: None });
         self.refresh_overlay();
@@ -793,6 +811,10 @@ impl App {
             let left = t.ttl.saturating_sub(now.duration_since(t.since));
             let opacity = (left.as_secs_f32() / TOAST_FADE.as_secs_f32()).min(1.0);
             Some((t.text.clone(), None, opacity))
+        } else if self.recorder.is_none()
+            && let Some(h) = &self.hint
+        {
+            Some((h.clone(), Some(AMBER_DOT), 1.0))
         } else if self.recorder.is_some() {
             let e = now.duration_since(self.rec_started);
             let dot = if (e.as_millis() / 500).is_multiple_of(2) { REC_RED } else { REC_DIM };
@@ -951,6 +973,9 @@ impl ApplicationHandler<UserEvent> for App {
             return;
         }
         let connect_wake = self.tick_connect();
+        if let Some(on) = self.black.tick(Instant::now()) {
+            self.set_black_hint(on);
+        }
         self.refresh_toolbar();
         let animating = self.refresh_overlay();
         let Some(rec) = &self.recorder else {
@@ -997,6 +1022,7 @@ impl ApplicationHandler<UserEvent> for App {
             UserEvent::Frame => {
                 let (Some(r), Some(w)) = (self.renderer.as_mut(), self.window.as_ref()) else { return };
                 let mut s = self.slot.lock().unwrap();
+                let black = s.black;
                 if s.fresh {
                     r.upload(&s.yuv);
                     self.device = (s.yuv.width as u16, s.yuv.height as u16);
@@ -1021,6 +1047,9 @@ impl ApplicationHandler<UserEvent> for App {
                     }
                 }
                 w.request_redraw();
+                if let Some(on) = self.black.frame(black, Instant::now()) {
+                    self.set_black_hint(on);
+                }
                 // `--record-for`: start once the first frame is on screen
                 if let (Some(d), None) = (self.auto_record, self.auto_stop_at) {
                     self.start_recording();
