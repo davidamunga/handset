@@ -40,6 +40,13 @@ pub struct Session {
     pub device_name: String,
 }
 
+impl Session {
+    /// The adb serial this session mirrors.
+    pub fn serial(&self) -> &str {
+        &self.serial
+    }
+}
+
 impl Drop for Session {
     fn drop(&mut self) {
         let _ = self.child.kill();

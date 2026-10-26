@@ -24,6 +24,12 @@ If `adb` itself is missing, install the Android platform-tools. Handset finds `a
 `/opt/homebrew/bin`, `/usr/local/bin` and the Android SDK folder, and the `ADB` environment variable
 overrides the lookup.
 
+### The window used to close when the phone went away
+
+It no longer does. If the connection drops (a cable pulled, Wi-Fi going to sleep), the frame stays and the connect
+screen shows "Connection lost". Handset starts mirroring again by itself when adb sees the phone, and for a phone
+on Wi-Fi it runs `adb connect` against its address every few seconds. `--record-for` still ends with its session.
+
 ### Over Wi-Fi instead of USB
 
 On the connect screen, **Wi-Fi** lists paired phones on the network and lets you type an address or switch a

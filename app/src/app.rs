@@ -77,8 +77,40 @@ struct Waiting {
     busy: bool,
     /// A line of progress or trouble for the Wi-Fi and QR views.
     note: Option<String>,
+    /// After a Wi-Fi phone went away: its address, and when to try connecting to it next.
+    retry_addr: Option<String>,
+    next_retry: Instant,
 }
 
+impl Waiting {
+    fn new(want: Option<String>, wifi: bool, status: Status) -> Self {
+        Self {
+            want,
+            wifi,
+            status,
+            tick: 0,
+            tick_at: Instant::now(),
+            starting: None,
+            failed: None,
+            view: View::Home,
+            hover: None,
+            buttons: Vec::new(),
+            img: (0, 0),
+            nearby: Vec::new(),
+            usb: None,
+            qr: None,
+            pairing: false,
+            paired_ip: None,
+            busy: false,
+            note: None,
+            retry_addr: None,
+            next_retry: Instant::now() + RECONNECT_EVERY,
+        }
+    }
+}
+
+/// How often to try `adb connect` again after a Wi-Fi phone went away.
+const RECONNECT_EVERY: Duration = Duration::from_secs(4);
 /// How long to leave a phone alone after mirroring it failed.
 const RETRY_AFTER: Duration = Duration::from_secs(10);
 /// Height of the connect screen's picture; the width follows the screen's aspect.
@@ -168,26 +200,7 @@ impl App {
             overlay_key: None,
             overlay_opacity: 1.0,
             mirror: init.mirror,
-            waiting: init.wait.map(|w| Waiting {
-                want: w.serial,
-                wifi: w.wifi,
-                status: Status::Looking,
-                tick: 0,
-                tick_at: Instant::now(),
-                starting: None,
-                failed: None,
-                view: View::Home,
-                hover: None,
-                buttons: Vec::new(),
-                img: (0, 0),
-                nearby: Vec::new(),
-                usb: None,
-                qr: None,
-                pairing: false,
-                paired_ip: None,
-                busy: false,
-                note: None,
-            }),
+            waiting: init.wait.map(|w| Waiting::new(w.serial, w.wifi, Status::Looking)),
             proxy: init.proxy,
             opts: init.opts,
             mute: init.mute,
@@ -268,7 +281,12 @@ impl App {
                 }
                 None => {
                     wt.failed = None; // the phone went away; a replug gets a fresh try
-                    connect::status_from(&list, wt.want.as_deref())
+                    let found = connect::status_from(&list, wt.want.as_deref());
+                    if found == Status::Looking && matches!(wt.status, Status::Lost(_)) {
+                        wt.status.clone()
+                    } else {
+                        found
+                    }
                 }
             },
         };
@@ -386,6 +404,49 @@ impl App {
         self.draw_connect();
     }
 
+    /// The stream ended. Quit if there is nothing to recover; otherwise go back to the connect screen and
+    /// wait for the phone to return, retrying the connection for a phone that was on Wi-Fi.
+    fn on_disconnected(&mut self, el: &ActiveEventLoop) {
+        let Some(mirror) = self.mirror.take() else {
+            el.exit();
+            return;
+        };
+        if self.auto_record.is_some() {
+            // `--record-for` ends with its session
+            self.mirror = Some(mirror);
+            el.exit();
+            return;
+        }
+        let serial = mirror.session.serial().to_string();
+        eprintln!("connection to {serial} lost; waiting for it to come back");
+        self.stop_recording();
+        drop(mirror); // kills the server and removes the adb forward
+        self.control = Control::disconnected();
+        self.with_audio = false;
+        self.touching = false;
+        self.device = (0, 0);
+        self.slot.lock().unwrap().fresh = false;
+        self.title = "Handset".to_string();
+        if let Some(w) = &self.window {
+            w.set_title("Handset");
+        }
+        // the connect screen is portrait: turn the frame back if the phone was in landscape
+        if let (Some(r), Some(w)) = (self.renderer.as_mut(), self.window.as_ref())
+            && r.landscape()
+        {
+            let new_h = (r.bezel_rect()[2] * w.inner_size().width as f32).round() as u32;
+            r.set_landscape(false);
+            if let Some(a) = r.window_aspect() {
+                let _ = w.request_inner_size(winit::dpi::PhysicalSize::new((new_h as f32 * a).round() as u32, new_h));
+            }
+        }
+        let mut wt = Waiting::new(None, false, Status::Lost(serial.clone()));
+        wt.retry_addr = connect::retry_addr(&serial);
+        self.waiting = Some(wt);
+        connect::spawn_poll(self.proxy.clone());
+        self.draw_connect();
+    }
+
     /// Animate the connect screen and start mirroring once its "connecting" frame has been shown.
     /// Returns when this wants to run again.
     fn tick_connect(&mut self) -> Option<Instant> {
@@ -398,6 +459,12 @@ impl App {
             redraw = true;
         }
         let start = wt.starting.as_ref().filter(|(_, at)| now >= *at).map(|(s, _)| s.clone());
+        if let Some(addr) = wt.retry_addr.clone().filter(|_| !wt.busy && wt.starting.is_none() && now >= wt.next_retry)
+        {
+            wt.busy = true;
+            wt.next_retry = now + RECONNECT_EVERY;
+            connect::connect_async(self.proxy.clone(), addr);
+        }
         let next = wt.tick_at + Duration::from_millis(500);
         if redraw {
             self.draw_connect();
@@ -853,7 +920,7 @@ impl ApplicationHandler<UserEvent> for App {
 
     fn user_event(&mut self, el: &ActiveEventLoop, event: UserEvent) {
         match event {
-            UserEvent::Disconnected => el.exit(),
+            UserEvent::Disconnected => self.on_disconnected(el),
             UserEvent::Failed(msg) => {
                 eprintln!("handset: {msg}");
                 el.exit();

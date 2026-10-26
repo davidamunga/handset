@@ -28,6 +28,8 @@ pub enum Status {
     Connecting(String),
     /// Starting failed; the text says why.
     Failed(String),
+    /// A phone that was mirrored went away; Handset is waiting for it to come back.
+    Lost(String),
 }
 
 /// The phone to mirror: the one named `want` if given, else the first in the `device` state.
@@ -40,6 +42,12 @@ pub fn pick(list: &[(String, String)], want: Option<&str>) -> Option<String> {
 /// Is this adb serial a phone reached over the network (`ip:port` or an mDNS name)?
 pub fn is_wireless(serial: &str) -> bool {
     serial.contains(':') || serial.contains("_adb-tls")
+}
+
+/// The address to keep reconnecting to after a phone mirrored over Wi-Fi went away. Phones found by
+/// their mDNS name come back through adb's own auto-connect, so they need no retry.
+pub fn retry_addr(serial: &str) -> Option<String> {
+    (serial.contains(':') && !serial.contains("_adb-tls")).then(|| serial.to_string())
 }
 
 /// What to tell the person when no phone in `list` is ready.
@@ -528,6 +536,14 @@ fn words(status: &Status) -> Words {
             None,
         ),
         Status::Connecting(s) => w("Connecting", GREEN, true, &["Starting mirroring."], false, "", Some(s)),
+        Status::Lost(s) => {
+            let body = if retry_addr(s).is_some() || s.contains("_adb-tls") {
+                "Reconnecting. The phone and this Mac need to be on the same Wi-Fi."
+            } else {
+                "Plug the phone back in."
+            };
+            w("Connection lost", AMBER, true, &[body], false, "Mirroring starts again by itself.", Some(s))
+        }
         Status::Failed(msg) => {
             let short: String = msg.chars().take(140).collect();
             w("Could not start mirroring", RED, false, &[&short], false, "Replug the phone to try again.", None)
@@ -815,6 +831,13 @@ mod tests {
     }
 
     #[test]
+    fn retries_only_phones_with_an_address() {
+        assert_eq!(retry_addr("192.168.0.20:5555"), Some("192.168.0.20:5555".into()));
+        assert_eq!(retry_addr("adb-W82202003817-MPn68n._adb-tls-connect._tcp"), None);
+        assert_eq!(retry_addr("W82202003817"), None);
+    }
+
+    #[test]
     fn tells_wireless_from_usb() {
         assert!(is_wireless("192.168.0.20:5555"));
         assert!(is_wireless("adb-W82202003817-MPn68n._adb-tls-connect._tcp"));
@@ -928,7 +951,9 @@ mod tests {
         let looking = Status::Looking;
         let unauth = Status::Unauthorized("W82202003817".into());
         let failed = Status::Failed("Could not start mirroring: adb push: no such file".into());
+        let lost = Status::Lost("192.168.0.20:5555".into());
         let screens = [
+            model(&lost, View::Home, &[], None, None, None),
             model(&looking, View::Home, &[], None, None, None),
             model(&unauth, View::Home, &[], None, None, None),
             model(&failed, View::Home, &[], None, None, None),
