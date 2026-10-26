@@ -49,6 +49,8 @@ npm run changeset                  # (repo root) add a changeset for a user-visi
 - Do not add attribution lines to commit messages or pull request descriptions.
 - Rust 2024 edition, `rustfmt.toml` in `app/`, clippy clean with `-D warnings`.
 - Comments explain why, not what. Keep them as sparse as the surrounding code.
+- `app/packaging/windows/handset.res` holds the exe icon; regenerate it with `scripts/make-windows-res.ps1`.
+- Windows-only code is behind `cfg(windows)`; shell out via `tools::command` so no console window flashes.
 - macOS-only code is behind `cfg(target_os = "macos")` and must not break other targets.
 - Do not commit build output, the local `scrcpy/` checkout, `frames/out/` or personal captures.
 - Record architectural decisions as ADRs (see `docs/adr/README.md`) in the same change.

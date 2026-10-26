@@ -32,22 +32,34 @@ pub struct State {
 }
 
 #[cfg(target_os = "macos")]
+const MOD: &str = "\u{2318}";
+#[cfg(windows)]
+const MOD: &str = "Ctrl+";
+#[cfg(target_os = "macos")]
+const FILE_MANAGER: &str = "Finder";
+#[cfg(windows)]
+const FILE_MANAGER: &str = "Explorer";
+
+#[cfg(any(target_os = "macos", windows))]
 pub fn install(proxy: EventLoopProxy<UserEvent>) {
     muda::MenuEvent::set_event_handler(Some(move |e: muda::MenuEvent| {
         let _ = proxy.send_event(UserEvent::Menu(e.id.0));
     }));
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn install(_proxy: EventLoopProxy<UserEvent>) {}
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 pub fn show(window: &Window, s: &State) {
     use muda::{CheckMenuItem, ContextMenu, Menu, MenuItem, PredefinedMenuItem, Submenu};
     use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
     let Ok(handle) = window.window_handle() else { return };
+    #[cfg(target_os = "macos")]
     let RawWindowHandle::AppKit(h) = handle.as_raw() else { return };
+    #[cfg(windows)]
+    let RawWindowHandle::Win32(h) = handle.as_raw() else { return };
 
     let menu = Menu::new();
 
@@ -80,7 +92,12 @@ pub fn show(window: &Window, s: &State) {
         let item = Submenu::new(name, true);
         let p = path.to_string_lossy();
         let _ = item.append(&MenuItem::with_id(format!("recent:open:{p}"), "Open", true, None));
-        let _ = item.append(&MenuItem::with_id(format!("recent:reveal:{p}"), "Show in Finder", true, None));
+        let _ = item.append(&MenuItem::with_id(
+            format!("recent:reveal:{p}"),
+            format!("Show in {FILE_MANAGER}"),
+            true,
+            None,
+        ));
         let _ = item.append(&MenuItem::with_id(format!("recent:copy:{p}"), "Copy", true, None));
         let _ = recent.append(&item);
     }
@@ -112,8 +129,8 @@ pub fn show(window: &Window, s: &State) {
     let _ = menu.append(&open_app);
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&MenuItem::with_id("shot", "Take Screenshot    \u{2318}S", true, None));
-    let rec_label = if s.recording { "Stop Recording    \u{2318}E" } else { "Start Recording    \u{2318}E" };
-    let _ = menu.append(&MenuItem::with_id("rec", rec_label, true, None));
+    let rec_label = format!("{} Recording    {MOD}E", if s.recording { "Stop" } else { "Start" });
+    let _ = menu.append(&MenuItem::with_id("rec", &rec_label, true, None));
     let _ = menu.append(&recent);
     let _ = menu.append(&record);
     let _ = menu.append(&PredefinedMenuItem::separator());
@@ -125,9 +142,12 @@ pub fn show(window: &Window, s: &State) {
     let _ = menu.append(&MenuItem::with_id("quit", "Quit", true, None));
 
     unsafe {
+        #[cfg(target_os = "macos")]
         menu.show_context_menu_for_nsview(h.ns_view.as_ptr() as *const std::ffi::c_void, None);
+        #[cfg(windows)]
+        menu.show_context_menu_for_hwnd(h.hwnd.get(), None);
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn show(_window: &Window, _s: &State) {}

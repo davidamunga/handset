@@ -14,7 +14,7 @@ pub struct Recent {
 }
 
 fn dir() -> PathBuf {
-    std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default().join(".config/handset")
+    crate::tools::home().join(".config/handset")
 }
 
 pub fn load() -> Vec<Recent> {

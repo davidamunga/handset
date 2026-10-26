@@ -60,11 +60,22 @@ you want recordings.
 
 ## Requirements
 
-- macOS 12 or later, on Apple Silicon or Intel
+- macOS 12 or later, on Apple Silicon or Intel, or Windows 10/11 (see below)
 - An Android phone with USB debugging enabled (audio needs Android 11 or later)
 - [`adb`](https://developer.android.com/tools/releases/platform-tools) (Android platform-tools)
 - [`ffmpeg`](https://ffmpeg.org) for recording (optional)
 - Rust (stable) to build from source
+
+
+### Windows
+
+Build with `cargo rustc --release --bin handset -- -C link-arg=packaging/windows/handset.res` in `app` (plain `cargo build --release` also works, but the `.exe` file then has no icon); the binary is `app\target\release\handset.exe`. `adb` and `ffmpeg`
+are found on `PATH`, in the Android SDK (`%LOCALAPPDATA%\Android\Sdk\platform-tools`), in winget, scoop or
+Chocolatey shims, or next to `handset.exe` (also in a `platform-tools` folder there). Set `ADB` or `FFMPEG` to
+override. Captures go to `Pictures\handset` and `Videos\handset`; settings live in `%USERPROFILE%\.config\handset`.
+`scripts\package-windows.ps1` builds `dist\windows\Handset-<version>-windows.zip` (unsigned; pass `-ToolsDir` to bundle `adb` and `ffmpeg`).
+Only the Dock icon states are macOS-only.
+
 
 ## Build and run from source
 

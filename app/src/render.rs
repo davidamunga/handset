@@ -80,17 +80,32 @@ fn plane(device: &wgpu::Device, w: u32, h: u32) -> wgpu::Texture {
 
 impl Renderer {
     pub fn new(window: Arc<Window>, bezel: Option<&Bezel>) -> Result<Self, String> {
-        let instance = wgpu::Instance::default();
-        let surface = instance.create_surface(window.clone()).map_err(|e| e.to_string())?;
+        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
+        // Vulkan on some Intel drivers fails to create a device; D3D12 is the dependable Windows backend
+        if cfg!(windows) && std::env::var_os("WGPU_BACKEND").is_none() {
+            desc.backends = wgpu::Backends::DX12;
+        }
+        // the default HWND swapchain is opaque; a DirectComposition one lets the window be transparent
+        if cfg!(windows) && std::env::var_os("WGPU_DX12_PRESENTATION_SYSTEM").is_none() {
+            desc.backend_options.dx12.presentation_system = wgpu::Dx12SwapchainKind::DxgiFromVisual;
+        }
+        let instance = wgpu::Instance::new(desc);
+        let surface = instance.create_surface(window.clone()).map_err(|e| format!("surface: {e}"))?;
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::LowPower,
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
             apply_limit_buckets: false,
         }))
-        .map_err(|e| e.to_string())?;
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
-            .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("adapter: {e}"))?;
+        if std::env::var_os("HANDSET_DEBUG").is_some() {
+            eprintln!("adapter: {:?}", adapter.get_info());
+        }
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            memory_hints: wgpu::MemoryHints::MemoryUsage,
+            ..Default::default()
+        }))
+        .map_err(|e| format!("device: {e}"))?;
 
         let caps = surface.get_capabilities(&adapter);
         // Video is already gamma-encoded, so avoid an sRGB surface.
@@ -99,6 +114,9 @@ impl Renderer {
             .into_iter()
             .find(|m| caps.alpha_modes.contains(m))
             .unwrap_or(caps.alpha_modes[0]);
+        if std::env::var_os("HANDSET_DEBUG").is_some() {
+            eprintln!("surface: alpha {alpha_mode:?} of {:?}, format {format:?}", caps.alpha_modes);
+        }
         let size = window.inner_size();
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,

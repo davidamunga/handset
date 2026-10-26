@@ -182,7 +182,15 @@ fn ask_address() -> Option<String> {
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string()).filter(|s| !s.is_empty())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+fn ask_address() -> Option<String> {
+    let script = "Add-Type -AssemblyName Microsoft.VisualBasic; \
+                  [Console]::OutputEncoding=[Text.Encoding]::UTF8; \
+                  [Microsoft.VisualBasic.Interaction]::InputBox('Phone address, as ip or ip:port (shown under Wireless debugging):', 'Handset', '192.168.')";
+    crate::tools::powershell(script, None).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 fn ask_address() -> Option<String> {
     None
 }

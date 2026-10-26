@@ -67,21 +67,48 @@ pub fn parse_color(s: &str) -> Option<[f32; 3]> {
     Some([c(0)?, c(2)?, c(4)?])
 }
 
-fn timestamp() -> String {
+#[cfg(windows)]
+fn local_timestamp() -> Option<String> {
+    #[repr(C)]
+    #[derive(Default)]
+    struct SystemTime {
+        year: u16,
+        month: u16,
+        dow: u16,
+        day: u16,
+        hour: u16,
+        minute: u16,
+        second: u16,
+        ms: u16,
+    }
+    unsafe extern "system" {
+        fn GetLocalTime(t: *mut SystemTime);
+    }
+    let mut t = SystemTime::default();
+    // SAFETY: GetLocalTime fills the struct, which matches the Win32 SYSTEMTIME layout
+    unsafe { GetLocalTime(&mut t) };
+    Some(format!("{:04}{:02}{:02}-{:02}{:02}{:02}", t.year, t.month, t.day, t.hour, t.minute, t.second))
+}
+
+#[cfg(not(windows))]
+fn local_timestamp() -> Option<String> {
     Command::new("date")
         .arg("+%Y%m%d-%H%M%S")
         .output()
         .ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_else(|| {
-            let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-            secs.to_string()
-        })
+}
+
+fn timestamp() -> String {
+    local_timestamp().unwrap_or_else(|| {
+        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        secs.to_string()
+    })
 }
 
 fn dir_path(candidates: &[&str]) -> PathBuf {
-    let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+    let home = crate::tools::home();
     let base = candidates.iter().map(|c| home.join(c)).find(|p| p.is_dir()).unwrap_or(home);
     base.join("handset")
 }
@@ -113,7 +140,9 @@ pub fn recent_captures(n: usize) -> Vec<PathBuf> {
 pub fn reveal(path: &std::path::Path) {
     #[cfg(target_os = "macos")]
     let _ = Command::new("open").arg("-R").arg(path).spawn();
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    let _ = Command::new("explorer").arg(format!("/select,{}", path.display())).spawn();
+    #[cfg(not(any(target_os = "macos", windows)))]
     let _ = path;
 }
 
@@ -121,7 +150,9 @@ pub fn reveal(path: &std::path::Path) {
 pub fn open_file(path: &std::path::Path) {
     #[cfg(target_os = "macos")]
     let _ = Command::new("open").arg(path).spawn();
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    let _ = crate::tools::command("cmd").args(["/C", "start", ""]).arg(path).spawn();
+    #[cfg(not(any(target_os = "macos", windows)))]
     let _ = path;
 }
 
@@ -138,7 +169,11 @@ pub fn copy_to_clipboard(path: &std::path::Path) -> bool {
         };
         Command::new("osascript").args(["-e", &script]).output().is_ok_and(|o| o.status.success())
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        crate::clipboard::win::copy_capture(path)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = path;
         false
@@ -205,7 +240,7 @@ impl Recorder {
         let path = unique(dir, &format!("{stem_hint}-{}", timestamp()), settings.format.ext());
         let (w, h) = size;
 
-        let mut cmd = Command::new(crate::tools::find("ffmpeg"));
+        let mut cmd = crate::tools::command(crate::tools::find("ffmpeg"));
         cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgba"]).args([
             "-s",
             &format!("{w}x{h}"),

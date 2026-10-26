@@ -1,3 +1,5 @@
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod adb;
 mod app;
 mod apps;
@@ -36,6 +38,8 @@ fn usage() -> ! {
 }
 
 fn main() {
+    #[cfg(windows)]
+    tools::attach_console();
     let mut frame_spec = Some("obsidian".to_string());
     let mut opts = server::Options::default();
     let mut serial = None;

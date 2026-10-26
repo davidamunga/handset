@@ -965,13 +965,24 @@ impl ApplicationHandler<UserEvent> for App {
             return;
         }
         let aspect = (self.bezel.as_ref().map_or(9.0 / 20.0, |b| b.aspect()) + toolbar::SIDE_FRAC) as f64;
-        let height = 820.0;
+        // fit the screen (leaving room for a taskbar or menu bar) rather than a fixed size
+        let height = el
+            .primary_monitor()
+            .or_else(|| el.available_monitors().next())
+            .map_or(820.0, |m| (m.size().height as f64 / m.scale_factor() * 0.9).clamp(400.0, 1000.0));
         let mut attrs = Window::default_attributes()
             .with_title(self.title.clone())
+            .with_window_icon(if cfg!(windows) { window_icon() } else { None })
             .with_inner_size(LogicalSize::new(height * aspect, height))
             .with_min_inner_size(LogicalSize::new(200.0 * aspect, 200.0));
         if self.bezel.is_some() {
             attrs = attrs.with_transparent(true).with_decorations(false);
+            // the window's own (white) backing bitmap would show through the composition swapchain
+            #[cfg(windows)]
+            {
+                use winit::platform::windows::WindowAttributesExtWindows;
+                attrs = attrs.with_no_redirection_bitmap(true);
+            }
         }
         let window = Arc::new(el.create_window(attrs).expect("create window"));
         match Renderer::new(window.clone(), self.bezel.as_ref()) {
@@ -1296,4 +1307,17 @@ impl ApplicationHandler<UserEvent> for App {
             _ => {}
         }
     }
+}
+
+/// The app icon for the title bar and taskbar (macOS takes it from the bundle instead).
+fn window_icon() -> Option<winit::window::Icon> {
+    static ICON: &[u8] = include_bytes!("../packaging/icon/handset-icon-512.png");
+    let mut reader = png::Decoder::new(std::io::Cursor::new(ICON)).read_info().ok()?;
+    let mut buf = vec![0; reader.output_buffer_size()?];
+    let info = reader.next_frame(&mut buf).ok()?;
+    if info.color_type != png::ColorType::Rgba || info.bit_depth != png::BitDepth::Eight {
+        return None;
+    }
+    buf.truncate(info.buffer_size());
+    winit::window::Icon::from_rgba(buf, info.width, info.height).ok()
 }

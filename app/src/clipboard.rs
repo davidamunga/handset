@@ -137,6 +137,183 @@ pub fn spawn_reader(mut control: TcpStream, sync: Arc<Mutex<Sync>>) {
     });
 }
 
+#[cfg(windows)]
+pub mod win {
+    use std::ffi::c_void;
+
+    const CF_UNICODETEXT: u32 = 13;
+    const GMEM_MOVEABLE: u32 = 2;
+    const CF_DIB: u32 = 8;
+    const CF_HDROP: u32 = 15;
+
+    unsafe extern "system" {
+        fn OpenClipboard(hwnd: *mut c_void) -> i32;
+        fn CloseClipboard() -> i32;
+        fn EmptyClipboard() -> i32;
+        fn GetClipboardData(format: u32) -> *mut c_void;
+        fn SetClipboardData(format: u32, mem: *mut c_void) -> *mut c_void;
+        fn GlobalLock(mem: *mut c_void) -> *mut c_void;
+        fn GlobalUnlock(mem: *mut c_void) -> i32;
+        fn GlobalAlloc(flags: u32, bytes: usize) -> *mut c_void;
+        fn GlobalFree(mem: *mut c_void) -> *mut c_void;
+        fn RegisterClipboardFormatW(name: *const u16) -> u32;
+    }
+
+    /// Another program may hold the clipboard for a moment, so retry briefly.
+    fn open() -> bool {
+        for _ in 0..10 {
+            // SAFETY: a null owner window is allowed
+            if unsafe { OpenClipboard(std::ptr::null_mut()) } != 0 {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        false
+    }
+
+    pub fn read() -> Option<String> {
+        if !open() {
+            return None;
+        }
+        // SAFETY: the clipboard is open; the handle is locked while we copy the NUL-terminated UTF-16
+        let text = unsafe {
+            let h = GetClipboardData(CF_UNICODETEXT);
+            if h.is_null() {
+                None
+            } else {
+                let p = GlobalLock(h) as *const u16;
+                if p.is_null() {
+                    None
+                } else {
+                    let mut n = 0;
+                    while *p.add(n) != 0 {
+                        n += 1;
+                    }
+                    let s = String::from_utf16_lossy(std::slice::from_raw_parts(p, n));
+                    GlobalUnlock(h);
+                    Some(s)
+                }
+            }
+        };
+        // SAFETY: matches the successful open above
+        unsafe { CloseClipboard() };
+        text
+    }
+
+    fn set_data(format: u32, bytes: &[u8]) -> bool {
+        // SAFETY: the clipboard is open; on success the system owns the allocation, otherwise we free it
+        unsafe {
+            let mem = GlobalAlloc(GMEM_MOVEABLE, bytes.len());
+            if mem.is_null() {
+                return false;
+            }
+            let p = GlobalLock(mem) as *mut u8;
+            if p.is_null() {
+                GlobalFree(mem);
+                return false;
+            }
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), p, bytes.len());
+            GlobalUnlock(mem);
+            if SetClipboardData(format, mem).is_null() {
+                GlobalFree(mem);
+                return false;
+            }
+            true
+        }
+    }
+
+    /// A 32-bit bottom-up DIB, composited over white because many apps ignore its alpha.
+    fn dib(rgba: &[u8], w: u32, h: u32) -> Vec<u8> {
+        let mut out = Vec::with_capacity(40 + rgba.len());
+        out.extend(40u32.to_le_bytes());
+        out.extend((w as i32).to_le_bytes());
+        out.extend((h as i32).to_le_bytes());
+        out.extend(1u16.to_le_bytes());
+        out.extend(32u16.to_le_bytes());
+        out.extend([0u8; 24]);
+        for row in rgba.chunks_exact(w as usize * 4).rev() {
+            for px in row.chunks_exact(4) {
+                let a = px[3] as u32;
+                let over = |c: u8| ((c as u32 * a + 255 * (255 - a)) / 255) as u8;
+                out.extend([over(px[2]), over(px[1]), over(px[0]), 255]);
+            }
+        }
+        out
+    }
+
+    /// A PNG goes on as an image (PNG and DIB flavours), anything else as a file reference.
+    pub fn copy_capture(path: &std::path::Path) -> bool {
+        let is_png = path.extension().is_some_and(|e| e == "png");
+        let image = if is_png {
+            (|| {
+                let bytes = std::fs::read(path).ok()?;
+                let mut reader = png::Decoder::new(std::io::Cursor::new(&bytes)).read_info().ok()?;
+                let mut buf = vec![0; reader.output_buffer_size()?];
+                let info = reader.next_frame(&mut buf).ok()?;
+                (info.color_type == png::ColorType::Rgba && info.bit_depth == png::BitDepth::Eight)
+                    .then(|| (bytes, dib(&buf[..info.buffer_size()], info.width, info.height)))
+            })()
+        } else {
+            None
+        };
+        if is_png && image.is_none() {
+            return false;
+        }
+        if !open() {
+            return false;
+        }
+        // SAFETY: the clipboard is open; the format name is NUL-terminated UTF-16
+        let ok = unsafe {
+            EmptyClipboard();
+            if let Some((png_bytes, dib_bytes)) = &image {
+                let name: Vec<u16> = "PNG".encode_utf16().chain(Some(0)).collect();
+                let png_format = RegisterClipboardFormatW(name.as_ptr());
+                let a = png_format != 0 && set_data(png_format, png_bytes);
+                let b = set_data(CF_DIB, dib_bytes);
+                a || b
+            } else {
+                // DROPFILES: offset of the list, point, non-client flag, wide-char flag, then the path
+                let mut bytes = Vec::new();
+                bytes.extend(20u32.to_le_bytes());
+                bytes.extend([0u8; 12]);
+                bytes.extend(1u32.to_le_bytes());
+                for u in path.as_os_str().to_string_lossy().encode_utf16().chain([0, 0]) {
+                    bytes.extend(u.to_le_bytes());
+                }
+                set_data(CF_HDROP, &bytes)
+            }
+        };
+        // SAFETY: matches the successful open above
+        unsafe { CloseClipboard() };
+        ok
+    }
+
+    pub fn write(text: &str) {
+        let wide: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
+        if !open() {
+            return;
+        }
+        // SAFETY: the clipboard is open; on success it owns the allocation, otherwise we free it
+        unsafe {
+            EmptyClipboard();
+            let mem = GlobalAlloc(GMEM_MOVEABLE, wide.len() * 2);
+            if !mem.is_null() {
+                let p = GlobalLock(mem) as *mut u16;
+                if p.is_null() {
+                    GlobalFree(mem);
+                } else {
+                    std::ptr::copy_nonoverlapping(wide.as_ptr(), p, wide.len());
+                    GlobalUnlock(mem);
+                    if SetClipboardData(CF_UNICODETEXT, mem).is_null() {
+                        GlobalFree(mem);
+                    }
+                }
+            }
+            CloseClipboard();
+        }
+    }
+}
+
 /// The Mac's clipboard as text, or `None` if it holds something else.
 #[cfg(target_os = "macos")]
 pub fn read_mac() -> Option<String> {
@@ -144,7 +321,12 @@ pub fn read_mac() -> Option<String> {
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+pub fn read_mac() -> Option<String> {
+    win::read()
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 pub fn read_mac() -> Option<String> {
     None
 }
@@ -163,7 +345,12 @@ fn write_mac(text: &str) {
     let _ = child.wait();
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+fn write_mac(text: &str) {
+    win::write(text);
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 fn write_mac(_text: &str) {}
 
 #[cfg(test)]

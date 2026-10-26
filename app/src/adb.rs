@@ -9,7 +9,7 @@ fn adb_path() -> PathBuf {
 }
 
 pub fn command(serial: &str) -> Command {
-    let mut c = Command::new(adb_path());
+    let mut c = crate::tools::command(adb_path());
     c.args(["-s", serial]);
     c
 }
@@ -28,7 +28,7 @@ pub fn run(serial: &str, args: &[&str]) -> io::Result<String> {
 
 /// Every device adb lists, with its state (`device`, `unauthorized`, `offline`, ...).
 pub fn list() -> io::Result<Vec<(String, String)>> {
-    let out = Command::new(adb_path()).arg("devices").output()?;
+    let out = crate::tools::command(adb_path()).arg("devices").output()?;
     Ok(parse_devices(&String::from_utf8_lossy(&out.stdout)))
 }
 
@@ -66,7 +66,7 @@ pub enum ServiceKind {
 
 /// `adb mdns services`: the phones announcing themselves on this network.
 pub fn mdns_services() -> io::Result<Vec<Service>> {
-    let mut cmd = Command::new(adb_path());
+    let mut cmd = crate::tools::command(adb_path());
     cmd.args(["mdns", "services"]);
     let out = output_within(cmd, std::time::Duration::from_secs(6))?;
     Ok(parse_mdns(&String::from_utf8_lossy(&out.stdout)))
@@ -117,7 +117,7 @@ const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 /// `adb connect`: returns the serial to use afterwards.
 pub fn connect(addr: &str) -> io::Result<String> {
     let addr = normalize_addr(addr);
-    let mut cmd = Command::new(adb_path());
+    let mut cmd = crate::tools::command(adb_path());
     cmd.args(["connect", &addr]);
     match output_within(cmd, CONNECT_TIMEOUT) {
         Ok(out) => parse_connect(&String::from_utf8_lossy(&out.stdout), &String::from_utf8_lossy(&out.stderr), &addr),
@@ -146,7 +146,7 @@ fn parse_connect(stdout: &str, stderr: &str, addr: &str) -> io::Result<String> {
 
 /// `adb pair host:port code`, as shown under Developer options > Wireless debugging > Pair device.
 pub fn pair(addr: &str, code: &str) -> io::Result<String> {
-    let mut cmd = Command::new(adb_path());
+    let mut cmd = crate::tools::command(adb_path());
     cmd.args(["pair", addr, code]);
     let out = output_within(cmd, std::time::Duration::from_secs(20)).map_err(|e| {
         if e.kind() == io::ErrorKind::TimedOut {
@@ -238,15 +238,23 @@ mod tests {
 
     #[test]
     fn gives_up_on_a_slow_command() {
-        let mut slow = Command::new("sleep");
-        slow.arg("5");
+        let mut slow = if cfg!(windows) { crate::tools::command("ping") } else { Command::new("sleep") };
+        if cfg!(windows) {
+            slow.args(["-n", "6", "127.0.0.1"]);
+        } else {
+            slow.arg("5");
+        }
         let started = std::time::Instant::now();
         let err = output_within(slow, std::time::Duration::from_millis(200)).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::TimedOut);
         assert!(started.elapsed() < std::time::Duration::from_secs(2));
 
-        let mut fast = Command::new("echo");
-        fast.arg("hi");
+        let mut fast = if cfg!(windows) { crate::tools::command("cmd") } else { Command::new("echo") };
+        if cfg!(windows) {
+            fast.args(["/C", "echo hi"]);
+        } else {
+            fast.arg("hi");
+        }
         let out = output_within(fast, std::time::Duration::from_secs(5)).unwrap();
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "hi");
     }
