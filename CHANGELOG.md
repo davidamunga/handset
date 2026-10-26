@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.4
+
+### Patch Changes
+
+- [#14](https://github.com/davidamunga/handset/pull/14) [`6dc4e20`](https://github.com/davidamunga/handset/commit/6dc4e207305194a923c0ead8d147d6ce9e777d19) Thanks [@davidamunga](https://github.com/davidamunga)! - When the phone's screen stays black for a few seconds, Handset now says so ("Black screen: phone asleep or app blocks capture") instead of looking frozen.
+
+- [#16](https://github.com/davidamunga/handset/pull/16) [`2b02ce3`](https://github.com/davidamunga/handset/commit/2b02ce325e80b0aa2ac694317058428f74c105d1) Thanks [@davidamunga](https://github.com/davidamunga)! - The Dock icon now shows what Handset is doing: the robot's antennae are grey while waiting for a phone, amber while connecting, green while mirroring, and red with a dot while recording.
+
+- [#15](https://github.com/davidamunga/handset/pull/15) [`0519c46`](https://github.com/davidamunga/handset/commit/0519c46fe5c0e302570ec7cd3b406c520856b00f) Thanks [@davidamunga](https://github.com/davidamunga)! - Open apps on the phone from the Mac: the right-click menu has a new **Open App** list (your apps first, system apps in a submenu), and `handset --start-app <package>` opens one when the phone is mirrored.
+
+- [#12](https://github.com/davidamunga/handset/pull/12) [`b261abc`](https://github.com/davidamunga/handset/commit/b261abcd3269e5841a1e94c1ef6a04445fc25e1f) Thanks [@davidamunga](https://github.com/davidamunga)! - Right-click a running session and use the new **Phone** menu: **Switch to Wi-Fi** for a USB phone, **Connect Another Phone**, and **Disconnect**. After Disconnect, nothing restarts by itself; the connect screen offers the phone that is plugged in, or the Wi-Fi and QR code options.
+
+- [#11](https://github.com/davidamunga/handset/pull/11) [`6094955`](https://github.com/davidamunga/handset/commit/60949554f2098f01de5e18e3ce0f54436b144179) Thanks [@davidamunga](https://github.com/davidamunga)! - Handset remembers the last few phones you connected to over Wi-Fi. The connect screen offers "Reconnect to <phone>" and lists them under Wi-Fi, and `handset --last` reconnects to the most recent one.
+
+- [#13](https://github.com/davidamunga/handset/pull/13) [`a000b86`](https://github.com/davidamunga/handset/commit/a000b8625c3fceaebadf009c681df531d1b34e4d) Thanks [@davidamunga](https://github.com/davidamunga)! - Clipboard text is now shared with the phone. Copy on the phone and it is on your Mac's clipboard; copy on the Mac, click the Handset window, and it is on the phone's. Turn it off with `--no-clipboard-sync` or the right-click menu.
+
+- [#10](https://github.com/davidamunga/handset/pull/10) [`29c0f99`](https://github.com/davidamunga/handset/commit/29c0f99a95721a46dc367d523a6bf18948c595df) Thanks [@davidamunga](https://github.com/davidamunga)! - When the connection to the phone drops, Handset now shows "Connection lost" on the connect screen and starts mirroring again by itself when the phone is back, instead of quitting. Phones on Wi-Fi are reconnected with `adb connect` every few seconds.
+
 ## 0.1.3
 
 ### Patch Changes
