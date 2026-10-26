@@ -69,6 +69,8 @@ you want recordings.
 
 ### Windows
 
+<img src="docs/images/windows-mirroring.png" alt="Handset mirroring an Android phone on Windows, inside the Obsidian frame" width="280">
+
 Build with `cargo rustc --release --bin handset -- -C link-arg=packaging/windows/handset.res` in `app` (plain `cargo build --release` also works, but the `.exe` file then has no icon); the binary is `app\target\release\handset.exe`. `adb` and `ffmpeg`
 are found on `PATH`, in the Android SDK (`%LOCALAPPDATA%\Android\Sdk\platform-tools`), in winget, scoop or
 Chocolatey shims, or next to `handset.exe` (also in a `platform-tools` folder there). Set `ADB` or `FFMPEG` to
