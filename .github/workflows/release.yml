@@ -102,7 +102,7 @@ jobs:
           case "$version" in 0.*) gh release edit "v$version" --prerelease --latest=false ;; esac
       - name: Keep the files as an artifact (dry run)
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: handset-release-files
           path: dist/release/*
