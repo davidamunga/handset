@@ -137,6 +137,8 @@ pub struct App {
     renderer: Option<Renderer>,
     cursor: (f64, f64),
     touching: bool,
+    /// A resize by dragging the frame: the edge or corner held and the opposite point that stays put (screen pixels).
+    resizing: Option<(winit::window::ResizeDirection, (f64, f64))>,
     mods: ModifiersState,
     device: (u16, u16),
     debug: bool,
@@ -162,6 +164,8 @@ pub struct App {
     notifications_open: bool,
     /// Whether the toolbar starts visible.
     toolbar_start: bool,
+    /// Window height at start (physical pixels), what Default Size returns to.
+    home_height: u32,
     mirror: Option<Mirror>,
     waiting: Option<Waiting>,
     proxy: EventLoopProxy<UserEvent>,
@@ -207,6 +211,7 @@ impl App {
             renderer: None,
             cursor: (0.0, 0.0),
             touching: false,
+            resizing: None,
             mods: ModifiersState::empty(),
             device: (0, 0),
             debug: std::env::var_os("HANDSET_DEBUG").is_some(),
@@ -228,6 +233,7 @@ impl App {
             hint: None,
             notifications_open: false,
             toolbar_start: init.toolbar,
+            home_height: 0,
             mirror: init.mirror,
             waiting: init.wait.map(|w| Waiting::new(w.serial, w.wifi, Status::Looking)),
             proxy: init.proxy,
@@ -754,6 +760,18 @@ impl App {
         spec.as_deref().unwrap_or("none")
     }
 
+    /// Scale the window by `k`, never past the screen, where the edges could not be reached again.
+    fn zoom(&mut self, k: f64) {
+        let Some(w) = &self.window else { return };
+        let s = w.inner_size();
+        let max_h = w.current_monitor().map_or(f64::MAX, |m| m.size().height as f64 * 0.95);
+        let k = k.min((max_h / s.height as f64).max(1.0));
+        let _ = w.request_inner_size(winit::dpi::PhysicalSize::new(
+            (s.width as f64 * k).max(100.0),
+            (s.height as f64 * k).max(100.0),
+        ));
+    }
+
     fn on_menu(&mut self, el: &ActiveEventLoop, id: &str) {
         match id {
             "shot" => self.screenshot(),
@@ -814,6 +832,13 @@ impl App {
             "conn:wifi" => {
                 if let Some(serial) = self.leave_session(View::Wifi) {
                     self.on_action(Action::SwitchToWifi(serial));
+                }
+            }
+            "zoom:in" => self.zoom(1.1),
+            "zoom:out" => self.zoom(1.0 / 1.1),
+            "zoom:reset" => {
+                if let (Some(w), Some(size)) = (&self.window, self.size_for_height(self.home_height)) {
+                    let _ = w.request_inner_size(size);
                 }
             }
             "rotate" => {
@@ -1016,6 +1041,73 @@ impl App {
         }
     }
 
+    /// Which corner of the phone the pointer is on, for resizing the borderless frame by dragging.
+    /// The window's own edge is transparent (the system lets clicks fall through it), so the band lies
+    /// inside the bezel: a point counts as an edge when the bezel ends within a few pixels of it.
+    fn resize_zone(&self) -> Option<winit::window::ResizeDirection> {
+        use winit::window::ResizeDirection::*;
+        self.bezel.as_ref()?;
+        let s = self.window.as_ref()?.inner_size();
+        let (w, h) = (s.width as f64, s.height as f64);
+        // only the corners resize; the rest of the bezel moves the window
+        let m = (w.min(h) * 0.012).clamp(4.0, 12.0);
+        let at = |dx: f64, dy: f64| {
+            let (x, y) = (self.cursor.0 + dx, self.cursor.1 + dy);
+            self.on_bezel(((x / w) as f32, (y / h) as f32))
+        };
+        if !at(0.0, 0.0) {
+            return None;
+        }
+        let c = m * 3.0;
+        let (cl, cr, ct, cb) = (!at(-c, 0.0), !at(c, 0.0), !at(0.0, -c), !at(0.0, c));
+        match () {
+            _ if cl && ct => Some(NorthWest),
+            _ if cr && ct => Some(NorthEast),
+            _ if cl && cb => Some(SouthWest),
+            _ if cr && cb => Some(SouthEast),
+            _ => None,
+        }
+    }
+
+    /// Where the pointer is on the screen, in pixels.
+    fn screen_cursor(&self) -> Option<(f64, f64)> {
+        let p = self.window.as_ref()?.outer_position().ok()?;
+        Some((p.x as f64 + self.cursor.0, p.y as f64 + self.cursor.1))
+    }
+
+    /// Start resizing by dragging (the platform's own drag-resize is not available on macOS).
+    fn begin_resize(&mut self, d: winit::window::ResizeDirection) {
+        use winit::window::ResizeDirection::*;
+        let Some(w) = &self.window else { return };
+        let (Ok(p), s) = (w.outer_position(), w.outer_size()) else { return };
+        let (x, y, r, b) = (p.x as f64, p.y as f64, p.x as f64 + s.width as f64, p.y as f64 + s.height as f64);
+        let ax = if matches!(d, West | NorthWest | SouthWest) { r } else { x };
+        let ay = if matches!(d, North | NorthWest | NorthEast) { b } else { y };
+        self.resizing = Some((d, (ax, ay)));
+    }
+
+    fn drag_resize(&mut self) {
+        use winit::window::ResizeDirection::*;
+        let (Some((d, (ax, ay))), Some((gx, gy))) = (self.resizing, self.screen_cursor()) else { return };
+        let Some(a) = self.renderer.as_ref().and_then(|r| r.window_aspect()) else { return };
+        let Some(w) = &self.window else { return };
+        let max_h = w.current_monitor().map_or(f64::MAX, |m| m.size().height as f64 * 0.95);
+        let by_height = matches!(d, North | South);
+        let (nw, nh) = if by_height {
+            let h = if d == North { ay - gy } else { gy - ay };
+            (h * a as f64, h)
+        } else {
+            let wd = if matches!(d, West | NorthWest | SouthWest) { ax - gx } else { gx - ax };
+            (wd, wd / a as f64)
+        };
+        let k = (max_h / nh).min(1.0);
+        let (nw, nh) = ((nw * k).max(100.0).round(), (nh * k).max(100.0 / a as f64).round());
+        let x = if matches!(d, West | NorthWest | SouthWest) { ax - nw } else { ax };
+        let y = if matches!(d, North | NorthWest | NorthEast) { ay - nh } else { ay };
+        w.set_outer_position(winit::dpi::PhysicalPosition::new(x, y));
+        let _ = w.request_inner_size(winit::dpi::PhysicalSize::new(nw as u32, nh as u32));
+    }
+
     fn on_bezel(&self, p: (f32, f32)) -> bool {
         let (Some(r), Some(b)) = (self.renderer.as_ref(), self.bezel.as_ref()) else { return false };
         let br = r.bezel_rect();
@@ -1037,7 +1129,9 @@ impl ApplicationHandler<UserEvent> for App {
         let scale = monitor.as_ref().map_or(1.0, |m| m.scale_factor());
         let area = work_area()
             .or_else(|| monitor.as_ref().map(|m| (m.position().x, m.position().y, m.size().width, m.size().height)));
-        let height = area.map_or(820.0, |(_, _, _, h)| (h as f64 / scale * 0.95).clamp(400.0, 1000.0));
+        let height = area.map_or(820.0, |(_, _, _, h)| {
+            (h as f64 / scale * if cfg!(windows) { 0.95 } else { 0.8 }).clamp(400.0, 1000.0)
+        });
         let mut attrs = Window::default_attributes()
             .with_title(self.title.clone())
             .with_window_icon(if cfg!(windows) { window_icon() } else { None })
@@ -1076,6 +1170,7 @@ impl ApplicationHandler<UserEvent> for App {
         if let Some(b) = self.bezel.as_mut() {
             b.rgba = Vec::new();
         }
+        self.home_height = window.inner_size().height;
         self.window = Some(window);
         if let Some(serial) = self.mirror.as_ref().map(|m| m.session.serial().to_string()) {
             self.list_apps(serial);
@@ -1214,6 +1309,13 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 self.refresh_toolbar();
                 if let Some(w) = &self.window {
+                    // a dragged edge gives any shape: snap back to the frame's proportions
+                    if let Some(a) = self.renderer.as_ref().and_then(|r| r.window_aspect()) {
+                        let want_w = (s.height as f32 * a).round() as u32;
+                        if want_w.abs_diff(s.width) > 2 && s.height > 0 {
+                            let _ = w.request_inner_size(winit::dpi::PhysicalSize::new(want_w, s.height));
+                        }
+                    }
                     w.request_redraw();
                 }
             }
@@ -1226,11 +1328,27 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::Focused(true) => self.send_clipboard(),
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = (position.x, position.y);
+                if self.resizing.is_some() {
+                    self.drag_resize();
+                    return;
+                }
                 let hover = self.toolbar_button();
                 if hover != self.hover {
                     self.hover = hover;
                     self.refresh_toolbar();
                     self.refresh_overlay();
+                }
+                if let Some(w) = &self.window
+                    && self.waiting.is_none()
+                {
+                    use winit::window::{CursorIcon as C, ResizeDirection as D};
+                    w.set_cursor(Cursor::Icon(match self.resize_zone() {
+                        Some(D::North | D::South) => C::NsResize,
+                        Some(D::East | D::West) => C::EwResize,
+                        Some(D::NorthWest | D::SouthEast) => C::NwseResize,
+                        Some(D::NorthEast | D::SouthWest) => C::NeswResize,
+                        None => C::Default,
+                    }));
                 }
                 if self.waiting.is_some() {
                     let over = self.landing_hit();
@@ -1263,6 +1381,18 @@ impl ApplicationHandler<UserEvent> for App {
                     let _ = self.control.touch(Touch::Up, 0, 0, self.device.0, self.device.1);
                 }
                 self.show_menu();
+            }
+            WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. }
+                if self.resizing.is_some() =>
+            {
+                self.resizing = None;
+            }
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. }
+                if self.resize_zone().is_some() && self.toolbar_button().is_none() =>
+            {
+                if let Some(d) = self.resize_zone() {
+                    self.begin_resize(d);
+                }
             }
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. }
                 if self.toast_hit() =>
@@ -1331,14 +1461,7 @@ impl ApplicationHandler<UserEvent> for App {
                     // trackpad phase events carry no movement
                 } else if self.mods.super_key() || self.mods.control_key() {
                     // Cmd/Ctrl + scroll resizes the window
-                    if let Some(w) = &self.window {
-                        let s = w.inner_size();
-                        let k = 1.0 + (dy as f64 * 0.04);
-                        let _ = w.request_inner_size(winit::dpi::PhysicalSize::new(
-                            (s.width as f64 * k).max(100.0),
-                            (s.height as f64 * k).max(100.0),
-                        ));
-                    }
+                    self.zoom(1.0 + (dy as f64 * 0.04));
                 } else if let Some((_, Some((x, y)))) = self.locate() {
                     if self.debug {
                         eprintln!("scroll ({dx}, {dy}) at device ({x}, {y})");
@@ -1367,6 +1490,12 @@ impl ApplicationHandler<UserEvent> for App {
                 let ch = |k: &str| matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case(k));
                 if cmd && ch("r") {
                     let _ = self.control.rotate_device();
+                } else if cmd && (ch("+") || ch("=")) {
+                    self.on_menu(el, "zoom:in");
+                } else if cmd && ch("-") {
+                    self.on_menu(el, "zoom:out");
+                } else if cmd && ch("0") {
+                    self.on_menu(el, "zoom:reset");
                 } else if cmd && ch("s") {
                     self.screenshot();
                 } else if cmd && ch("e") {

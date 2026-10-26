@@ -138,6 +138,9 @@ pub fn show(window: &Window, s: &State) {
     let _ = menu.append(&MenuItem::with_id("rotate", format!("Rotate Device    {MOD}R"), true, None));
     let _ = menu.append(&CheckMenuItem::with_id("sync", "Share Clipboard With Phone", true, s.sync, None));
     let _ = menu.append(&CheckMenuItem::with_id("toolbar", "Show Toolbar", true, s.toolbar, None));
+    let _ = menu.append(&MenuItem::with_id("zoom:in", format!("Larger    {MOD}+"), true, None));
+    let _ = menu.append(&MenuItem::with_id("zoom:out", format!("Smaller    {MOD}-"), true, None));
+    let _ = menu.append(&MenuItem::with_id("zoom:reset", format!("Default Size    {MOD}0"), true, None));
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&MenuItem::with_id("quit", "Quit", true, None));
 
