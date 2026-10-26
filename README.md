@@ -85,8 +85,9 @@ instead: `cargo install --path app --locked`.
 
 ## Using it
 
-- **Right-click** the phone, or use the toolbar beside it: frames, screenshot, recording, recent
-  captures, rotate, quit.
+- **Right-click** the phone, or use the toolbar beside it: frames, **Open App**, screenshot, recording, recent
+  captures, rotate, quit. Open App lists the phone's apps (yours first, system apps in a submenu), fetched in the
+  background a few seconds after the phone connects.
 - **Shortcuts** (Cmd or Ctrl): `S` screenshot, `E` start or stop recording, `R` rotate the phone.
   `Esc` is Back, `Home` is Home, `End` is Recents.
 - **Move** the window by dragging the bezel. **Resize** with Cmd or Ctrl and scroll.
@@ -112,6 +113,7 @@ instead: `cargo install --path app --locked`.
 | `--last` | Reconnect to the phone you last used over Wi-Fi (Handset remembers the last few in `~/.config/handset/recent`) |
 | `--pair <ip:port> <code>` | Pair with a phone using its Wireless debugging pairing code, then exit |
 | `--wifi` | Switch a USB-connected phone to Wi-Fi, connect, and mirror (you can unplug the cable) |
+| `--start-app <package>` | Open an app on the phone once it is mirrored, e.g. `--start-app com.android.chrome` (a leading `?` searches app names) |
 | `[serial]` | Pick a device when several are connected |
 
 With no phone plugged in, Handset opens on a "connect a phone" screen inside the frame. It watches adb,

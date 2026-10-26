@@ -15,6 +15,8 @@ const SERVER_BIN: &[u8] = include_bytes!("../assets/scrcpy-server");
 pub const SERVER_VERSION: &str = "5.0.1";
 /// Video codec id sent by the server: "h264".
 const CODEC_H264: u32 = 0x6832_3634;
+/// Where the jar goes for listing apps, apart from the one a session runs.
+const APPS_PATH: &str = "/data/local/tmp/handset-apps.jar";
 const DEVICE_PATH: &str = "/data/local/tmp/handset-server.jar";
 
 pub struct Options {
@@ -68,6 +70,37 @@ fn connect_with_retry(port: &str) -> io::Result<TcpStream> {
         sleep(Duration::from_millis(100));
     }
     Err(io::Error::other("timed out waiting for the scrcpy server"))
+}
+
+/// Ask the phone for its installed apps (this can take several seconds).
+pub fn list_apps(serial: &str) -> io::Result<Vec<crate::apps::AppEntry>> {
+    // a separate jar: pushing over the one a running session uses makes that server abort
+    let local = std::env::temp_dir().join(format!("handset-server-apps-{}.jar", std::process::id()));
+    std::fs::write(&local, SERVER_BIN)?;
+    let pushed = adb::run(serial, &["push", local.to_str().unwrap(), APPS_PATH]);
+    let _ = std::fs::remove_file(&local);
+    pushed?;
+    let mut cmd = adb::command(serial);
+    cmd.args([
+        "shell".to_string(),
+        format!("CLASSPATH={APPS_PATH}"),
+        "app_process".into(),
+        "/".into(),
+        "com.genymobile.scrcpy.Server".into(),
+        SERVER_VERSION.into(),
+        "list_apps=true".into(),
+        "log_level=info".into(),
+    ]);
+    let out = adb::output_within(cmd, Duration::from_secs(90));
+    let _ = adb::run(serial, &["shell", "rm", "-f", APPS_PATH]);
+    let out = out?;
+    let text = format!("{}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    let apps = crate::apps::for_menu(crate::apps::parse_list(&text));
+    if apps.is_empty() {
+        let why = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("the server printed nothing");
+        return Err(io::Error::other(format!("no apps in the server's answer ({why})")));
+    }
+    Ok(apps)
 }
 
 pub fn start(serial: &str, opts: &Options) -> io::Result<Session> {

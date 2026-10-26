@@ -39,6 +39,8 @@ pub struct Init {
     pub opts: server::Options,
     pub mute: bool,
     pub sync: Arc<Mutex<crate::clipboard::Sync>>,
+    /// `--start-app`: open this app once the phone is mirrored.
+    pub start_app: Option<String>,
 }
 
 /// What the connect screen is waiting for.
@@ -160,6 +162,10 @@ pub struct App {
     opts: server::Options,
     mute: bool,
     sync: Arc<Mutex<crate::clipboard::Sync>>,
+    start_app: Option<String>,
+    /// The phone's apps, and whether they are still being listed.
+    apps: Vec<crate::apps::AppEntry>,
+    apps_loading: bool,
 }
 
 /// A short message pill. With a `path` it is clickable and reveals that file.
@@ -220,7 +226,21 @@ impl App {
             opts: init.opts,
             mute: init.mute,
             sync: init.sync,
+            start_app: init.start_app,
+            apps: Vec::new(),
+            apps_loading: false,
         }
+    }
+
+    /// Fetch the phone's app list in the background, for the Open App menu.
+    fn list_apps(&mut self, serial: String) {
+        self.apps.clear();
+        self.apps_loading = true;
+        let proxy = self.proxy.clone();
+        std::thread::spawn(move || {
+            let result = crate::server::list_apps(&serial).map_err(|e| e.to_string());
+            let _ = proxy.send_event(UserEvent::Apps(result));
+        });
     }
 
     /// Draw the landing screen into the phone's screen area.
@@ -539,6 +559,10 @@ impl App {
             Ok((mirror, control)) => {
                 self.with_audio = mirror.with_audio();
                 self.control = control;
+                self.list_apps(mirror.session.serial().to_string());
+                if let Some(name) = self.start_app.take() {
+                    let _ = self.control.start_app(&name);
+                }
                 if let Some(w) = &self.window {
                     w.set_title(&mirror.session.device_name);
                 }
@@ -648,6 +672,8 @@ impl App {
             mirroring: self.mirror.is_some(),
             usb: self.mirror.as_ref().is_some_and(|m| !connect::is_wireless(m.session.serial())),
             sync: self.sync.lock().unwrap().enabled,
+            apps: self.apps.clone(),
+            apps_loading: self.apps_loading,
             recent: capture::recent_captures(5),
         };
         menu::show(&w, &state);
@@ -747,6 +773,13 @@ impl App {
                         _ => {}
                     }
                 }
+            }
+            other if other.starts_with("app:") => {
+                let package = &other["app:".len()..];
+                let name = self.apps.iter().find(|a| a.package == package).map_or(package, |a| a.name.as_str());
+                let toast = format!("OPENING {}", name.to_uppercase());
+                let _ = self.control.start_app(package);
+                self.show_toast(&toast);
             }
             other => {
                 if let Some(name) = other.strip_prefix("frame:") {
@@ -954,6 +987,12 @@ impl ApplicationHandler<UserEvent> for App {
             b.rgba = Vec::new();
         }
         self.window = Some(window);
+        if let Some(serial) = self.mirror.as_ref().map(|m| m.session.serial().to_string()) {
+            self.list_apps(serial);
+            if let Some(name) = self.start_app.take() {
+                let _ = self.control.start_app(&name);
+            }
+        }
         if self.waiting.is_some() {
             // HANDSET_LANDING=wifi|qr opens that view first (for looking at it without clicking)
             match std::env::var("HANDSET_LANDING").as_deref() {
@@ -1017,6 +1056,18 @@ impl ApplicationHandler<UserEvent> for App {
                 el.exit();
             }
             UserEvent::Menu(id) => self.on_menu(el, &id),
+            UserEvent::Apps(result) => {
+                self.apps_loading = false;
+                match result {
+                    Ok(apps) => {
+                        if self.debug {
+                            eprintln!("{} apps listed", apps.len());
+                        }
+                        self.apps = apps;
+                    }
+                    Err(e) => eprintln!("could not list the phone's apps: {e}"),
+                }
+            }
             UserEvent::Adb(result) => self.on_adb(result),
             UserEvent::Landing(event) => self.on_landing(event),
             UserEvent::Frame => {

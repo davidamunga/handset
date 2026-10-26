@@ -1,5 +1,6 @@
 mod adb;
 mod app;
+mod apps;
 mod audio;
 mod black;
 mod capture;
@@ -23,7 +24,7 @@ use winit::event_loop::EventLoop;
 fn usage() -> ! {
     eprintln!(
         "usage: handset [--frame <name|path|none>] [--max-size <px>]\n\
-         \x20                  [--connect <ip[:port]> | --last | --wifi] [serial]\n\
+         \x20                  [--connect <ip[:port]> | --last | --wifi] [--start-app <package>] [serial]\n\
          \x20      handset --pair <ip:port> <code>\n\
          \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
          built-in frames: {}\n\
@@ -44,6 +45,7 @@ fn main() {
     let mut wifi = false;
     let mut last = false;
     let mut sync_clipboard = true;
+    let mut start_app: Option<String> = None;
     // no arguments: use the saved defaults (and `--audio` inside the app bundle)
     let given: Vec<String> = std::env::args().skip(1).collect();
     let mut args = if given.is_empty() { tools::default_args() } else { given }.into_iter();
@@ -69,6 +71,7 @@ fn main() {
             "--connect" => connect = Some(args.next().unwrap_or_else(|| usage())),
             "--wifi" => wifi = true,
             "--last" => last = true,
+            "--start-app" => start_app = Some(args.next().unwrap_or_else(|| usage())),
             "--pair" => {
                 let addr = args.next().unwrap_or_else(|| usage());
                 let code = args.next().unwrap_or_else(|| usage());
@@ -156,6 +159,7 @@ fn main() {
         opts,
         mute,
         sync,
+        start_app,
     });
     app.auto_record = record_for.map(std::time::Duration::from_secs_f32);
     if waiting {

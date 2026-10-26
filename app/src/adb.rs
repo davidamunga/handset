@@ -96,7 +96,7 @@ pub fn normalize_addr(addr: &str) -> String {
 
 /// Run `cmd` and collect its output, giving up (and killing it) after `limit`. adb's own connect
 /// timeout is over a minute, which looks like a hang.
-fn output_within(mut cmd: Command, limit: std::time::Duration) -> io::Result<std::process::Output> {
+pub fn output_within(mut cmd: Command, limit: std::time::Duration) -> io::Result<std::process::Output> {
     let mut child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
     let deadline = std::time::Instant::now() + limit;
     loop {

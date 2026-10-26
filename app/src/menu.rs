@@ -24,6 +24,9 @@ pub struct State {
     pub usb: bool,
     /// Clipboard text is shared with the phone.
     pub sync: bool,
+    /// The phone's apps (empty until listed) and whether the list is still being fetched.
+    pub apps: Vec<crate::apps::AppEntry>,
+    pub apps_loading: bool,
     /// Newest captures, for the Recent Captures submenu.
     pub recent: Vec<std::path::PathBuf>,
 }
@@ -86,10 +89,27 @@ pub fn show(window: &Window, s: &State) {
     let _ = phone.append(&MenuItem::with_id("conn:wifi", "Switch to Wi-Fi", s.mirroring && s.usb, None));
     let _ = phone.append(&MenuItem::with_id("conn:another", "Connect Another Phone\u{2026}", true, None));
     let _ = phone.append(&MenuItem::with_id("conn:disconnect", "Disconnect", s.mirroring, None));
+    let open_app = Submenu::new("Open App", true);
+    if s.apps.is_empty() {
+        let label = if s.apps_loading { "Loading apps\u{2026}" } else { "No apps found" };
+        let _ = open_app.append(&MenuItem::new(label, false, None));
+    }
+    for app in s.apps.iter().filter(|a| !a.system).take(80) {
+        let _ = open_app.append(&MenuItem::with_id(format!("app:{}", app.package), &app.name, true, None));
+    }
+    if s.apps.iter().any(|a| a.system) {
+        let system = Submenu::new("System Apps", true);
+        for app in s.apps.iter().filter(|a| a.system) {
+            let _ = system.append(&MenuItem::with_id(format!("app:{}", app.package), &app.name, true, None));
+        }
+        let _ = open_app.append(&PredefinedMenuItem::separator());
+        let _ = open_app.append(&system);
+    }
 
     let audio_label = if s.audio { "Mute playback" } else { "Audio off (start with --audio)" };
     let _ = menu.append(&phone);
     let _ = menu.append(&frame);
+    let _ = menu.append(&open_app);
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&MenuItem::with_id("shot", "Take Screenshot    \u{2318}S", true, None));
     let rec_label = if s.recording { "Stop Recording    \u{2318}E" } else { "Start Recording    \u{2318}E" };

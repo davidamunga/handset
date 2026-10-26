@@ -17,6 +17,8 @@ pub enum UserEvent {
     Failed(String),
     /// A native menu item was chosen.
     Menu(String),
+    /// The phone's installed apps, or why they could not be listed.
+    Apps(Result<Vec<crate::apps::AppEntry>, String>),
     /// The latest `adb devices`, or why it could not be run.
     Adb(Result<Vec<(String, String)>, String>),
     /// Something the landing screen was waiting for finished.

@@ -9,6 +9,7 @@ const TYPE_TEXT: u8 = 1;
 const TYPE_TOUCH: u8 = 2;
 const TYPE_SCROLL: u8 = 3;
 const TYPE_ROTATE_DEVICE: u8 = 11;
+const TYPE_START_APP: u8 = 16;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Touch {
@@ -111,6 +112,17 @@ impl Control {
     pub fn set_clipboard(&mut self, text: &str) -> io::Result<()> {
         self.clip_seq += 1;
         self.send(&crate::clipboard::encode_set(self.clip_seq, text, false))
+    }
+
+    /// Open an app by package name (a leading `?` makes the server search app names instead).
+    pub fn start_app(&mut self, name: &str) -> io::Result<()> {
+        let bytes = name.as_bytes();
+        let len = bytes.len().min(255);
+        let mut m = Vec::with_capacity(2 + len);
+        m.push(TYPE_START_APP);
+        m.push(len as u8);
+        m.extend_from_slice(&bytes[..len]);
+        self.send(&m)
     }
 
     pub fn text(&mut self, text: &str) -> io::Result<()> {
