@@ -6,6 +6,7 @@
 //! whose rectangles are returned alongside it, and handed to the renderer like a video frame.
 
 use crate::adb;
+use crate::recent::Recent;
 use crate::render::Yuv;
 use crate::stream::UserEvent;
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont, point};
@@ -574,6 +575,8 @@ pub struct Model<'a> {
     /// A USB phone that is ready but waiting in the Wi-Fi view, to offer to switch it.
     pub usb: Option<&'a str>,
     pub qr: Option<&'a Qr>,
+    /// Phones connected to over Wi-Fi before, newest first.
+    pub recent: &'a [Recent],
     /// A line of progress or trouble, shown in the Wi-Fi and QR views.
     pub note: Option<&'a str>,
 }
@@ -632,6 +635,9 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
             stack("Wi-Fi", Action::Open(View::Wifi), &mut buttons);
             if let Some(phone) = m.usb {
                 stack(&format!("Mirror {phone}"), Action::Mirror(phone.to_string()), &mut buttons);
+            }
+            if let Some(last) = m.recent.first() {
+                stack(&format!("Reconnect to {}", last.name), Action::Connect(last.addr.clone()), &mut buttons);
             }
             let words = words(m.status);
             let lit = !words.animate || m.tick.is_multiple_of(2);
@@ -705,7 +711,13 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
                 + 22.0 * u;
             let connectable: Vec<&adb::Service> =
                 m.nearby.iter().filter(|n| n.kind == adb::ServiceKind::Connect).take(2).collect();
-            if connectable.is_empty() {
+            let recents: Vec<&Recent> = m
+                .recent
+                .iter()
+                .filter(|r| !connectable.iter().any(|n| n.addr == r.addr))
+                .take(3usize.saturating_sub(connectable.len()))
+                .collect();
+            if connectable.is_empty() && recents.is_empty() {
                 c.text(margin, y, Weight::Semibold, 34.0, AMBER, &format!("None found yet{dots}"));
                 y += c.line(34.0) + 14.0 * u;
                 c.para(
@@ -721,6 +733,14 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
                     rect: [margin as u32, y as u32, content_w as u32, btn_h as u32],
                     label: n.addr.clone(),
                     action: Action::Connect(n.addr.clone()),
+                });
+                y += btn_h + gap;
+            }
+            for r in recents {
+                buttons.push(Button {
+                    rect: [margin as u32, y as u32, content_w as u32, btn_h as u32],
+                    label: format!("{}  {}", r.name, r.addr),
+                    action: Action::Connect(r.addr.clone()),
                 });
                 y += btn_h + gap;
             }
@@ -935,7 +955,7 @@ mod tests {
         qr: Option<&'a Qr>,
         note: Option<&'a str>,
     ) -> Model<'a> {
-        Model { status, view, tick: 1, hover: None, nearby, usb, qr, note }
+        Model { status, view, tick: 1, hover: None, nearby, usb, qr, recent: &[], note }
     }
 
     #[test]
@@ -972,6 +992,35 @@ mod tests {
         let screen = render(w, h, &model(&looking, View::Wifi, &nearby, None, None, None));
         let connects: Vec<_> = screen.buttons.iter().filter(|b| matches!(b.action, Action::Connect(_))).collect();
         assert_eq!(connects.len(), 2);
+    }
+
+    #[test]
+    fn recent_phones_are_offered_on_home_and_in_the_wifi_list() {
+        let (w, h) = (776u32, 1560u32);
+        let recent = [
+            Recent { addr: "192.168.0.20:5555".into(), name: "UNIWA W888".into(), at: 2 },
+            Recent { addr: "192.168.0.31:5555".into(), name: "Pixel".into(), at: 1 },
+        ];
+        let looking = Status::Looking;
+        let mut m = model(&looking, View::Home, &[], None, None, None);
+        m.recent = &recent;
+        let home = render(w, h, &m);
+        let reconnect: Vec<_> = home.buttons.iter().filter(|b| b.label.starts_with("Reconnect to")).collect();
+        assert_eq!(reconnect.len(), 1);
+        assert_eq!(reconnect[0].action, Action::Connect("192.168.0.20:5555".into()));
+
+        // a recent phone that is also announcing itself is listed once
+        let nearby = [svc(adb::ServiceKind::Connect, "192.168.0.20:5555")];
+        let mut m = model(&looking, View::Wifi, &nearby, None, None, None);
+        m.recent = &recent;
+        let wifi = render(w, h, &m);
+        let connects: Vec<_> = wifi.buttons.iter().filter(|b| matches!(b.action, Action::Connect(_))).collect();
+        assert_eq!(connects.len(), 2);
+        assert!(connects.iter().any(|b| b.label.contains("Pixel")));
+        // and a phone only known from the recent list is not reported as "none found"
+        let mut m = model(&looking, View::Wifi, &[], None, None, None);
+        m.recent = &recent;
+        assert_eq!(render(w, h, &m).buttons.iter().filter(|b| matches!(b.action, Action::Connect(_))).count(), 2);
     }
 
     /// Writes screens to `$HANDSET_TEST_OUT/connect-<n>.png` (if set) so they can be looked at.

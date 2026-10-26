@@ -26,6 +26,9 @@ impl Mirror {
     ) -> Result<(Mirror, Control), String> {
         let session = server::start(serial, opts).map_err(|e| format!("Could not start mirroring: {e}"))?;
         eprintln!("connected: {}", session.device_name);
+        if let Some(addr) = crate::connect::retry_addr(serial) {
+            crate::recent::remember(&addr, &session.device_name);
+        }
 
         stream::spawn(session.video.try_clone().unwrap(), slot, proxy);
 

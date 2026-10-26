@@ -106,6 +106,7 @@ instead: `cargo install --path app --locked`.
 | `--record-size <px>` | Longest side of recordings (default 1280) |
 | `--record-bg #rrggbb` | Recording background colour |
 | `--connect <ip[:port]>` | Connect to a phone over Wi-Fi (`adb connect`, default port 5555) and mirror it |
+| `--last` | Reconnect to the phone you last used over Wi-Fi (Handset remembers the last few in `~/.config/handset/recent`) |
 | `--pair <ip:port> <code>` | Pair with a phone using its Wireless debugging pairing code, then exit |
 | `--wifi` | Switch a USB-connected phone to Wi-Fi, connect, and mirror (you can unplug the cable) |
 | `[serial]` | Pick a device when several are connected |
@@ -119,6 +120,8 @@ mirroring by itself as soon as a phone is ready. Two buttons cover connecting wi
   that is plugged in, or the Wi-Fi and QR options.
 - **Wi-Fi** lists paired phones found on your network (tap one to connect), asks for an address if you
   want to type one, and, when a phone is plugged in, switches it to Wi-Fi so you can unplug the cable.
+- **Reconnect to ...** appears on the home screen once you have used a phone over Wi-Fi, and the Wi-Fi view lists
+  your recent phones, so a phone you used before is one click away.
 - **QR code** shows a code to scan on the phone (Developer options, Wireless debugging, Pair device with
   QR code; Android 11 or later). Handset pairs with the phone that scans it and connects, with nothing to
   type.

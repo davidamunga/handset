@@ -8,6 +8,7 @@ mod frame;
 mod menu;
 mod mirror;
 mod overlay;
+mod recent;
 mod render;
 mod server;
 mod stream;
@@ -20,7 +21,7 @@ use winit::event_loop::EventLoop;
 fn usage() -> ! {
     eprintln!(
         "usage: handset [--frame <name|path|none>] [--max-size <px>]\n\
-         \x20                  [--connect <ip[:port]> | --wifi] [serial]\n\
+         \x20                  [--connect <ip[:port]> | --last | --wifi] [serial]\n\
          \x20      handset --pair <ip:port> <code>\n\
          \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
          built-in frames: {}\n\
@@ -39,6 +40,7 @@ fn main() {
     let mut record_for: Option<f32> = None;
     let mut connect: Option<String> = None;
     let mut wifi = false;
+    let mut last = false;
     // no arguments: use the saved defaults (and `--audio` inside the app bundle)
     let given: Vec<String> = std::env::args().skip(1).collect();
     let mut args = if given.is_empty() { tools::default_args() } else { given }.into_iter();
@@ -62,6 +64,7 @@ fn main() {
             "--record-for" => record_for = Some(args.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage())),
             "--connect" => connect = Some(args.next().unwrap_or_else(|| usage())),
             "--wifi" => wifi = true,
+            "--last" => last = true,
             "--pair" => {
                 let addr = args.next().unwrap_or_else(|| usage());
                 let code = args.next().unwrap_or_else(|| usage());
@@ -90,6 +93,13 @@ fn main() {
 
     // Which phone: `--connect` makes its own; otherwise one that is ready now (the one asked for, or the
     // first). With none, the window opens on the connect screen and waits for a phone.
+    if last {
+        let recent = recent::load();
+        let Some(r) = recent.first() else {
+            tools::die("No phone to reconnect to yet. Connect one over Wi-Fi first, then --last will remember it.");
+        };
+        connect = Some(r.addr.clone());
+    }
     let ready: Option<String> = if let Some(addr) = &connect {
         Some(adb::connect(addr).unwrap_or_else(|e| tools::die(&e.to_string())))
     } else {

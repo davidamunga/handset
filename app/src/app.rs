@@ -77,6 +77,8 @@ struct Waiting {
     busy: bool,
     /// A line of progress or trouble for the Wi-Fi and QR views.
     note: Option<String>,
+    /// Phones connected to over Wi-Fi before, newest first.
+    recent: Vec<crate::recent::Recent>,
     /// After a Wi-Fi phone went away: its address, and when to try connecting to it next.
     retry_addr: Option<String>,
     next_retry: Instant,
@@ -108,6 +110,7 @@ impl Waiting {
             retry_addr: None,
             next_retry: Instant::now() + RECONNECT_EVERY,
             paused: false,
+            recent: crate::recent::load(),
         }
     }
 }
@@ -226,6 +229,7 @@ impl App {
                 nearby: &wt.nearby,
                 usb: wt.usb.as_deref(),
                 qr: wt.qr.as_ref(),
+                recent: &wt.recent,
                 note: wt.note.as_deref(),
             };
             connect::render(pw, ph, &model)
