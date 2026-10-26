@@ -1,7 +1,12 @@
 # Changelog
 
-## 0.1.0
+## 0.1.1
 
+### Patch Changes
+
+- [`edf3465`](https://github.com/davidamunga/handset/commit/edf3465c8b2c7195de620548cfc99695a1230719) Thanks [@davidamunga](https://github.com/davidamunga)! - Mirror over Wi-Fi: `handset --connect <ip[:port]>`, `handset --pair <ip:port> <code>` for Android 11 wireless pairing, and `handset --wifi` to switch a USB phone to Wi-Fi. When no phone is found, the message now says whether it is unauthorised or offline and what to do about it.
+
+## 0.1.0
 
 ### Fixed
 
