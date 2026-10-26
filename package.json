@@ -1,6 +1,6 @@
 {
   "name": "handset",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Release tooling for Handset. The app is the Rust crate in app/; this file only carries the version that Changesets bumps.",
   "scripts": {

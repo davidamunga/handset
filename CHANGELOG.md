@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0
+
+### Minor Changes
+
+- [#35](https://github.com/davidamunga/handset/pull/35) [`dc8b2b5`](https://github.com/davidamunga/handset/commit/dc8b2b567de25de0bcec0daeba98b510b98a89f0) Thanks [@davidamunga](https://github.com/davidamunga)! - Eighteen new device frames: notch, island, waterdrop, older home-button phone, flat-edge phone, tablet, foldable, flip and rugged, each in two colours. The Frame menu groups them by device, and `docs/frames.md` explains how to make your own.
+
+- [#36](https://github.com/davidamunga/handset/pull/36) [`407253c`](https://github.com/davidamunga/handset/commit/407253c6ff453bfc171e559ea5b0768fb6b267c8) Thanks [@davidamunga](https://github.com/davidamunga)! - Handset tells you when a newer release exists: a clickable toast after start (at most once a day), **Check for Updates...** and **Download Handset X.Y.Z...** in the menu, and `--no-update-check` or **Check for Updates Daily** to turn it off. `handset --version` prints the version.
+
 ## 0.3.0
 
 ### Minor Changes
