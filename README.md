@@ -176,9 +176,9 @@ rebuilding the server, releasing and debugging are in [docs/runbooks](docs/runbo
 Ideas, not promises:
 
 - Keyboard-to-touch mapping profiles (a long-standing request in the scrcpy world)
-- Wireless pairing, a device picker and a connection "doctor" that explains common failures
+- A device picker and a connection "doctor" that explains common failures
 - OBS-friendly output (Syphon or a virtual camera)
-- Microphone to phone, Linux and Windows
+- Microphone to phone, and Linux
 
 ## Contributing
 

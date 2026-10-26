@@ -6,7 +6,7 @@ Guidance for coding agents (and humans) working in this repository.
 
 Handset mirrors and controls an Android phone from a Mac, inside a realistic phone frame. It is a
 small native Rust app that implements the desktop side of the scrcpy protocol and embeds the
-**unmodified** scrcpy server. macOS is the only tested platform.
+**unmodified** scrcpy server. It is tested on macOS and Windows 11; macOS is the primary platform.
 
 ## Layout
 
