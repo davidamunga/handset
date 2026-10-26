@@ -11,7 +11,7 @@ use crate::stream::UserEvent;
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont, point};
 use qrcode::{Color, QrCode};
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 use winit::event_loop::EventLoopProxy;
 
@@ -30,6 +30,8 @@ pub enum Status {
     Failed(String),
     /// A phone that was mirrored went away; Handset is waiting for it to come back.
     Lost(String),
+    /// Mirroring was ended on purpose: nothing starts until a phone is chosen.
+    Disconnected,
 }
 
 /// The phone to mirror: the one named `want` if given, else the first in the `device` state.
@@ -82,6 +84,8 @@ pub enum Action {
     TypeAddress,
     /// Switch this USB phone to adb over Wi-Fi.
     SwitchToWifi(String),
+    /// Mirror this ready phone (when mirroring was ended on purpose).
+    Mirror(String),
 }
 
 pub struct Button {
@@ -105,14 +109,17 @@ pub enum LandingEvent {
 }
 
 static STOP: AtomicBool = AtomicBool::new(false);
+/// Which poll thread is current: starting a new one retires any older one that has not noticed `STOP` yet.
+static POLL: AtomicU64 = AtomicU64::new(0);
 static MDNS: AtomicBool = AtomicBool::new(false);
 
 /// Ask adb for the device list every second or so and send it to the app, until `stop_poll`. While the
 /// Wi-Fi or QR views are open it also asks which phones are announcing themselves on the network.
 pub fn spawn_poll(proxy: EventLoopProxy<UserEvent>) {
     STOP.store(false, Ordering::SeqCst);
+    let id = POLL.fetch_add(1, Ordering::SeqCst) + 1;
     std::thread::spawn(move || {
-        while !STOP.load(Ordering::SeqCst) {
+        while !STOP.load(Ordering::SeqCst) && POLL.load(Ordering::SeqCst) == id {
             let result = adb::list().map_err(|e| e.to_string());
             if proxy.send_event(UserEvent::Adb(result)).is_err() {
                 break;
@@ -536,6 +543,9 @@ fn words(status: &Status) -> Words {
             None,
         ),
         Status::Connecting(s) => w("Connecting", GREEN, true, &["Starting mirroring."], false, "", Some(s)),
+        Status::Disconnected => {
+            w("Disconnected", MUTED, false, &["Plug a phone in, or connect another way."], false, "", None)
+        }
         Status::Lost(s) => {
             let body = if retry_addr(s).is_some() || s.contains("_adb-tls") {
                 "Reconnecting. The phone and this Mac need to be on the same Wi-Fi."
@@ -620,6 +630,9 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
         View::Home => {
             stack("QR code", Action::Open(View::Qr), &mut buttons);
             stack("Wi-Fi", Action::Open(View::Wifi), &mut buttons);
+            if let Some(phone) = m.usb {
+                stack(&format!("Mirror {phone}"), Action::Mirror(phone.to_string()), &mut buttons);
+            }
             let words = words(m.status);
             let lit = !words.animate || m.tick.is_multiple_of(2);
             let dot = if lit { words.colour } else { [words.colour[0] / 3, words.colour[1] / 3, words.colour[2] / 3] };
@@ -684,7 +697,7 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
         }
         View::Wifi => {
             stack("Back", Action::Back, &mut buttons);
-            if let Some(usb) = m.usb {
+            if let Some(usb) = m.usb.filter(|u| !is_wireless(u)) {
                 stack(&format!("Switch {usb} to Wi-Fi"), Action::SwitchToWifi(usb.to_string()), &mut buttons);
             }
             stack("Type an address", Action::TypeAddress, &mut buttons);
@@ -718,7 +731,7 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
                 ny -= n * c.line(30.0) + 10.0 * u;
                 c.para(margin, ny, content_w, Style(Weight::Semibold, 30.0, AMBER), note);
             }
-            if m.usb.is_some() {
+            if m.usb.is_some_and(|u| !is_wireless(u)) {
                 ny -= c.line(30.0) + 10.0 * u;
                 c.text(margin, ny, Weight::Regular, 30.0, MUTED, "A USB phone is plugged in.");
             }
@@ -838,6 +851,24 @@ mod tests {
     }
 
     #[test]
+    fn a_paused_screen_offers_the_ready_phone() {
+        let (w, h) = (776u32, 1560u32);
+        let status = Status::Disconnected;
+        let home = render(w, h, &model(&status, View::Home, &[], Some("W82202003817"), None, None));
+        let mirror: Vec<_> = home.buttons.iter().filter(|b| matches!(b.action, Action::Mirror(_))).collect();
+        assert_eq!(mirror.len(), 1);
+        assert_eq!(mirror[0].action, Action::Mirror("W82202003817".into()));
+        // nothing ready: no mirror button
+        let none = render(w, h, &model(&status, View::Home, &[], None, None, None));
+        assert!(!none.buttons.iter().any(|b| matches!(b.action, Action::Mirror(_))));
+        // a phone already on Wi-Fi is not offered for switching to Wi-Fi
+        let wifi = render(w, h, &model(&status, View::Wifi, &[], Some("192.168.0.20:5555"), None, None));
+        assert!(!wifi.buttons.iter().any(|b| matches!(b.action, Action::SwitchToWifi(_))));
+        let usb = render(w, h, &model(&status, View::Wifi, &[], Some("W82202003817"), None, None));
+        assert!(usb.buttons.iter().any(|b| matches!(b.action, Action::SwitchToWifi(_))));
+    }
+
+    #[test]
     fn tells_wireless_from_usb() {
         assert!(is_wireless("192.168.0.20:5555"));
         assert!(is_wireless("adb-W82202003817-MPn68n._adb-tls-connect._tcp"));
@@ -952,7 +983,9 @@ mod tests {
         let unauth = Status::Unauthorized("R58M12ABCDE".into());
         let failed = Status::Failed("Could not start mirroring: adb push: no such file".into());
         let lost = Status::Lost("192.168.0.20:5555".into());
+        let disconnected = Status::Disconnected;
         let screens = [
+            model(&disconnected, View::Home, &[], Some("W82202003817"), None, None),
             model(&lost, View::Home, &[], None, None, None),
             model(&looking, View::Home, &[], None, None, None),
             model(&unauth, View::Home, &[], None, None, None),

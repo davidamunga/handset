@@ -18,6 +18,10 @@ pub struct State {
     pub muted: bool,
     pub toolbar: bool,
     pub clipboard: bool,
+    /// A phone is being mirrored.
+    pub mirroring: bool,
+    /// ...and it is connected by USB, so it can be switched to Wi-Fi.
+    pub usb: bool,
     /// Newest captures, for the Recent Captures submenu.
     pub recent: Vec<std::path::PathBuf>,
 }
@@ -76,7 +80,13 @@ pub fn show(window: &Window, s: &State) {
         let _ = recent.append(&item);
     }
 
+    let phone = Submenu::new("Phone", true);
+    let _ = phone.append(&MenuItem::with_id("conn:wifi", "Switch to Wi-Fi", s.mirroring && s.usb, None));
+    let _ = phone.append(&MenuItem::with_id("conn:another", "Connect Another Phone\u{2026}", true, None));
+    let _ = phone.append(&MenuItem::with_id("conn:disconnect", "Disconnect", s.mirroring, None));
+
     let audio_label = if s.audio { "Mute playback" } else { "Audio off (start with --audio)" };
+    let _ = menu.append(&phone);
     let _ = menu.append(&frame);
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&MenuItem::with_id("shot", "Take Screenshot    \u{2318}S", true, None));

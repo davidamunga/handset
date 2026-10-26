@@ -114,6 +114,9 @@ With no phone plugged in, Handset opens on a "connect a phone" screen inside the
 says what it sees (nothing yet, a phone waiting for you to tap Allow, an offline connection) and starts
 mirroring by itself as soon as a phone is ready. Two buttons cover connecting without a cable:
 
+- A running session has a **Phone** submenu (right-click): **Switch to Wi-Fi** for a USB phone, **Connect Another
+  Phone** and **Disconnect**. After Disconnect nothing restarts by itself; the connect screen offers the phone
+  that is plugged in, or the Wi-Fi and QR options.
 - **Wi-Fi** lists paired phones found on your network (tap one to connect), asks for an address if you
   want to type one, and, when a phone is plugged in, switches it to Wi-Fi so you can unplug the cable.
 - **QR code** shows a code to scan on the phone (Developer options, Wireless debugging, Pair device with

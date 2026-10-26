@@ -80,6 +80,8 @@ struct Waiting {
     /// After a Wi-Fi phone went away: its address, and when to try connecting to it next.
     retry_addr: Option<String>,
     next_retry: Instant,
+    /// Mirroring was ended on purpose: a ready phone is offered, not started.
+    paused: bool,
 }
 
 impl Waiting {
@@ -105,6 +107,7 @@ impl Waiting {
             note: None,
             retry_addr: None,
             next_retry: Instant::now() + RECONNECT_EVERY,
+            paused: false,
         }
     }
 }
@@ -266,7 +269,7 @@ impl App {
             Err(_) => Status::AdbMissing,
             Ok(list) => match connect::pick(&list, wt.want.as_deref()) {
                 // with the Wi-Fi view open, a USB phone is offered for switching instead of started
-                Some(serial) if wt.view == View::Wifi && !connect::is_wireless(&serial) => {
+                Some(serial) if wt.paused || (wt.view == View::Wifi && !connect::is_wireless(&serial)) => {
                     usb = Some(serial);
                     wt.status.clone()
                 }
@@ -393,6 +396,11 @@ impl App {
                 connect::connect_async(proxy, addr);
             }
             Action::TypeAddress if !wt.busy => connect::ask_address_async(proxy),
+            Action::Mirror(serial) => {
+                wt.paused = false;
+                wt.starting = Some((serial.clone(), Instant::now() + Duration::from_millis(300)));
+                wt.status = Status::Connecting(serial);
+            }
             Action::SwitchToWifi(usb) if !wt.busy => {
                 wt.busy = true;
                 wt.note = Some("Switching to Wi-Fi...".into());
@@ -404,21 +412,10 @@ impl App {
         self.draw_connect();
     }
 
-    /// The stream ended. Quit if there is nothing to recover; otherwise go back to the connect screen and
-    /// wait for the phone to return, retrying the connection for a phone that was on Wi-Fi.
-    fn on_disconnected(&mut self, el: &ActiveEventLoop) {
-        let Some(mirror) = self.mirror.take() else {
-            el.exit();
-            return;
-        };
-        if self.auto_record.is_some() {
-            // `--record-for` ends with its session
-            self.mirror = Some(mirror);
-            el.exit();
-            return;
-        }
+    /// Stop mirroring and return the frame to its idle state. Returns the serial that was mirrored.
+    fn end_session(&mut self) -> Option<String> {
+        let mirror = self.mirror.take()?;
         let serial = mirror.session.serial().to_string();
-        eprintln!("connection to {serial} lost; waiting for it to come back");
         self.stop_recording();
         drop(mirror); // kills the server and removes the adb forward
         self.control = Control::disconnected();
@@ -440,11 +437,39 @@ impl App {
                 let _ = w.request_inner_size(winit::dpi::PhysicalSize::new((new_h as f32 * a).round() as u32, new_h));
             }
         }
+        Some(serial)
+    }
+
+    /// The stream ended. Quit if there is nothing to recover; otherwise go back to the connect screen and
+    /// wait for the phone to return, retrying the connection for a phone that was on Wi-Fi.
+    fn on_disconnected(&mut self, el: &ActiveEventLoop) {
+        if self.mirror.is_none() || self.auto_record.is_some() {
+            // nothing to recover, or `--record-for`, which ends with its session
+            el.exit();
+            return;
+        }
+        let Some(serial) = self.end_session() else { return };
+        eprintln!("connection to {serial} lost; waiting for it to come back");
         let mut wt = Waiting::new(None, false, Status::Lost(serial.clone()));
         wt.retry_addr = connect::retry_addr(&serial);
         self.waiting = Some(wt);
         connect::spawn_poll(self.proxy.clone());
         self.draw_connect();
+    }
+
+    /// The Phone menu: end mirroring on purpose and open the connect screen, on `view`, without
+    /// restarting by itself. Returns the serial that was mirrored.
+    fn leave_session(&mut self, view: View) -> Option<String> {
+        let serial = self.end_session()?;
+        let mut wt = Waiting::new(None, false, Status::Disconnected);
+        wt.paused = true;
+        self.waiting = Some(wt);
+        connect::spawn_poll(self.proxy.clone());
+        match view {
+            View::Home => self.draw_connect(),
+            other => self.on_action(Action::Open(other)),
+        }
+        Some(serial)
     }
 
     /// Animate the connect screen and start mirroring once its "connecting" frame has been shown.
@@ -603,6 +628,8 @@ impl App {
             muted: audio::is_muted(),
             toolbar: self.renderer.as_ref().is_some_and(|r| r.toolbar_visible()),
             clipboard: self.cap.clipboard,
+            mirroring: self.mirror.is_some(),
+            usb: self.mirror.as_ref().is_some_and(|m| !connect::is_wireless(m.session.serial())),
             recent: capture::recent_captures(5),
         };
         menu::show(&w, &state);
@@ -664,6 +691,17 @@ impl App {
                 }
             }
             "mute" => audio::set_muted(!audio::is_muted()),
+            "conn:disconnect" => {
+                self.leave_session(View::Home);
+            }
+            "conn:another" => {
+                self.leave_session(View::Wifi);
+            }
+            "conn:wifi" => {
+                if let Some(serial) = self.leave_session(View::Wifi) {
+                    self.on_action(Action::SwitchToWifi(serial));
+                }
+            }
             "rotate" => {
                 let _ = self.control.rotate_device();
             }
