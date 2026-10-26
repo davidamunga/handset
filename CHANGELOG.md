@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0
+
+### Minor Changes
+
+- [#30](https://github.com/davidamunga/handset/pull/30) [`44c919c`](https://github.com/davidamunga/handset/commit/44c919cbe03e55a95b42361f80c7f127ba2b8500) Thanks [@davidamunga](https://github.com/davidamunga)! - `handset --doctor` checks that `adb` and `ffmpeg` are found and that each connected phone is online, authorised, running Android 5.0 or later and awake, and tells you what to do about anything that is not.
+
+- [#29](https://github.com/davidamunga/handset/pull/29) [`8a6e95b`](https://github.com/davidamunga/handset/commit/8a6e95bac7b04b6c63ff406715e227de13f5ed20) Thanks [@davidamunga](https://github.com/davidamunga)! - Drop an `.apk` on the window to install it on the phone, or any other file to copy it to the phone's Downloads folder. A toast shows progress and the result.
+
+- [#32](https://github.com/davidamunga/handset/pull/32) [`f46a48d`](https://github.com/davidamunga/handset/commit/f46a48da21ca102d8ec78922539864995810aecf) Thanks [@davidamunga](https://github.com/davidamunga)! - Show Touches (in the menu, or `--show-touches`) draws a translucent dot where you touch the phone and fades it when you let go, in the window and in screenshots and recordings.
+
+- [#26](https://github.com/davidamunga/handset/pull/26) [`c3ac755`](https://github.com/davidamunga/handset/commit/c3ac7557ab5e77a8f9b2712878ab6e9dfd8fdec0) Thanks [@davidamunga](https://github.com/davidamunga)! - The toolbar now has Back, Home, Recents, Power, Volume Up, Volume Down and Notifications buttons, and shows a button's name when you hover it. Menu choices (frame, toolbar, capture format, normalise, clipboard copy and sync, mute) are remembered in `~/.config/handset/settings`.
+
+  The window opens smaller on macOS so it fits above the Dock, and can be resized by dragging a corner, or with Cmd/Ctrl plus `+`, `-` and `0` or the Larger, Smaller and Default Size menu items. Scroll-resizing no longer grows past the screen.
+
+### Patch Changes
+
+- [#31](https://github.com/davidamunga/handset/pull/31) [`1cff6e4`](https://github.com/davidamunga/handset/commit/1cff6e4cd6632ff5a64904b7eb40a07e7ef8d3f3) Thanks [@davidamunga](https://github.com/davidamunga)! - The connect screen has a Run checks button that shows the results of `handset --doctor` in the frame.
+
 ## 0.2.0
 
 ### Minor Changes
