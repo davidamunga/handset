@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0
+
+### Minor Changes
+
+- [#22](https://github.com/davidamunga/handset/pull/22) [`0e9e027`](https://github.com/davidamunga/handset/commit/0e9e027b7da9881366fd84e38939bcadfb173a3a) Thanks [@davidamunga](https://github.com/davidamunga)! - Run on Windows 10 and 11: the right-click menu, clipboard sync, screenshots and recordings (copied to the clipboard), the connect prompt and Explorer actions all work, and `adb` and `ffmpeg` are found from `PATH`, the Android SDK, winget, scoop or Chocolatey. The window is sized to fit the screen.
+
+### Patch Changes
+
+- [#22](https://github.com/davidamunga/handset/pull/22) [`0e9e027`](https://github.com/davidamunga/handset/commit/0e9e027b7da9881366fd84e38939bcadfb173a3a) Thanks [@davidamunga](https://github.com/davidamunga)! - Phone > Connect Another Phone no longer quits the app: the old session's late end-of-stream message is ignored while the connect screen is showing.
+
 ## 0.1.4
 
 ### Patch Changes
