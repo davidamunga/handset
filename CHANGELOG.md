@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2
+
+### Patch Changes
+
+- [`c1cb884`](https://github.com/davidamunga/handset/commit/c1cb8840faa9309d7f10124baa058169befb743a) Thanks [@davidamunga](https://github.com/davidamunga)! - With no phone plugged in, Handset now opens on a "connect a phone" screen inside the frame instead of quitting with an error. It shows what it sees (nothing yet, a phone waiting for you to tap Allow, an offline connection), and starts mirroring by itself as soon as a phone is ready.
+
+- [`37285e4`](https://github.com/davidamunga/handset/commit/37285e4780b43beb62be2d786bb423ae1f1886d4) Thanks [@davidamunga](https://github.com/davidamunga)! - `handset --connect` now gives up after 10 seconds with a clear message instead of waiting over a minute for adb to time out.
+
 ## 0.1.1
 
 ### Patch Changes
