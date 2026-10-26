@@ -20,9 +20,9 @@ small native Rust app that implements the desktop side of the scrcpy protocol an
 | `app/src/control.rs` | Control messages sent to the phone (touch, scroll, keys, text, rotate) |
 | `app/src/frame.rs`, `overlay.rs`, `toolbar.rs` | Bezel loading, bitmap-font pills, toolbar icons |
 | `app/src/audio.rs`, `capture.rs` | Raw PCM audio and playback; screenshots and ffmpeg recording |
-| `app/src/connect.rs`, `mirror.rs` | The connect screen drawn in the frame while no phone is ready; one mirroring session (server, video, audio) |
+| `app/src/connect.rs`, `mirror.rs` | The landing screen drawn in the frame while no phone is ready (USB status, Wi-Fi list, QR pairing, clickable buttons); one mirroring session (server, video, audio) |
 | `app/src/menu.rs`, `tools.rs` | Native macOS menu; tool lookup, error dialogs, default arguments |
-| `app/assets/` | Embedded scrcpy server and the built-in phone frames |
+| `app/assets/` | Embedded scrcpy server, the built-in phone frames and the Inter fonts |
 | `frames/` | Script that generates the frame PNGs |
 | `app/packaging/` | App icon: SVG sources, `AppIcon.icns` and a README PNG (rebuild with `scripts/make-icon.sh`) |
 | `scripts/` | Packaging, icon, version-sync and hook scripts |

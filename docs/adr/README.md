@@ -25,3 +25,5 @@ Copy [`0000-template.md`](0000-template.md) to start a new one.
 | [0013](0013-sign-and-notarise-releases.md) | Sign with Developer ID and notarise releases | accepted |
 | [0014](0014-show-a-connect-screen-in-the-frame.md) | Show a connect screen inside the frame | accepted |
 | [0015](0015-release-only-when-asked.md) | Release only when asked, and never as a pre-release | accepted |
+| [0016](0016-pair-with-a-qr-code-and-find-phones-with-mdns.md) | Pair with a QR code and find phones with mDNS | accepted |
+| [0017](0017-draw-the-connect-screen-with-inter-and-the-app-icon.md) | Draw the connect screen with Inter and the app icon | accepted |

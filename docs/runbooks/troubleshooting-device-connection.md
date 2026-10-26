@@ -26,6 +26,16 @@ overrides the lookup.
 
 ### Over Wi-Fi instead of USB
 
+On the connect screen, **Wi-Fi** lists paired phones on the network and lets you type an address or switch a
+USB phone, and **QR code** pairs a new phone with no typing. The command line does the same with `--connect`,
+`--pair` and `--wifi`.
+
+QR pairing needs Android 11 or later, Wireless debugging on, and the phone and the Mac on the same network
+(guest and office networks often block devices from finding each other). Scan with Developer options >
+Wireless debugging > Pair device with QR code, not with the camera app. If the screen says pairing failed, it
+shows a fresh code: scan again. `adb mdns check` should report a daemon version; if it does not, run
+`adb kill-server` and retry.
+
 - `handset --wifi` with the phone on USB switches it to adb over Wi-Fi (port 5555) and connects.
 - On Android 11 and later you can skip the cable: Developer options > Wireless debugging > Pair device
   with pairing code, then `handset --pair <ip:port> <code>` (the pairing port is not the connection

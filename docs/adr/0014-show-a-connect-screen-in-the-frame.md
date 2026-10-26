@@ -1,6 +1,6 @@
 # 0014. Show a connect screen inside the frame
 
-- Status: accepted
+- Status: accepted (the bitmap typeface is superseded by [0017](0017-draw-the-connect-screen-with-inter-and-the-app-icon.md))
 - Date: 2026-10-26
 
 ## Context

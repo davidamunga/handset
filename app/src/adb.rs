@@ -47,6 +47,48 @@ fn parse_devices(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+/// A phone (or its pairing window) that announced itself on the network through mDNS.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Service {
+    pub name: String,
+    pub kind: ServiceKind,
+    /// `ip:port`
+    pub addr: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ServiceKind {
+    /// `_adb-tls-connect`: a phone with Wireless debugging on that can be connected to.
+    Connect,
+    /// `_adb-tls-pairing`: a phone showing its pairing screen or scanning a pairing QR code.
+    Pairing,
+}
+
+/// `adb mdns services`: the phones announcing themselves on this network.
+pub fn mdns_services() -> io::Result<Vec<Service>> {
+    let mut cmd = Command::new(adb_path());
+    cmd.args(["mdns", "services"]);
+    let out = output_within(cmd, std::time::Duration::from_secs(6))?;
+    Ok(parse_mdns(&String::from_utf8_lossy(&out.stdout)))
+}
+
+fn parse_mdns(text: &str) -> Vec<Service> {
+    text.lines()
+        .filter_map(|l| {
+            let mut it = l.split_whitespace();
+            let (name, ty, addr) = (it.next()?, it.next()?, it.next()?);
+            let kind = if ty.starts_with("_adb-tls-connect") {
+                ServiceKind::Connect
+            } else if ty.starts_with("_adb-tls-pairing") {
+                ServiceKind::Pairing
+            } else {
+                return None;
+            };
+            addr.contains(':').then(|| Service { name: name.to_string(), kind, addr: addr.to_string() })
+        })
+        .collect()
+}
+
 /// `host` or `host:port` as `host:port`, with adb's default port when none is given.
 pub fn normalize_addr(addr: &str) -> String {
     if addr.contains(':') { addr.to_string() } else { format!("{addr}:5555") }
@@ -207,6 +249,23 @@ mod tests {
         fast.arg("hi");
         let out = output_within(fast, std::time::Duration::from_secs(5)).unwrap();
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "hi");
+    }
+
+    #[test]
+    fn reads_mdns_services() {
+        let text = "List of discovered mdns services\n\
+                    adb-W82202003817-MPn68n\t_adb-tls-connect._tcp.\t192.168.0.20:41789\n\
+                    handset-ab12cd\t_adb-tls-pairing._tcp\t192.168.0.20:37001\n\
+                    printer\t_ipp._tcp\t192.168.0.9:631\n\n";
+        let s = parse_mdns(text);
+        assert_eq!(s.len(), 2);
+        assert_eq!(s[0].kind, ServiceKind::Connect);
+        assert_eq!(s[0].addr, "192.168.0.20:41789");
+        assert_eq!(
+            s[1],
+            Service { name: "handset-ab12cd".into(), kind: ServiceKind::Pairing, addr: "192.168.0.20:37001".into() }
+        );
+        assert!(parse_mdns("List of discovered mdns services\n\n").is_empty());
     }
 
     #[test]

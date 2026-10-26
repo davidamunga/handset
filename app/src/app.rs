@@ -3,7 +3,7 @@
 use crate::adb;
 use crate::audio;
 use crate::capture::{self, Recorder};
-use crate::connect::{self, Status};
+use crate::connect::{self, Action, LandingEvent, Qr, Status, View};
 use crate::control::{Control, Touch, keycode};
 use crate::frame::{self, Bezel};
 use crate::menu;
@@ -20,7 +20,7 @@ use winit::dpi::LogicalSize;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
-use winit::window::{Window, WindowId};
+use winit::window::{Cursor, CursorIcon, Window, WindowId};
 
 /// Everything `App` needs from `main`.
 pub struct Init {
@@ -59,6 +59,24 @@ struct Waiting {
     starting: Option<(String, Instant)>,
     /// A phone that failed to start, and when: not retried for a while.
     failed: Option<(String, Instant)>,
+    view: View,
+    /// Index of the button under the cursor, and the buttons of the picture currently shown.
+    hover: Option<usize>,
+    buttons: Vec<connect::Button>,
+    /// Size of that picture in pixels.
+    img: (u32, u32),
+    /// Phones announcing themselves on the network.
+    nearby: Vec<crate::adb::Service>,
+    /// A USB phone that is ready but is not being started because the Wi-Fi view is open.
+    usb: Option<String>,
+    /// The pairing code on screen, whether a phone has scanned it, and the phone it paired with.
+    qr: Option<Qr>,
+    pairing: bool,
+    paired_ip: Option<(String, Instant)>,
+    /// A connection is being made in the background; further connect clicks are ignored.
+    busy: bool,
+    /// A line of progress or trouble for the Wi-Fi and QR views.
+    note: Option<String>,
 }
 
 /// How long to leave a phone alone after mirroring it failed.
@@ -158,6 +176,17 @@ impl App {
                 tick_at: Instant::now(),
                 starting: None,
                 failed: None,
+                view: View::Home,
+                hover: None,
+                buttons: Vec::new(),
+                img: (0, 0),
+                nearby: Vec::new(),
+                usb: None,
+                qr: None,
+                pairing: false,
+                paired_ip: None,
+                busy: false,
+                note: None,
             }),
             proxy: init.proxy,
             opts: init.opts,
@@ -165,16 +194,52 @@ impl App {
         }
     }
 
-    /// Draw the connect screen into the phone's screen area.
+    /// Draw the landing screen into the phone's screen area.
     fn draw_connect(&mut self) {
-        let (Some(wt), Some(r), Some(w)) = (self.waiting.as_ref(), self.renderer.as_mut(), self.window.as_ref()) else {
+        let (Some(wt), Some(r), Some(w)) = (self.waiting.as_mut(), self.renderer.as_mut(), self.window.as_ref()) else {
             return;
         };
         let aspect = r.content_aspect().unwrap_or(9.0 / 20.0);
         let (pw, ph) = (((CONNECT_HEIGHT as f32 * aspect).round() as u32) & !1, CONNECT_HEIGHT);
-        let rgb = connect::render(pw, ph, &wt.status, wt.tick);
-        r.upload(&connect::to_yuv(&rgb, pw, ph));
+        let screen = {
+            let model = connect::Model {
+                status: &wt.status,
+                view: wt.view,
+                tick: wt.tick,
+                hover: wt.hover,
+                nearby: &wt.nearby,
+                usb: wt.usb.as_deref(),
+                qr: wt.qr.as_ref(),
+                note: wt.note.as_deref(),
+            };
+            connect::render(pw, ph, &model)
+        };
+        wt.buttons = screen.buttons;
+        wt.img = (pw, ph);
+        if self.debug {
+            eprintln!(
+                "landing picture {pw}x{ph}, buttons {:?}",
+                wt.buttons.iter().map(|b| (b.rect, b.label.clone())).collect::<Vec<_>>()
+            );
+        }
+        r.upload(&connect::to_yuv(&screen.rgb, pw, ph));
         w.request_redraw();
+    }
+
+    /// The landing screen button under the cursor.
+    fn landing_hit(&self) -> Option<usize> {
+        let (wt, r, w) = (self.waiting.as_ref()?, self.renderer.as_ref()?, self.window.as_ref()?);
+        let s = w.inner_size();
+        let p = ((self.cursor.0 / s.width as f64) as f32, (self.cursor.1 / s.height as f64) as f32);
+        let v = r.video_rect;
+        if p.0 < v[0] || p.0 >= v[0] + v[2] || p.1 < v[1] || p.1 >= v[1] + v[3] {
+            return None;
+        }
+        let ix = ((p.0 - v[0]) / v[2] * wt.img.0 as f32) as u32;
+        let iy = ((p.1 - v[1]) / v[3] * wt.img.1 as f32) as u32;
+        wt.buttons.iter().position(|b| {
+            ix >= b.rect[0] && ix < b.rect[0] + b.rect[2] && iy >= b.rect[1] && iy < b.rect[1] + b.rect[3]
+        })
     }
 
     /// New `adb devices` result while waiting: update what the screen says, or start mirroring.
@@ -183,9 +248,15 @@ impl App {
         if wt.starting.is_some() {
             return;
         }
+        let mut usb = None;
         let next = match result {
             Err(_) => Status::AdbMissing,
             Ok(list) => match connect::pick(&list, wt.want.as_deref()) {
+                // with the Wi-Fi view open, a USB phone is offered for switching instead of started
+                Some(serial) if wt.view == View::Wifi && !connect::is_wireless(&serial) => {
+                    usb = Some(serial);
+                    wt.status.clone()
+                }
                 Some(serial) => {
                     let recently_failed =
                         wt.failed.as_ref().is_some_and(|(s, at)| *s == serial && at.elapsed() < RETRY_AFTER);
@@ -201,10 +272,118 @@ impl App {
                 }
             },
         };
-        if next != wt.status {
-            wt.status = next;
+        let changed = next != wt.status || wt.usb != usb;
+        wt.usb = usb;
+        wt.status = next;
+        if changed {
             self.draw_connect();
         }
+    }
+
+    /// Something started from the landing screen finished.
+    fn on_landing(&mut self, event: LandingEvent) {
+        let proxy = self.proxy.clone();
+        let Some(wt) = self.waiting.as_mut() else { return };
+        // first line of an error, short enough for the screen
+        let brief = |e: &str| e.lines().next().unwrap_or_default().chars().take(90).collect::<String>();
+        let mut redraw = true;
+        match event {
+            LandingEvent::Nearby(list) => {
+                // a phone that scanned our code announces a pairing service named after it
+                if let Some(qr) = wt.qr.as_ref().filter(|_| !wt.pairing)
+                    && let Some(p) =
+                        list.iter().find(|s| s.kind == crate::adb::ServiceKind::Pairing && s.name == qr.name)
+                {
+                    wt.pairing = true;
+                    wt.note = Some("Pairing...".into());
+                    connect::pair_async(proxy.clone(), p.addr.clone(), qr.password.clone());
+                }
+                // adb usually connects to a paired phone by itself; if it has not after a few seconds, do it
+                if let Some((ip, at)) = wt.paired_ip.as_ref().filter(|(_, at)| at.elapsed() > Duration::from_secs(4))
+                    && !wt.busy
+                    && let Some(c) = list
+                        .iter()
+                        .find(|s| s.kind == crate::adb::ServiceKind::Connect && s.addr.starts_with(&format!("{ip}:")))
+                {
+                    let _ = at;
+                    wt.busy = true;
+                    connect::connect_async(proxy.clone(), c.addr.clone());
+                }
+                redraw = list != wt.nearby;
+                wt.nearby = list;
+            }
+            LandingEvent::Paired(Ok(ip)) => {
+                wt.paired_ip = Some((ip, Instant::now()));
+                wt.note = Some("Paired. Connecting...".into());
+            }
+            LandingEvent::Paired(Err(e)) => {
+                // the phone's scan window has closed: show a fresh code to try again
+                wt.pairing = false;
+                wt.note = Some(format!("Pairing failed: {}", brief(&e)));
+                wt.qr = Qr::new().ok();
+            }
+            LandingEvent::Connected(Ok(serial)) => {
+                wt.busy = false;
+                wt.note = None;
+                wt.wifi = false;
+                wt.starting = Some((serial.clone(), Instant::now() + Duration::from_millis(300)));
+                wt.status = Status::Connecting(serial);
+            }
+            LandingEvent::Connected(Err(e)) => {
+                wt.busy = false;
+                wt.note = Some(brief(&e));
+            }
+            LandingEvent::Typed(Some(addr)) => {
+                wt.busy = true;
+                wt.note = Some(format!("Connecting to {}...", crate::adb::normalize_addr(&addr)));
+                connect::connect_async(proxy, addr);
+            }
+            LandingEvent::Typed(None) => redraw = false,
+        }
+        if redraw {
+            self.draw_connect();
+        }
+    }
+
+    /// A landing screen button was clicked.
+    fn on_action(&mut self, action: Action) {
+        let proxy = self.proxy.clone();
+        let Some(wt) = self.waiting.as_mut() else { return };
+        match action {
+            Action::Open(View::Wifi) => {
+                wt.view = View::Wifi;
+                wt.note = None;
+                connect::want_mdns(true);
+            }
+            Action::Open(View::Qr) => {
+                wt.view = View::Qr;
+                wt.note = None;
+                wt.pairing = false;
+                wt.paired_ip = None;
+                wt.qr = Qr::new().ok();
+                connect::want_mdns(true);
+            }
+            Action::Open(View::Home) | Action::Back => {
+                wt.view = View::Home;
+                wt.note = None;
+                wt.qr = None;
+                connect::want_mdns(false);
+            }
+            Action::Connect(addr) if !wt.busy => {
+                wt.busy = true;
+                wt.note = Some(format!("Connecting to {addr}..."));
+                connect::connect_async(proxy, addr);
+            }
+            Action::TypeAddress if !wt.busy => connect::ask_address_async(proxy),
+            Action::SwitchToWifi(usb) if !wt.busy => {
+                wt.busy = true;
+                wt.note = Some("Switching to Wi-Fi...".into());
+                connect::wifi_async(proxy, usb);
+            }
+            _ => {}
+        }
+        wt.hover = None;
+        self.draw_connect();
     }
 
     /// Animate the connect screen and start mirroring once its "connecting" frame has been shown.
@@ -260,6 +439,10 @@ impl App {
                 self.mirror = Some(mirror);
                 self.waiting = None;
                 connect::stop_poll();
+                connect::want_mdns(false);
+                if let Some(w) = &self.window {
+                    w.set_cursor(Cursor::Icon(CursorIcon::Default));
+                }
             }
             Err(e) => {
                 eprintln!("{e}");
@@ -617,7 +800,12 @@ impl ApplicationHandler<UserEvent> for App {
         }
         self.window = Some(window);
         if self.waiting.is_some() {
-            self.draw_connect();
+            // HANDSET_LANDING=wifi|qr opens that view first (for looking at it without clicking)
+            match std::env::var("HANDSET_LANDING").as_deref() {
+                Ok("wifi") => self.on_action(Action::Open(View::Wifi)),
+                Ok("qr") => self.on_action(Action::Open(View::Qr)),
+                _ => self.draw_connect(),
+            }
         }
     }
 
@@ -672,6 +860,7 @@ impl ApplicationHandler<UserEvent> for App {
             }
             UserEvent::Menu(id) => self.on_menu(el, &id),
             UserEvent::Adb(result) => self.on_adb(result),
+            UserEvent::Landing(event) => self.on_landing(event),
             UserEvent::Frame => {
                 let (Some(r), Some(w)) = (self.renderer.as_mut(), self.window.as_ref()) else { return };
                 let mut s = self.slot.lock().unwrap();
@@ -735,6 +924,22 @@ impl ApplicationHandler<UserEvent> for App {
                     self.hover = hover;
                     self.refresh_toolbar();
                 }
+                if self.waiting.is_some() {
+                    let over = self.landing_hit();
+                    if over != self.waiting.as_ref().and_then(|wt| wt.hover) {
+                        if let Some(wt) = self.waiting.as_mut() {
+                            wt.hover = over;
+                        }
+                        if let Some(w) = &self.window {
+                            w.set_cursor(Cursor::Icon(if over.is_some() {
+                                CursorIcon::Pointer
+                            } else {
+                                CursorIcon::Default
+                            }));
+                        }
+                        self.draw_connect();
+                    }
+                }
                 if self.touching
                     && let Some((_, Some((x, y)))) = self.locate()
                 {
@@ -766,6 +971,21 @@ impl ApplicationHandler<UserEvent> for App {
             {
                 if let Some(b) = self.toolbar_button() {
                     self.on_button(el, b);
+                }
+            }
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. }
+                if self.waiting.is_some() =>
+            {
+                if let Some(i) = self.landing_hit() {
+                    let action = self.waiting.as_ref().map(|wt| wt.buttons[i].action.clone());
+                    if let Some(a) = action {
+                        self.on_action(a);
+                    }
+                } else if let Some((p, _)) = self.locate()
+                    && self.on_bezel(p)
+                    && let Some(w) = &self.window
+                {
+                    let _ = w.drag_window();
                 }
             }
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {

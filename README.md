@@ -101,14 +101,20 @@ instead: `cargo install --path app --locked`.
 
 With no phone plugged in, Handset opens on a "connect a phone" screen inside the frame. It watches adb,
 says what it sees (nothing yet, a phone waiting for you to tap Allow, an offline connection) and starts
-mirroring by itself as soon as a phone is ready.
+mirroring by itself as soon as a phone is ready. Two buttons cover connecting without a cable:
+
+- **Wi-Fi** lists paired phones found on your network (tap one to connect), asks for an address if you
+  want to type one, and, when a phone is plugged in, switches it to Wi-Fi so you can unplug the cable.
+- **QR code** shows a code to scan on the phone (Developer options, Wireless debugging, Pair device with
+  QR code; Android 11 or later). Handset pairs with the phone that scans it and connects, with nothing to
+  type.
 
 Over Wi-Fi: on Android 11 or later, open Developer options > Wireless debugging > Pair device with pairing
 code, run `handset --pair <ip:port> <code>` with what it shows, then `handset --connect <ip:port>` with the
 address on the main Wireless debugging screen. On any version, `handset --wifi` does it from a USB
 connection in one step. The phone and the Mac must be on the same network.
 
-With no arguments, `~/.config/handset/args` is used if it exists. `HANDSET_DEBUG=1` prints diagnostics.
+With no arguments, `~/.config/handset/args` is used if it exists. `HANDSET_DEBUG=1` prints diagnostics, and `HANDSET_LANDING=wifi` or `qr` opens that view of the connect screen first.
 `ADB` and `FFMPEG` override where the tools are found.
 
 ## How it works

@@ -19,6 +19,8 @@ pub enum UserEvent {
     Menu(String),
     /// The latest `adb devices`, or why it could not be run.
     Adb(Result<Vec<(String, String)>, String>),
+    /// Something the landing screen was waiting for finished.
+    Landing(crate::connect::LandingEvent),
 }
 
 #[derive(Default)]

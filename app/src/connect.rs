@@ -1,13 +1,16 @@
-//! The "connect a phone" screen. While no phone is ready it is drawn inside the phone frame, as if it
-//! were the phone's own screen: it says what Handset sees (nothing yet, a phone waiting for
-//! permission, a stale connection) and what to do about it, and goes away by itself once a phone is
-//! ready. The picture is rasterized on the CPU with the overlay's bitmap font and handed to the
-//! renderer like a video frame.
+//! The landing screen. While no phone is ready it is drawn inside the phone frame, as if it were the
+//! phone's own screen. It says what Handset sees (nothing yet, a phone waiting for permission, a stale
+//! connection), what to do about it, and offers the other ways in: Wi-Fi (phones found on the network, a
+//! typed address, switching a USB phone) and QR code pairing. It goes away by itself once a phone is
+//! ready. The picture is rasterized on the CPU with the overlay's bitmap font, with clickable buttons
+//! whose rectangles are returned alongside it, and handed to the renderer like a video frame.
 
 use crate::adb;
-use crate::overlay::glyph;
 use crate::render::Yuv;
 use crate::stream::UserEvent;
+use ab_glyph::{Font, FontRef, PxScale, ScaleFont, point};
+use qrcode::{Color, QrCode};
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use winit::event_loop::EventLoopProxy;
@@ -34,6 +37,11 @@ pub fn pick(list: &[(String, String)], want: Option<&str>) -> Option<String> {
         .map(|(serial, _)| serial.clone())
 }
 
+/// Is this adb serial a phone reached over the network (`ip:port` or an mDNS name)?
+pub fn is_wireless(serial: &str) -> bool {
+    serial.contains(':') || serial.contains("_adb-tls")
+}
+
 /// What to tell the person when no phone in `list` is ready.
 pub fn status_from(list: &[(String, String)], want: Option<&str>) -> Status {
     let relevant = |serial: &String| want.is_none_or(|w| w == serial);
@@ -50,15 +58,61 @@ pub fn status_from(list: &[(String, String)], want: Option<&str>) -> Status {
     }
 }
 
-static STOP: AtomicBool = AtomicBool::new(false);
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum View {
+    Home,
+    Wifi,
+    Qr,
+}
 
-/// Ask adb for the device list every second or so and send it to the app, until `stop_poll`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Action {
+    Open(View),
+    Back,
+    /// Connect to `ip:port`.
+    Connect(String),
+    TypeAddress,
+    /// Switch this USB phone to adb over Wi-Fi.
+    SwitchToWifi(String),
+}
+
+pub struct Button {
+    /// x, y, width, height in the picture's pixels.
+    pub rect: [u32; 4],
+    pub label: String,
+    pub action: Action,
+}
+
+/// Results of work done off the main thread.
+#[derive(Debug)]
+pub enum LandingEvent {
+    /// Phones announcing themselves on the network.
+    Nearby(Vec<adb::Service>),
+    /// `adb pair` finished: the phone's IP, or why not.
+    Paired(Result<String, String>),
+    /// `adb connect` or the Wi-Fi switch finished: the serial to mirror, or why not.
+    Connected(Result<String, String>),
+    /// The address typed into the prompt, or `None` if it was cancelled.
+    Typed(Option<String>),
+}
+
+static STOP: AtomicBool = AtomicBool::new(false);
+static MDNS: AtomicBool = AtomicBool::new(false);
+
+/// Ask adb for the device list every second or so and send it to the app, until `stop_poll`. While the
+/// Wi-Fi or QR views are open it also asks which phones are announcing themselves on the network.
 pub fn spawn_poll(proxy: EventLoopProxy<UserEvent>) {
     STOP.store(false, Ordering::SeqCst);
     std::thread::spawn(move || {
         while !STOP.load(Ordering::SeqCst) {
             let result = adb::list().map_err(|e| e.to_string());
             if proxy.send_event(UserEvent::Adb(result)).is_err() {
+                break;
+            }
+            if MDNS.load(Ordering::SeqCst)
+                && let Ok(services) = adb::mdns_services()
+                && proxy.send_event(UserEvent::Landing(LandingEvent::Nearby(services))).is_err()
+            {
                 break;
             }
             std::thread::sleep(Duration::from_millis(1200));
@@ -70,17 +124,179 @@ pub fn stop_poll() {
     STOP.store(true, Ordering::SeqCst);
 }
 
-const BG: [u8; 3] = [16, 20, 26];
-const WHITE: [u8; 3] = [245, 245, 247];
-const MUTED: [u8; 3] = [150, 158, 170];
-const AMBER: [u8; 3] = [255, 179, 0];
-const RED: [u8; 3] = [255, 84, 73];
+/// Turn the network lookup on or off (only the Wi-Fi and QR views need it).
+pub fn want_mdns(on: bool) {
+    MDNS.store(on, Ordering::SeqCst);
+}
+
+fn send(proxy: &EventLoopProxy<UserEvent>, e: LandingEvent) {
+    let _ = proxy.send_event(UserEvent::Landing(e));
+}
+
+pub fn connect_async(proxy: EventLoopProxy<UserEvent>, addr: String) {
+    std::thread::spawn(move || send(&proxy, LandingEvent::Connected(adb::connect(&addr).map_err(|e| e.to_string()))));
+}
+
+pub fn wifi_async(proxy: EventLoopProxy<UserEvent>, usb_serial: String) {
+    std::thread::spawn(move || {
+        send(&proxy, LandingEvent::Connected(adb::wifi(&usb_serial).map_err(|e| e.to_string())))
+    });
+}
+
+pub fn pair_async(proxy: EventLoopProxy<UserEvent>, addr: String, password: String) {
+    std::thread::spawn(move || {
+        let ip = addr.split(':').next().unwrap_or_default().to_string();
+        send(&proxy, LandingEvent::Paired(adb::pair(&addr, &password).map(|_| ip).map_err(|e| e.to_string())));
+    });
+}
+
+/// Ask for a phone address with a native prompt (the landing screen has no text field).
+pub fn ask_address_async(proxy: EventLoopProxy<UserEvent>) {
+    std::thread::spawn(move || {
+        let typed = ask_address();
+        send(&proxy, LandingEvent::Typed(typed));
+    });
+}
+
+#[cfg(target_os = "macos")]
+fn ask_address() -> Option<String> {
+    let script = "text returned of (display dialog \"Phone address, as ip or ip:port (shown under Wireless debugging):\" \
+                  default answer \"192.168.\" buttons {\"Cancel\", \"Connect\"} default button \"Connect\" with title \"Handset\")";
+    let out = std::process::Command::new("osascript").args(["-e", script]).output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string()).filter(|s| !s.is_empty())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn ask_address() -> Option<String> {
+    None
+}
+
+/// A QR code that pairs a phone: scanning it on the phone (Wireless debugging > Pair device with QR code)
+/// makes the phone announce a pairing service called `name`, which `password` unlocks.
+pub struct Qr {
+    pub name: String,
+    pub password: String,
+    pub width: usize,
+    pub dark: Vec<bool>,
+}
+
+impl Qr {
+    pub fn new() -> Result<Qr, String> {
+        let name = format!("handset-{}", random_alnum(6).to_lowercase());
+        let password = random_alnum(10);
+        let code = QrCode::new(payload(&name, &password).as_bytes()).map_err(|e| e.to_string())?;
+        let dark = code.to_colors().into_iter().map(|c| c == Color::Dark).collect();
+        Ok(Qr { name, password, width: code.width(), dark })
+    }
+}
+
+/// What the phone's QR scanner reads.
+fn payload(name: &str, password: &str) -> String {
+    format!("WIFI:T:ADB;S:{name};P:{password};;")
+}
+
+fn random_alnum(n: usize) -> String {
+    use std::io::Read;
+    const CHARS: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+    let mut bytes = vec![0u8; n];
+    if std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut bytes)).is_err() {
+        // no system randomness: fall back to the clock, which is enough for a one-off pairing code
+        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+        for (i, b) in bytes.iter_mut().enumerate() {
+            *b = (t >> (i * 5 % 100)) as u8 ^ (i as u8).wrapping_mul(37);
+        }
+    }
+    bytes.iter().map(|b| CHARS[*b as usize % CHARS.len()] as char).collect()
+}
+
+// Handset's colours, taken from the app icon: its green, its teal, and the pale mint of its plate.
+const BG: [u8; 3] = [8, 24, 22];
+const SURFACE: [u8; 3] = [14, 54, 50];
+const SURFACE_HOVER: [u8; 3] = [7, 112, 99];
 const GREEN: [u8; 3] = [48, 221, 129];
+const TEXT: [u8; 3] = [217, 245, 229];
+const MUTED: [u8; 3] = [128, 166, 156];
+const AMBER: [u8; 3] = [255, 190, 60];
+const RED: [u8; 3] = [255, 110, 100];
+
+static REGULAR: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
+static SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/Inter-SemiBold.ttf");
+static LOGO_PNG: &[u8] = include_bytes!("../packaging/icon/handset-icon-512.png");
+
+/// How a run of text looks: weight, size in design units, colour.
+#[derive(Clone, Copy)]
+struct Style(Weight, f32, [u8; 3]);
+
+#[derive(Clone, Copy, PartialEq)]
+enum Weight {
+    Regular,
+    Semibold,
+}
+
+fn font(weight: Weight) -> &'static FontRef<'static> {
+    static FONTS: OnceLock<[FontRef<'static>; 2]> = OnceLock::new();
+    let fonts = FONTS.get_or_init(|| {
+        [
+            FontRef::try_from_slice(REGULAR).expect("bundled Inter Regular"),
+            FontRef::try_from_slice(SEMIBOLD).expect("bundled Inter SemiBold"),
+        ]
+    });
+    &fonts[weight as usize]
+}
+
+/// The app icon, decoded once: width, height, straight-alpha RGBA.
+fn logo() -> &'static (u32, u32, Vec<u8>) {
+    static LOGO: OnceLock<(u32, u32, Vec<u8>)> = OnceLock::new();
+    LOGO.get_or_init(|| {
+        let mut reader = png::Decoder::new(std::io::Cursor::new(LOGO_PNG)).read_info().expect("bundled icon");
+        let mut buf = vec![0; reader.output_buffer_size().expect("icon size")];
+        let info = reader.next_frame(&mut buf).expect("bundled icon pixels");
+        buf.truncate(info.buffer_size());
+        (info.width, info.height, buf)
+    })
+}
+
+/// Width of `text` in pixels at `px` size.
+fn measure(weight: Weight, px: f32, text: &str) -> f32 {
+    let scaled = font(weight).as_scaled(PxScale::from(px));
+    let mut width = 0.0;
+    let mut prev = None;
+    for ch in text.chars() {
+        let id = scaled.glyph_id(ch);
+        if let Some(p) = prev {
+            width += scaled.kern(p, id);
+        }
+        width += scaled.h_advance(id);
+        prev = Some(id);
+    }
+    width
+}
+
+/// Break `text` into lines no wider than `max_w` pixels, on spaces.
+fn wrap(weight: Weight, px: f32, max_w: f32, text: &str) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        let candidate = if line.is_empty() { word.to_string() } else { format!("{line} {word}") };
+        if !line.is_empty() && measure(weight, px, &candidate) > max_w {
+            lines.push(std::mem::take(&mut line));
+            line = word.to_string();
+        } else {
+            line = candidate;
+        }
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    lines
+}
 
 struct Canvas {
     w: u32,
     h: u32,
     px: Vec<u8>,
+    /// Pixels per design unit: the picture is designed at 776 wide.
+    u: f32,
 }
 
 impl Canvas {
@@ -89,62 +305,156 @@ impl Canvas {
         for _ in 0..w * h {
             px.extend_from_slice(&BG);
         }
-        Self { w, h, px }
+        Self { w, h, px, u: w as f32 / 776.0 }
     }
 
-    fn put(&mut self, x: u32, y: u32, c: [u8; 3]) {
-        if x < self.w && y < self.h {
-            let i = ((y * self.w + x) * 3) as usize;
-            self.px[i..i + 3].copy_from_slice(&c);
+    /// Design units to pixels.
+    fn d(&self, v: f32) -> f32 {
+        v * self.u
+    }
+
+    /// Text sizes are a little larger than the layout units: the screen is small on a desktop.
+    fn px(&self, size: f32) -> f32 {
+        size * self.u * 1.18
+    }
+
+    /// Blend `c` over the pixel at (x, y) with coverage `a` (0 to 1).
+    fn blend(&mut self, x: i64, y: i64, c: [u8; 3], a: f32) {
+        if x < 0 || y < 0 || x >= self.w as i64 || y >= self.h as i64 || a <= 0.0 {
+            return;
+        }
+        let i = ((y as u32 * self.w + x as u32) * 3) as usize;
+        let a = a.min(1.0);
+        for (dst, src) in self.px[i..i + 3].iter_mut().zip(c) {
+            *dst = (*dst as f32 * (1.0 - a) + src as f32 * a).round() as u8;
         }
     }
 
-    fn text(&mut self, x: u32, y: u32, s: u32, text: &str, c: [u8; 3]) {
-        for (n, ch) in text.chars().enumerate() {
-            let gx = x + n as u32 * 6 * s;
-            for (row, bits) in glyph(ch).iter().enumerate() {
-                for col in 0..5u32 {
-                    if bits & (1 << (4 - col)) != 0 {
-                        for dy in 0..s {
-                            for dx in 0..s {
-                                self.put(gx + col * s + dx, y + row as u32 * s + dy, c);
-                            }
-                        }
+    /// Draw one line of text with its top at `y`; returns its width.
+    fn text(&mut self, x: f32, y: f32, weight: Weight, size: f32, c: [u8; 3], text: &str) -> f32 {
+        let px = self.px(size);
+        let f = font(weight);
+        let scaled = f.as_scaled(PxScale::from(px));
+        let baseline = y + scaled.ascent();
+        let mut caret = x;
+        let mut prev = None;
+        for ch in text.chars() {
+            let id = scaled.glyph_id(ch);
+            if let Some(p) = prev {
+                caret += scaled.kern(p, id);
+            }
+            let glyph = id.with_scale_and_position(PxScale::from(px), point(caret, baseline));
+            if let Some(outline) = f.outline_glyph(glyph) {
+                let b = outline.px_bounds();
+                outline.draw(|gx, gy, cov| self.blend(b.min.x as i64 + gx as i64, b.min.y as i64 + gy as i64, c, cov));
+            }
+            caret += scaled.h_advance(id);
+            prev = Some(id);
+        }
+        caret - x
+    }
+
+    /// Line height for `size`.
+    fn line(&self, size: f32) -> f32 {
+        self.px(size) * 1.38
+    }
+
+    /// Text centred on `cx`.
+    fn text_centered(&mut self, cx: f32, y: f32, weight: Weight, size: f32, c: [u8; 3], text: &str) {
+        let w = measure(weight, self.px(size), text);
+        self.text(cx - w / 2.0, y, weight, size, c, text);
+    }
+
+    /// A wrapped paragraph; returns the y below it.
+    fn para(&mut self, x: f32, y: f32, max_w: f32, style: Style, text: &str) -> f32 {
+        let Style(weight, size, colour) = style;
+        let mut y = y;
+        for line in wrap(weight, self.px(size), max_w, text) {
+            self.text(x, y, weight, size, colour, &line);
+            y += self.line(size);
+        }
+        y
+    }
+
+    fn disc(&mut self, cx: f32, cy: f32, r: f32, c: [u8; 3]) {
+        for y in (cy - r - 1.0).floor() as i64..=(cy + r + 1.0).ceil() as i64 {
+            for x in (cx - r - 1.0).floor() as i64..=(cx + r + 1.0).ceil() as i64 {
+                let d = ((x as f32 + 0.5 - cx).powi(2) + (y as f32 + 0.5 - cy).powi(2)).sqrt();
+                self.blend(x, y, c, r - d + 0.5);
+            }
+        }
+    }
+
+    /// A rounded rectangle, filled, with an optional border drawn inside it.
+    fn round_rect(&mut self, rect: [f32; 4], radius: f32, fill: Option<[u8; 3]>, border: Option<([u8; 3], f32)>) {
+        let [x, y, w, h] = rect;
+        let r = radius.min(w / 2.0).min(h / 2.0);
+        for py in y.floor() as i64..(y + h).ceil() as i64 {
+            for px in x.floor() as i64..(x + w).ceil() as i64 {
+                // distance outside the rounded shape (negative inside)
+                let qx = ((px as f32 + 0.5 - (x + w / 2.0)).abs() - (w / 2.0 - r)).max(0.0);
+                let qy = ((py as f32 + 0.5 - (y + h / 2.0)).abs() - (h / 2.0 - r)).max(0.0);
+                let dist = (qx * qx + qy * qy).sqrt() - r;
+                let inside = (0.5 - dist).clamp(0.0, 1.0);
+                if let Some(f) = fill {
+                    self.blend(px, py, f, inside);
+                }
+                if let Some((bc, bw)) = border {
+                    let ring = inside.min((dist + bw + 0.5).clamp(0.0, 1.0));
+                    self.blend(px, py, bc, ring);
+                }
+            }
+        }
+    }
+
+    /// The app icon, `size` design units wide, with its top-left at (x, y).
+    fn logo(&mut self, x: f32, y: f32, size: f32) {
+        let (lw, lh, rgba) = logo();
+        let side = self.d(size).round().max(1.0) as u32;
+        for ty in 0..side {
+            for tx in 0..side {
+                // average the source pixels under this target pixel, weighted by alpha
+                let (x0, x1) = (tx * lw / side, ((tx + 1) * lw / side).max(tx * lw / side + 1));
+                let (y0, y1) = (ty * lh / side, ((ty + 1) * lh / side).max(ty * lh / side + 1));
+                let (mut r, mut g, mut b, mut a, mut n) = (0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32);
+                for sy in y0..y1.min(*lh) {
+                    for sx in x0..x1.min(*lw) {
+                        let i = ((sy * lw + sx) * 4) as usize;
+                        let al = rgba[i + 3] as f32 / 255.0;
+                        r += rgba[i] as f32 * al;
+                        g += rgba[i + 1] as f32 * al;
+                        b += rgba[i + 2] as f32 * al;
+                        a += al;
+                        n += 1.0;
                     }
                 }
-            }
-        }
-    }
-
-    fn dot(&mut self, cx: u32, cy: u32, r: u32, c: [u8; 3]) {
-        for y in cy.saturating_sub(r)..=cy + r {
-            for x in cx.saturating_sub(r)..=cx + r {
-                let (dx, dy) = (x as f32 - cx as f32, y as f32 - cy as f32);
-                if dx * dx + dy * dy <= (r * r) as f32 {
-                    self.put(x, y, c);
+                if a > 0.0 {
+                    let c = [(r / a).round() as u8, (g / a).round() as u8, (b / a).round() as u8];
+                    self.blend(x as i64 + tx as i64, y as i64 + ty as i64, c, a / n);
                 }
             }
         }
     }
-}
 
-/// Break `text` into lines of at most `max` characters, on spaces.
-fn wrap(text: &str, max: usize) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut line = String::new();
-    for word in text.split_whitespace() {
-        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > max {
-            lines.push(std::mem::take(&mut line));
+    /// A pill button with a centred label that shrinks until it fits.
+    fn button(&mut self, rect: [u32; 4], label: &str, hover: bool, quiet: bool) {
+        let r = [rect[0] as f32, rect[1] as f32, rect[2] as f32, rect[3] as f32];
+        let bw = self.d(3.0).max(1.0);
+        if quiet {
+            self.round_rect(r, r[3] / 2.0, hover.then_some(SURFACE), Some((if hover { GREEN } else { MUTED }, bw)));
+        } else {
+            let fill = if hover { SURFACE_HOVER } else { SURFACE };
+            self.round_rect(r, r[3] / 2.0, Some(fill), Some((GREEN, bw)));
         }
-        if !line.is_empty() {
-            line.push(' ');
+        let mut size = 38.0;
+        while size > 20.0 && measure(Weight::Semibold, self.px(size), label) > r[2] - self.d(56.0) {
+            size -= 2.0;
         }
-        line.push_str(word);
+        let px = self.px(size);
+        let top = r[1] + (r[3] - self.line(size) / 1.0) / 2.0 + self.d(size * 0.04);
+        let _ = px;
+        self.text_centered(r[0] + r[2] / 2.0, top, Weight::Semibold, size, TEXT, label);
     }
-    if !line.is_empty() {
-        lines.push(line);
-    }
-    lines
 }
 
 struct Words {
@@ -152,124 +462,300 @@ struct Words {
     status: String,
     colour: [u8; 3],
     animate: bool,
-    /// Numbered or plain paragraphs, in white.
+    /// Paragraphs, or numbered steps when `numbered`.
     body: Vec<String>,
-    /// Smaller print at the bottom, in grey.
+    numbered: bool,
+    /// Smaller print, in grey.
     hint: String,
     /// Which phone this is about, if any.
     phone: Option<String>,
 }
 
 fn words(status: &Status) -> Words {
-    let w = |status: &str, colour, animate, body: &[&str], hint: &str, phone: Option<&String>| Words {
+    let w = |status: &str, colour, animate, body: &[&str], numbered, hint: &str, phone: Option<&String>| Words {
         status: status.to_string(),
         colour,
         animate,
         body: body.iter().map(|s| s.to_string()).collect(),
+        numbered,
         hint: hint.to_string(),
         phone: phone.cloned(),
     };
     match status {
         Status::Looking => w(
-            "LOOKING FOR A PHONE",
+            "Looking for a phone",
             AMBER,
             true,
-            &[
-                "1 PLUG IT IN WITH A USB CABLE",
-                "2 TURN ON USB DEBUGGING IN DEVELOPER OPTIONS",
-                "3 TAP ALLOW ON THE PHONE",
-            ],
-            "NO CABLE? RUN HANDSET --WIFI WITH THE PHONE ON USB, OR HANDSET --CONNECT IP:PORT.",
+            &["Plug it in with a USB cable", "Turn on USB debugging in Developer options", "Tap Allow on the phone"],
+            true,
+            "",
             None,
         ),
         Status::Unauthorized(s) => w(
-            "ALLOW THIS MAC ON THE PHONE",
+            "Allow this Mac on the phone",
             AMBER,
             false,
-            &["UNLOCK THE PHONE AND TAP ALLOW ON THE ALLOW USB DEBUGGING? PROMPT."],
-            "NO PROMPT? UNPLUG THE CABLE, TURN USB DEBUGGING OFF AND ON, AND PLUG IT BACK IN.",
+            &["Unlock the phone and tap Allow on the \"Allow USB debugging?\" prompt."],
+            false,
+            "No prompt? Unplug the cable, turn USB debugging off and on, and plug it back in.",
             Some(s),
         ),
         Status::Offline(s) => w(
-            "THE PHONE IS OFFLINE",
+            "The phone is offline",
             RED,
             false,
-            &["UNPLUG AND REPLUG THE CABLE."],
-            "IF IT STAYS OFFLINE, RUN ADB KILL-SERVER AND TRY AGAIN.",
+            &["Unplug and replug the cable."],
+            false,
+            "If it stays offline, run adb kill-server and try again.",
             Some(s),
         ),
         Status::Permissions(s) => w(
-            "NO ACCESS TO THE PHONE",
+            "No access to the phone",
             RED,
             false,
-            &["ADB REPORTS A PERMISSIONS PROBLEM.", "TRY ANOTHER CABLE OR USB PORT."],
+            &["adb reports a permissions problem.", "Try another cable or USB port."],
+            false,
             "",
             Some(s),
         ),
         Status::AdbMissing => w(
-            "ADB IS MISSING",
+            "adb is missing",
             RED,
             false,
-            &["HANDSET NEEDS ANDROID PLATFORM-TOOLS."],
-            "INSTALL IT WITH: BREW INSTALL --CASK ANDROID-PLATFORM-TOOLS",
+            &["Handset needs Android platform-tools."],
+            false,
+            "Install it with: brew install --cask android-platform-tools",
             None,
         ),
-        Status::Connecting(s) => w("CONNECTING", GREEN, true, &["STARTING MIRRORING."], "", Some(s)),
+        Status::Connecting(s) => w("Connecting", GREEN, true, &["Starting mirroring."], false, "", Some(s)),
         Status::Failed(msg) => {
             let short: String = msg.chars().take(140).collect();
-            w("COULD NOT START MIRRORING", RED, false, &[&short], "REPLUG THE PHONE TO TRY AGAIN.", None)
+            w("Could not start mirroring", RED, false, &[&short], false, "Replug the phone to try again.", None)
         }
     }
 }
 
-/// The screen as RGB, `w` by `h` pixels. `tick` drives the animation (one step every half second).
-pub fn render(w: u32, h: u32, status: &Status, tick: u32) -> Vec<u8> {
+/// Everything the screen shows.
+pub struct Model<'a> {
+    pub status: &'a Status,
+    pub view: View,
+    /// Animation step, one per half second.
+    pub tick: u32,
+    /// The button under the cursor.
+    pub hover: Option<usize>,
+    /// Phones announcing themselves that can be connected to.
+    pub nearby: &'a [adb::Service],
+    /// A USB phone that is ready but waiting in the Wi-Fi view, to offer to switch it.
+    pub usb: Option<&'a str>,
+    pub qr: Option<&'a Qr>,
+    /// A line of progress or trouble, shown in the Wi-Fi and QR views.
+    pub note: Option<&'a str>,
+}
+
+pub struct Screen {
+    pub rgb: Vec<u8>,
+    pub buttons: Vec<Button>,
+}
+
+/// The screen as RGB, `w` by `h` pixels, and where its buttons are.
+pub fn render(w: u32, h: u32, m: &Model) -> Screen {
     let mut c = Canvas::new(w, h);
-    let s = (w / 115).max(1);
-    let margin = 9 * s;
-    let max_chars = ((w.saturating_sub(2 * margin)) / (6 * s)).max(8) as usize;
-    let line_h = 11 * s;
-    let words = words(status);
+    let u = c.u;
+    let margin = 56.0 * u;
+    let content_w = w as f32 - 2.0 * margin;
+    let (btn_h, gap) = (100.0 * u, 24.0 * u);
+    let mut buttons: Vec<Button> = Vec::new();
+    let dots = ".".repeat((m.tick % 4) as usize);
 
-    let mut y = h / 8;
-    c.text(margin, y, s, "CONNECT A PHONE", WHITE);
-    y += 2 * line_h;
-
-    let dots = if words.animate { ".".repeat((tick % 4) as usize) } else { String::new() };
-    let lit = !words.animate || tick.is_multiple_of(2);
-    let dot_colour = if lit { words.colour } else { [words.colour[0] / 3, words.colour[1] / 3, words.colour[2] / 3] };
-    c.dot(margin + 5 * s / 2, y + 7 * s / 2, 5 * s / 2, dot_colour);
-    let status_text = format!("{}{}", words.status, dots);
-    let status_chars = max_chars.saturating_sub(3);
-    for (i, line) in wrap(&words.status, status_chars).iter().enumerate() {
-        let shown =
-            if i == 0 && wrap(&words.status, status_chars).len() == 1 { status_text.clone() } else { line.clone() };
-        c.text(margin + 8 * s, y + i as u32 * line_h, s, &shown, words.colour);
+    // header: the icon large on the home screen, small beside the title elsewhere
+    let mut y;
+    if m.view == View::Home {
+        c.logo((776.0 - 190.0) / 2.0 * 1.0, 86.0, 190.0);
+        y = 300.0 * u;
+        c.text_centered(w as f32 / 2.0, y, Weight::Semibold, 54.0, TEXT, "Connect a phone");
+        y += c.line(54.0) + 14.0 * u;
+    } else {
+        c.logo(56.0, 70.0, 92.0);
+        let title = if m.view == View::Wifi { "Phones on Wi-Fi" } else { "Scan to pair" };
+        c.text(
+            margin + 92.0 * u + 24.0 * u,
+            70.0 * u + (92.0 * u - c.line(46.0)) / 2.0,
+            Weight::Semibold,
+            46.0,
+            TEXT,
+            title,
+        );
+        y = 200.0 * u;
     }
-    y += wrap(&words.status, status_chars).len() as u32 * line_h + line_h;
 
-    for para in &words.body {
-        for line in wrap(para, max_chars) {
-            c.text(margin, y, s, &line, WHITE);
-            y += line_h;
+    // bottom buttons are stacked upwards from the bottom edge; `bottom` is the top of the stack
+    let mut bottom = h as f32 - 70.0 * u;
+    let mut stack = |label: &str, action: Action, buttons: &mut Vec<Button>| {
+        bottom -= btn_h;
+        buttons.push(Button {
+            rect: [margin as u32, bottom as u32, content_w as u32, btn_h as u32],
+            label: label.to_string(),
+            action,
+        });
+        bottom -= gap;
+    };
+
+    match m.view {
+        View::Home => {
+            stack("QR code", Action::Open(View::Qr), &mut buttons);
+            stack("Wi-Fi", Action::Open(View::Wifi), &mut buttons);
+            let words = words(m.status);
+            let lit = !words.animate || m.tick.is_multiple_of(2);
+            let dot = if lit { words.colour } else { [words.colour[0] / 3, words.colour[1] / 3, words.colour[2] / 3] };
+            let text_x = margin + 38.0 * u;
+            let status = if words.animate { format!("{}{dots}", words.status) } else { words.status.clone() };
+            c.disc(margin + 11.0 * u, y + c.line(36.0) / 2.0, 10.0 * u, dot);
+            y = c.para(text_x, y, content_w - 38.0 * u, Style(Weight::Semibold, 36.0, words.colour), &status)
+                + 26.0 * u;
+            for (i, item) in words.body.iter().enumerate() {
+                if words.numbered {
+                    let top = y;
+                    let tx = margin + 66.0 * u;
+                    let lines = wrap(Weight::Regular, c.px(32.0), content_w - 66.0 * u, item).len().max(1) as f32;
+                    let row = (lines * c.line(32.0)).max(48.0 * u);
+                    c.disc(margin + 24.0 * u, top + 24.0 * u, 24.0 * u, SURFACE);
+                    c.text_centered(
+                        margin + 24.0 * u,
+                        top + 24.0 * u - c.line(28.0) / 2.0,
+                        Weight::Semibold,
+                        28.0,
+                        GREEN,
+                        &(i + 1).to_string(),
+                    );
+                    c.para(
+                        tx,
+                        top + 24.0 * u - c.line(32.0) / 2.0,
+                        content_w - 66.0 * u,
+                        Style(Weight::Regular, 32.0, TEXT),
+                        item,
+                    );
+                    y += row + 22.0 * u;
+                } else {
+                    y = c.para(margin, y, content_w, Style(Weight::Regular, 32.0, TEXT), item) + 10.0 * u;
+                }
+            }
+            if let Some(phone) = &words.phone {
+                y = c.para(
+                    margin,
+                    y + 6.0 * u,
+                    content_w,
+                    Style(Weight::Regular, 28.0, MUTED),
+                    &format!("Phone {phone}"),
+                );
+            }
+            // small print only while it clears the buttons and their lead-in
+            let room = bottom - 70.0 * u;
+            for line in wrap(Weight::Regular, c.px(28.0), content_w, &words.hint) {
+                if y + c.line(28.0) > room {
+                    break;
+                }
+                c.text(margin, y + 6.0 * u, Weight::Regular, 28.0, MUTED, &line);
+                y += c.line(28.0);
+            }
+            c.text_centered(
+                w as f32 / 2.0,
+                bottom - 14.0 * u - c.line(28.0),
+                Weight::Regular,
+                28.0,
+                MUTED,
+                "No cable? Connect another way",
+            );
         }
-        y += line_h / 2;
-    }
-    if let Some(phone) = &words.phone {
-        y += line_h / 2;
-        for line in wrap(&format!("PHONE {phone}"), max_chars) {
-            c.text(margin, y, s, &line, MUTED);
-            y += line_h;
+        View::Wifi => {
+            stack("Back", Action::Back, &mut buttons);
+            if let Some(usb) = m.usb {
+                stack(&format!("Switch {usb} to Wi-Fi"), Action::SwitchToWifi(usb.to_string()), &mut buttons);
+            }
+            stack("Type an address", Action::TypeAddress, &mut buttons);
+            y = c.para(margin, y, content_w, Style(Weight::Regular, 32.0, MUTED), "Tap a paired phone to connect")
+                + 22.0 * u;
+            let connectable: Vec<&adb::Service> =
+                m.nearby.iter().filter(|n| n.kind == adb::ServiceKind::Connect).take(2).collect();
+            if connectable.is_empty() {
+                c.text(margin, y, Weight::Semibold, 34.0, AMBER, &format!("None found yet{dots}"));
+                y += c.line(34.0) + 14.0 * u;
+                c.para(
+                    margin,
+                    y,
+                    content_w,
+                    Style(Weight::Regular, 30.0, MUTED),
+                    "Turn on Wireless debugging in Developer options. A new phone needs pairing once: use the QR code.",
+                );
+            }
+            for n in connectable {
+                buttons.push(Button {
+                    rect: [margin as u32, y as u32, content_w as u32, btn_h as u32],
+                    label: n.addr.clone(),
+                    action: Action::Connect(n.addr.clone()),
+                });
+                y += btn_h + gap;
+            }
+            // notes sit just above the buttons: progress or trouble first, then the USB hint above it
+            let mut ny = bottom;
+            if let Some(note) = m.note {
+                let n = wrap(Weight::Semibold, c.px(30.0), content_w, note).len().min(3) as f32;
+                ny -= n * c.line(30.0) + 10.0 * u;
+                c.para(margin, ny, content_w, Style(Weight::Semibold, 30.0, AMBER), note);
+            }
+            if m.usb.is_some() {
+                ny -= c.line(30.0) + 10.0 * u;
+                c.text(margin, ny, Weight::Regular, 30.0, MUTED, "A USB phone is plugged in.");
+            }
+        }
+        View::Qr => {
+            stack("Back", Action::Back, &mut buttons);
+            if let Some(qr) = m.qr {
+                let quiet = 3;
+                let modules = qr.width as u32 + 2 * quiet;
+                // leave room below for the steps and the status
+                let side = content_w.min(bottom - y - 330.0 * u).max(modules as f32);
+                let px = (side / modules as f32).floor().max(1.0);
+                let size = px * modules as f32;
+                let x0 = (w as f32 - size) / 2.0;
+                c.round_rect([x0, y, size, size], 28.0 * u, Some([255, 255, 255]), None);
+                for my in 0..qr.width {
+                    for mx in 0..qr.width {
+                        if qr.dark[my * qr.width + mx] {
+                            let (rx, ry) = (x0 + (mx as u32 + quiet) as f32 * px, y + (my as u32 + quiet) as f32 * px);
+                            for yy in ry as u32..(ry + px) as u32 {
+                                for xx in rx as u32..(rx + px) as u32 {
+                                    c.blend(xx as i64, yy as i64, [0, 0, 0], 1.0);
+                                }
+                            }
+                        }
+                    }
+                }
+                y += size + 30.0 * u;
+            } else {
+                c.text(margin, y, Weight::Semibold, 34.0, RED, "Could not make a QR code");
+                y += c.line(34.0) * 2.0;
+            }
+            y = c.para(
+                margin,
+                y,
+                content_w,
+                Style(Weight::Regular, 30.0, MUTED),
+                "On the phone: Developer options, Wireless debugging, Pair device with QR code.",
+            ) + 14.0 * u;
+            let (text, colour) = match m.note {
+                Some(n) => (n.to_string(), AMBER),
+                None => (format!("Waiting for the phone to scan{dots}"), TEXT),
+            };
+            c.para(margin, y, content_w, Style(Weight::Semibold, 32.0, colour), &text);
         }
     }
 
-    let hint = wrap(&words.hint, max_chars);
-    let mut hy = h.saturating_sub(margin * 3 + hint.len() as u32 * line_h);
-    for line in &hint {
-        c.text(margin, hy, s, line, MUTED);
-        hy += line_h;
+    // read top to bottom, and indexed that way for hover
+    buttons.sort_by_key(|b| b.rect[1]);
+    for (i, b) in buttons.iter().enumerate() {
+        c.button(b.rect, &b.label, m.hover == Some(i), matches!(b.action, Action::Back));
     }
-    c.px
+    Screen { rgb: c.px, buttons }
 }
 
 /// RGB to I420 the way the renderer reads it: BT.709, limited range, chroma averaged over 2x2.
@@ -315,6 +801,10 @@ mod tests {
         items.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect()
     }
 
+    fn svc(kind: adb::ServiceKind, addr: &str) -> adb::Service {
+        adb::Service { name: "adb-X".into(), kind, addr: addr.into() }
+    }
+
     #[test]
     fn picks_a_ready_phone() {
         let list = l(&[("A", "unauthorized"), ("B", "device"), ("C", "device")]);
@@ -322,6 +812,13 @@ mod tests {
         assert_eq!(pick(&list, Some("C")), Some("C".into()));
         assert_eq!(pick(&list, Some("A")), None);
         assert_eq!(pick(&[], None), None);
+    }
+
+    #[test]
+    fn tells_wireless_from_usb() {
+        assert!(is_wireless("192.168.0.20:5555"));
+        assert!(is_wireless("adb-W82202003817-MPn68n._adb-tls-connect._tcp"));
+        assert!(!is_wireless("W82202003817"));
     }
 
     #[test]
@@ -335,10 +832,24 @@ mod tests {
     }
 
     #[test]
-    fn wraps_on_spaces() {
-        assert_eq!(wrap("ONE TWO THREE", 7), vec!["ONE TWO", "THREE"]);
-        assert_eq!(wrap("TOOLONGWORD", 4), vec!["TOOLONGWORD"]);
-        assert!(wrap("", 10).is_empty());
+    fn wraps_to_a_pixel_width() {
+        let text = "Turn on USB debugging in Developer options";
+        let narrow = wrap(Weight::Regular, 32.0, 200.0, text);
+        assert!(narrow.len() > 1);
+        assert!(narrow.iter().all(|l| measure(Weight::Regular, 32.0, l) <= 200.0 || !l.contains(' ')));
+        assert_eq!(narrow.join(" "), text);
+        assert_eq!(wrap(Weight::Regular, 32.0, 10_000.0, text), vec![text]);
+        assert!(wrap(Weight::Regular, 32.0, 100.0, "").is_empty());
+        // bold text is wider than regular at the same size
+        assert!(measure(Weight::Semibold, 32.0, "Connect") > measure(Weight::Regular, 32.0, "Connect"));
+    }
+
+    #[test]
+    fn the_icon_and_fonts_load() {
+        let (w, h, rgba) = logo();
+        assert_eq!((*w, *h), (512, 512));
+        assert_eq!(rgba.len(), 512 * 512 * 4);
+        assert!(measure(Weight::Regular, 30.0, "Wi-Fi") > 30.0);
     }
 
     #[test]
@@ -350,28 +861,90 @@ mod tests {
         assert_eq!((y.u.len(), y.stride_uv), (4, 2));
     }
 
-    /// Writes every state to `$HANDSET_TEST_OUT/connect-<n>.png` (if set) so they can be looked at.
     #[test]
-    fn renders_every_state() {
-        let states = [
-            Status::Looking,
-            Status::Unauthorized("W82202003817".into()),
-            Status::Offline("W82202003817".into()),
-            Status::Permissions("W82202003817".into()),
-            Status::AdbMissing,
-            Status::Connecting("W82202003817".into()),
-            Status::Failed("Could not start mirroring: adb push: no such file".into()),
+    fn the_qr_payload_is_what_android_scans() {
+        assert_eq!(payload("handset-abc123", "Secret42"), "WIFI:T:ADB;S:handset-abc123;P:Secret42;;");
+        let qr = Qr::new().unwrap();
+        assert!(qr.name.starts_with("handset-") && qr.name.len() == 14);
+        assert_eq!(qr.password.len(), 10);
+        assert_eq!(qr.dark.len(), qr.width * qr.width);
+        assert!(qr.dark.iter().any(|&d| d) && qr.dark.iter().any(|&d| !d));
+        // a second code is different
+        assert_ne!(Qr::new().unwrap().password, qr.password);
+    }
+
+    fn model<'a>(
+        status: &'a Status,
+        view: View,
+        nearby: &'a [adb::Service],
+        usb: Option<&'a str>,
+        qr: Option<&'a Qr>,
+        note: Option<&'a str>,
+    ) -> Model<'a> {
+        Model { status, view, tick: 1, hover: None, nearby, usb, qr, note }
+    }
+
+    #[test]
+    fn buttons_stay_inside_the_picture_and_do_not_overlap() {
+        let (w, h) = (720u32, 1560u32);
+        let qr = Qr::new().unwrap();
+        let nearby = [
+            svc(adb::ServiceKind::Connect, "192.168.0.20:41789"),
+            svc(adb::ServiceKind::Connect, "192.168.0.31:40000"),
+            svc(adb::ServiceKind::Pairing, "192.168.0.9:1"),
         ];
-        for (n, s) in states.iter().enumerate() {
+        let looking = Status::Looking;
+        for m in [
+            model(&looking, View::Home, &[], None, None, None),
+            model(&looking, View::Wifi, &[], None, None, None),
+            model(&looking, View::Wifi, &nearby, Some("W82202003817"), None, Some("Connecting to 192.168.0.20...")),
+            model(&looking, View::Qr, &[], None, Some(&qr), None),
+            model(&looking, View::Qr, &[], None, None, Some("PAIRING...")),
+        ] {
+            let screen = render(w, h, &m);
+            assert_eq!(screen.rgb.len(), (w * h * 3) as usize);
+            assert!(!screen.buttons.is_empty());
+            for (i, b) in screen.buttons.iter().enumerate() {
+                let [x, y, bw, bh] = b.rect;
+                assert!(x + bw <= w && y + bh <= h, "{:?} outside", b.action);
+                for o in &screen.buttons[i + 1..] {
+                    let [ox, oy, ow, oh] = o.rect;
+                    let apart = y + bh <= oy || oy + oh <= y || x + bw <= ox || ox + ow <= x;
+                    assert!(apart, "{:?} overlaps {:?}", b.action, o.action);
+                }
+            }
+        }
+        // the Wi-Fi view lists the connectable phones, not the pairing entry
+        let screen = render(w, h, &model(&looking, View::Wifi, &nearby, None, None, None));
+        let connects: Vec<_> = screen.buttons.iter().filter(|b| matches!(b.action, Action::Connect(_))).collect();
+        assert_eq!(connects.len(), 2);
+    }
+
+    /// Writes screens to `$HANDSET_TEST_OUT/connect-<n>.png` (if set) so they can be looked at.
+    #[test]
+    fn renders_every_screen() {
+        let qr = Qr::new().unwrap();
+        let nearby = [svc(adb::ServiceKind::Connect, "192.168.0.20:41789")];
+        let looking = Status::Looking;
+        let unauth = Status::Unauthorized("W82202003817".into());
+        let failed = Status::Failed("Could not start mirroring: adb push: no such file".into());
+        let screens = [
+            model(&looking, View::Home, &[], None, None, None),
+            model(&unauth, View::Home, &[], None, None, None),
+            model(&failed, View::Home, &[], None, None, None),
+            model(&looking, View::Wifi, &[], None, None, None),
+            model(&looking, View::Wifi, &nearby, Some("W82202003817"), None, Some("Connecting to 192.168.0.20...")),
+            model(&looking, View::Qr, &[], None, Some(&qr), None),
+        ];
+        for (n, m) in screens.iter().enumerate() {
             let (w, h) = (720, 1560);
-            let rgb = render(w, h, s, 1);
-            assert_eq!(rgb.len(), (w * h * 3) as usize);
+            let screen = render(w, h, m);
             if let Some(dir) = std::env::var_os("HANDSET_TEST_OUT") {
                 let path = std::path::Path::new(&dir).join(format!("connect-{n}.png"));
                 let mut enc = png::Encoder::new(std::fs::File::create(path).unwrap(), w, h);
                 enc.set_color(png::ColorType::Rgb);
                 enc.set_depth(png::BitDepth::Eight);
-                enc.write_header().unwrap().write_image_data(&rgb).unwrap();
+                enc.write_header().unwrap().write_image_data(&screen.rgb).unwrap();
             }
         }
     }

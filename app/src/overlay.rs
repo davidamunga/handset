@@ -3,7 +3,7 @@
 //! screenshots or recordings.
 
 /// Rows of a glyph, 5 bits each, most significant bit on the left.
-pub fn glyph(c: char) -> [u8; 7] {
+fn glyph(c: char) -> [u8; 7] {
     match c.to_ascii_uppercase() {
         'A' => [0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001],
         'B' => [0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110],
