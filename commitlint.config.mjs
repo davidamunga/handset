@@ -9,6 +9,8 @@ const scopes = fs
   .filter((line) => line && !line.startsWith('#'));
 
 export default {
+  // Dependabot's bodies carry long release-note URLs that no one writes by hand
+  ignores: [(message) => /^Signed-off-by: dependabot\[bot\]/m.test(message)],
   extends: ['@commitlint/config-conventional'],
   rules: {
     'scope-enum': [2, 'always', scopes],
