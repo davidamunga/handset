@@ -14,6 +14,17 @@ framed screenshots and recordings with audio.
 > **Status: early work in progress.** It works on the author's Mac with one phone. Expect rough edges.
 > macOS is the only platform that has been tested.
 
+## What it looks like
+
+With no phone connected, Handset opens on a connect screen inside the frame: USB steps that update as you plug in,
+and Wi-Fi and QR code options for connecting without a cable.
+
+<p align="center">
+  <img src="docs/images/connect-home.png" alt="The connect screen with USB steps and Wi-Fi and QR code buttons" width="230">
+  <img src="docs/images/connect-wifi.png" alt="The Wi-Fi view listing a phone found on the network" width="230">
+  <img src="docs/images/connect-qr.png" alt="The QR code view for pairing a phone" width="230">
+</p>
+
 ## Features
 
 - Live video and device audio over adb (USB), decoded in software and drawn with wgpu

@@ -924,20 +924,20 @@ mod tests {
     #[test]
     fn renders_every_screen() {
         let qr = Qr::new().unwrap();
-        let nearby = [svc(adb::ServiceKind::Connect, "192.168.0.20:41789")];
+        let nearby = [svc(adb::ServiceKind::Connect, "192.168.1.23:41789")];
         let looking = Status::Looking;
-        let unauth = Status::Unauthorized("W82202003817".into());
+        let unauth = Status::Unauthorized("R58M12ABCDE".into());
         let failed = Status::Failed("Could not start mirroring: adb push: no such file".into());
         let screens = [
             model(&looking, View::Home, &[], None, None, None),
             model(&unauth, View::Home, &[], None, None, None),
             model(&failed, View::Home, &[], None, None, None),
             model(&looking, View::Wifi, &[], None, None, None),
-            model(&looking, View::Wifi, &nearby, Some("W82202003817"), None, Some("Connecting to 192.168.0.20...")),
+            model(&looking, View::Wifi, &nearby, Some("R58M12ABCDE"), None, Some("Connecting to 192.168.1.23...")),
             model(&looking, View::Qr, &[], None, Some(&qr), None),
         ];
         for (n, m) in screens.iter().enumerate() {
-            let (w, h) = (720, 1560);
+            let (w, h) = (702, 1560); // the aspect of the frame's screen
             let screen = render(w, h, m);
             if let Some(dir) = std::env::var_os("HANDSET_TEST_OUT") {
                 let path = std::path::Path::new(&dir).join(format!("connect-{n}.png"));
