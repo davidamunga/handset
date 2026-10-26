@@ -68,11 +68,36 @@ pub fn show(window: &Window, s: &State) {
     let frame = Submenu::new("Frame", true);
     let _ =
         frame.append(&CheckMenuItem::with_id("frame:none", "None", true, s.frame.is_none() && !s.custom_frame, None));
+    // one submenu per device type (the part of the name before the colour), the original three on top
+    let titled = |name: &str| -> String {
+        name.chars().enumerate().map(|(i, c)| if i == 0 { c.to_ascii_uppercase() } else { c }).collect()
+    };
+    let item = |name: &str, label: String| {
+        CheckMenuItem::with_id(format!("frame:{name}"), label, true, s.frame.as_deref() == Some(name), None)
+    };
+    let mut groups: Vec<(String, Submenu)> = Vec::new();
     for name in &s.frames {
-        let title: String =
-            name.chars().enumerate().map(|(i, c)| if i == 0 { c.to_ascii_uppercase() } else { c }).collect();
-        let on = s.frame.as_deref() == Some(*name);
-        let _ = frame.append(&CheckMenuItem::with_id(format!("frame:{name}"), title, true, on, None));
+        match name.split_once('-') {
+            None => {
+                let _ = frame.append(&item(name, titled(name)));
+            }
+            Some((device, colour)) => {
+                let idx = match groups.iter().position(|(d, _)| d == device) {
+                    Some(i) => i,
+                    None => {
+                        groups.push((device.to_string(), Submenu::new(titled(device), true)));
+                        groups.len() - 1
+                    }
+                };
+                let _ = groups[idx].1.append(&item(name, titled(colour)));
+            }
+        }
+    }
+    if !groups.is_empty() {
+        let _ = frame.append(&PredefinedMenuItem::separator());
+    }
+    for (_, sub) in &groups {
+        let _ = frame.append(sub);
     }
     if s.custom_frame {
         let _ = frame.append(&CheckMenuItem::new("Custom (from --frame)", false, true, None));

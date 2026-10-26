@@ -28,7 +28,8 @@ and Wi-Fi and QR code options for connecting without a cable.
 ## Features
 
 - Live video and device audio over adb (USB), decoded in software and drawn with wgpu
-- Realistic phone frames (`obsidian`, `porcelain`, `hazel`, or your own PNG) on a transparent window,
+- Twenty-one device frames (punch-hole, notch, island, tablet, foldable, flip, rugged and more, see
+  [docs/frames.md](docs/frames.md)), or your own PNG, on a transparent window,
   switchable while running
 - Touch, scroll, keyboard and text input; landscape rotation
 - Framed screenshots (transparent PNG) and recordings (MP4 with audio, or GIF) via ffmpeg
