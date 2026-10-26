@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: davidamunga.Handset
+PackageVersion: 0.2.0
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: Handset-0.2.0\handset.exe
+    PortableCommandAlias: handset
+Dependencies:
+  PackageDependencies:
+    - PackageIdentifier: Google.PlatformTools
+ReleaseDate: 2026-10-26
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/davidamunga/handset/releases/download/v0.2.0/Handset-0.2.0-windows.zip
+    InstallerSha256: FFF5EE889348C9AB13380EA8B7C779C818B91D5F80103645E7F0091110CED403
+ManifestType: installer
+ManifestVersion: 1.6.0

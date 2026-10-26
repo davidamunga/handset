@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "description": "Mirror and control an Android phone from your computer, inside a realistic phone frame",
+  "homepage": "https://github.com/davidamunga/handset",
+  "license": "Apache-2.0",
+  "notes": "Handset is not code-signed yet: SmartScreen warns on first run (More info, Run anyway).",
+  "depends": "adb",
+  "suggest": {
+    "ffmpeg": "ffmpeg"
+  },
+  "url": "https://github.com/davidamunga/handset/releases/download/v0.2.0/Handset-0.2.0-windows.zip",
+  "hash": "fff5ee889348c9ab13380ea8b7c779c818b91d5f80103645e7f0091110ced403",
+  "extract_dir": "Handset-0.2.0",
+  "bin": "handset.exe",
+  "shortcuts": [
+    [
+      "handset.exe",
+      "Handset"
+    ]
+  ],
+  "checkver": "github",
+  "autoupdate": {
+    "url": "https://github.com/davidamunga/handset/releases/download/v$version/Handset-$version-windows.zip",
+    "extract_dir": "Handset-$version",
+    "hash": {
+      "url": "$baseurl/SHA256SUMS-windows"
+    }
+  }
+}

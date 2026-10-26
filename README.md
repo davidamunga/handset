@@ -58,7 +58,14 @@ Applications. The zip is a universal build (Apple Silicon and Intel). Check it a
 like. Install `adb` yourself in that case (`brew install --cask android-platform-tools`), and `ffmpeg` if
 you want recordings.
 
-On Windows, download `Handset-<version>-windows.zip` from the same page, unzip it and run `handset.exe`.
+On Windows, with [Scoop](https://scoop.sh) (this repository is the bucket, and `adb` comes with it):
+
+```sh
+scoop bucket add handset https://github.com/davidamunga/handset
+scoop install handset/handset
+```
+
+Or download `Handset-<version>-windows.zip` from the same page, unzip it and run `handset.exe`.
 The build is not code-signed yet, so SmartScreen warns on first run (More info, Run anyway), and a PC
 with Smart App Control turned on blocks it. Install `adb` (`winget install Google.PlatformTools`) and
 `ffmpeg` for recordings (`winget install Gyan.FFmpeg`); the app finds both without any setup.

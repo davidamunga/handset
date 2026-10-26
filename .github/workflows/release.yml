@@ -67,6 +67,34 @@ jobs:
           gh release create "v$VERSION" release-files/* \
             --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md --latest
 
+  scoop:
+    name: update the Scoop manifest
+    needs: [prepare, build, publish]
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - name: Point bucket/handset.json at the new release
+        run: |
+          HASH=$(gh release download "v${VERSION}" --pattern SHA256SUMS-windows --output - | awk '/windows\.zip/ { print $1 }')
+          test -n "$HASH"
+          jq --arg v "$VERSION" --arg h "$HASH" '
+            .version = $v
+            | .hash = $h
+            | .url = "https://github.com/davidamunga/handset/releases/download/v\($v)/Handset-\($v)-windows.zip"
+            | .extract_dir = "Handset-\($v)"' bucket/handset.json > bucket/handset.json.new
+          mv bucket/handset.json.new bucket/handset.json
+          if git diff --quiet; then echo "manifest already at ${VERSION}"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(release): update the Scoop manifest to ${VERSION}"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
   homebrew:
     name: update the Homebrew cask
     needs: [prepare, build, publish]

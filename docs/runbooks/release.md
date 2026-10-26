@@ -36,7 +36,8 @@ A release happens only when you start it. Merging a version pull request does no
    (`Handset-X.Y.Z-macos.zip`, the universal app bundle; `handset-X.Y.Z-macos.tar.gz`, the command line
    tool with the licence and notice; and `SHA256SUMS`) and, on Windows, `scripts/package-windows.ps1`
    (`Handset-X.Y.Z-windows.zip`, unsigned, and `SHA256SUMS-windows`). It then tags `vX.Y.Z`, creates a normal GitHub
-   release with the changelog section as its notes and the files attached, and bumps the Homebrew cask.
+   release with the changelog section as its notes and the files attached, bumps the Homebrew cask, and
+   points `bucket/handset.json` (the Scoop manifest, this repository is the bucket) at the new Windows zip.
 5. Check the release page. With the signing secrets set (below) the app is Developer ID signed,
    notarised and stapled, so it opens without a Gatekeeper warning. Without them the files are
    ad-hoc signed and Gatekeeper blocks a downloaded copy until it is opened with right-click, Open
@@ -120,3 +121,23 @@ and `xcrun stapler validate Handset.app`.
   the bigger bump) and let the pull request regenerate.
 - *Versions disagree:* run `npm run version` locally with no changesets pending: it only re-syncs
   `app/Cargo.toml` from `package.json`.
+
+## winget
+
+`app/packaging/winget/` holds the winget manifests for the latest release. Unlike Homebrew and Scoop, winget
+takes manifests only through a pull request to [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs),
+and the release workflow does not do that yet.
+
+First submission (once): copy the three files into `manifests/d/davidamunga/Handset/<version>/` in a fork of
+winget-pkgs, run `winget validate --manifest <folder>`, then open the pull request and answer its checks.
+
+Each release after that, from a Windows machine with a GitHub token:
+
+```powershell
+wingetcreate update davidamunga.Handset --version X.Y.Z `
+  --urls https://github.com/davidamunga/handset/releases/download/vX.Y.Z/Handset-X.Y.Z-windows.zip `
+  --submit
+```
+
+It downloads the zip, fills in the hash and opens the pull request. Then update the files in
+`app/packaging/winget/` to match (the version, the `RelativeFilePath` folder, the URL and the hash).

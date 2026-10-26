@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: davidamunga.Handset
+PackageVersion: 0.2.0
+PackageLocale: en-US
+Publisher: David Amunga
+PublisherUrl: https://github.com/davidamunga
+PackageName: Handset
+PackageUrl: https://github.com/davidamunga/handset
+License: Apache-2.0
+LicenseUrl: https://github.com/davidamunga/handset/blob/main/LICENSE
+ShortDescription: Mirror and control an Android phone from your computer, inside a realistic phone frame.
+Description: Handset is a small native app that implements the desktop side of the scrcpy protocol and embeds the unmodified scrcpy server. It shows your phone in a realistic frame, with a toolbar, screenshots, screen recording and audio.
+Moniker: handset
+Tags:
+  - adb
+  - android
+  - mirror
+  - scrcpy
+ReleaseNotesUrl: https://github.com/davidamunga/handset/releases/tag/v0.2.0
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
