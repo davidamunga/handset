@@ -19,6 +19,9 @@ pub struct State {
     pub toolbar: bool,
     /// Show where the phone is touched, in the window and in captures.
     pub touches: bool,
+    /// Look for newer releases by itself, and the newer version once one was found.
+    pub update_auto: bool,
+    pub update: Option<String>,
     pub clipboard: bool,
     /// A phone is being mirrored.
     pub mirroring: bool,
@@ -144,6 +147,12 @@ pub fn show(window: &Window, s: &State) {
     let _ = menu.append(&MenuItem::with_id("zoom:in", format!("Larger    {MOD}+"), true, None));
     let _ = menu.append(&MenuItem::with_id("zoom:out", format!("Smaller    {MOD}-"), true, None));
     let _ = menu.append(&MenuItem::with_id("zoom:reset", format!("Default Size    {MOD}0"), true, None));
+    let _ = menu.append(&PredefinedMenuItem::separator());
+    if let Some(v) = &s.update {
+        let _ = menu.append(&MenuItem::with_id("update-open", format!("Download Handset {v}..."), true, None));
+    }
+    let _ = menu.append(&MenuItem::with_id("update", "Check for Updates...", true, None));
+    let _ = menu.append(&CheckMenuItem::with_id("update-auto", "Check for Updates Daily", true, s.update_auto, None));
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&MenuItem::with_id("quit", "Quit", true, None));
 

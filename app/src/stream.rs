@@ -23,6 +23,8 @@ pub enum UserEvent {
     Adb(Result<Vec<(String, String)>, String>),
     /// Something the landing screen was waiting for finished.
     Landing(crate::connect::LandingEvent),
+    /// The latest release on GitHub (or why it could not be read), and whether the person asked for the check.
+    Update(Result<crate::update::Release, String>, bool),
     /// A dropped file was installed or copied, or why it was not.
     Transfer(Result<String, String>),
 }

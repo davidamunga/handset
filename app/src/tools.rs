@@ -46,6 +46,16 @@ pub fn find(name: &str) -> PathBuf {
     dirs.into_iter().map(|d| d.join(&file)).find(|p| p.is_file()).unwrap_or_else(|| name.into())
 }
 
+/// Open a web page in the default browser.
+pub fn open_url(url: &str) {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(windows)]
+    let _ = command("cmd").args(["/C", "start", ""]).arg(url).spawn();
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let _ = url;
+}
+
 /// The user's home directory (`HOME`, or `USERPROFILE` on Windows).
 pub fn home() -> PathBuf {
     std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from).unwrap_or_default()

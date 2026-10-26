@@ -23,6 +23,7 @@ mod stream;
 mod toolbar;
 mod tools;
 mod transfer;
+mod update;
 
 use std::sync::{Arc, Mutex};
 use winit::event_loop::EventLoop;
@@ -33,7 +34,7 @@ fn usage() -> ! {
          \x20                  [--connect <ip[:port]> | --last | --wifi] [--start-app <package>] [serial]\n\
          \x20      handset --pair <ip:port> <code>\n\
          \x20      handset --doctor\n\
-         \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--show-touches] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
+         \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--show-touches] [--no-update-check] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
          built-in frames: {}\n\
          right-click the phone for the menu; keys: Cmd/Ctrl+S screenshot, Cmd/Ctrl+E record, Cmd/Ctrl+R rotate",
         frame::builtin_names().collect::<Vec<_>>().join(", ")
@@ -64,6 +65,7 @@ fn main() {
     let mut connect: Option<String> = None;
     let mut wifi = false;
     let mut last = false;
+    let mut update_check = saved.get_bool("update-check").unwrap_or(true);
     let mut touches = saved.get_bool("touches").unwrap_or(false);
     let mut sync_clipboard = saved.get_bool("sync-clipboard").unwrap_or(true);
     let mut start_app: Option<String> = None;
@@ -88,6 +90,11 @@ fn main() {
             "--no-clipboard" => cap.clipboard = false,
             "--no-clipboard-sync" => sync_clipboard = false,
             "--show-touches" => touches = true,
+            "--no-update-check" => update_check = false,
+            "--version" => {
+                println!("handset {}", update::CURRENT);
+                return;
+            }
             "--mute" => mute = true,
             "--record-for" => record_for = Some(args.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage())),
             "--connect" => connect = Some(args.next().unwrap_or_else(|| usage())),
@@ -185,6 +192,7 @@ fn main() {
         start_app,
         toolbar: saved.get_bool("toolbar").unwrap_or(true),
         touches,
+        update_check,
     });
     app.auto_record = record_for.map(std::time::Duration::from_secs_f32);
     if waiting {

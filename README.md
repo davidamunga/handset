@@ -120,6 +120,11 @@ instead: `cargo install --path app --locked`.
   `Esc` is Back, `Home` is Home, `End` is Recents.
 - **Show Touches** (right-click menu, or `--show-touches`) draws a translucent dot where you touch the phone, fading
   when you let go. It is part of screenshots and recordings too, which makes demos easier to follow.
+- **Updates:** a few seconds after start, at most once a day, Handset asks GitHub whether a newer release exists and
+  shows a toast you can click to open it. **Check for Updates...** in the menu asks right away, and **Check for
+  Updates Daily** turns the automatic check off (or use `--no-update-check`, or `update-check=off` in the settings
+  file). The request goes to `api.github.com` through `curl` and carries only a `handset/<version>` User-Agent.
+  Homebrew and Scoop installs can ignore it and use `brew upgrade` or `scoop update`.
 - **Drop a file** on the window: an `.apk` is installed, anything else is copied to the phone's Downloads folder.
 - **Move** the window by dragging the bezel. **Resize** by dragging a corner of the phone (it keeps the frame's proportions), with Cmd or Ctrl and scroll, or `+`, `-` and `0` (default size), also in the menu.
 - Screenshots are saved to `~/Pictures/handset`, recordings to `~/Movies/handset`, and both are copied to
@@ -136,6 +141,8 @@ instead: `cargo install --path app --locked`.
 | `--gain <dB>`, `--no-normalize` | Recorded audio is normalised to about -16 LUFS; adjust or turn off |
 | `--no-clipboard` | Do not copy captures to the clipboard |
 | `--no-clipboard-sync` | Do not share clipboard text with the phone (also in the right-click menu) |
+| `--no-update-check` | Do not look for a newer release this time (also **Check for Updates Daily** in the right-click menu) |
+| `--version` | Print the version and quit |
 | `--record-for <seconds>` | Record from the first frame, then quit |
 | `--record-format mp4\|gif` | Recording format |
 | `--record-size <px>` | Longest side of recordings (default 1280) |

@@ -15,6 +15,7 @@ use crate::settings;
 use crate::stream::{Slot, UserEvent};
 use crate::toolbar::{self, Button};
 use crate::transfer;
+use crate::update;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
@@ -47,6 +48,8 @@ pub struct Init {
     pub toolbar: bool,
     /// Show touch indicators at start (a saved setting or `--show-touches`).
     pub touches: bool,
+    /// Check for a newer release now and then (a saved setting, off with `--no-update-check`).
+    pub update_check: bool,
 }
 
 /// What the connect screen is waiting for.
@@ -171,6 +174,9 @@ pub struct App {
     /// Whether the toolbar starts visible.
     toolbar_start: bool,
     touches_start: bool,
+    /// Look for newer releases by itself (a saved setting), and the newer release once one is found.
+    update_auto: bool,
+    update: Option<update::Release>,
     /// Window height at start (physical pixels), what Default Size returns to.
     home_height: u32,
     mirror: Option<Mirror>,
@@ -185,12 +191,13 @@ pub struct App {
     apps_loading: bool,
 }
 
-/// A short message pill. With a `path` it is clickable and reveals that file.
+/// A short message pill. With a `path` it is clickable and reveals that file; with a `url` it opens the page.
 struct Toast {
     text: String,
     since: Instant,
     ttl: Duration,
     path: Option<std::path::PathBuf>,
+    url: Option<String>,
 }
 
 const TOAST: Duration = Duration::from_millis(1800);
@@ -241,6 +248,8 @@ impl App {
             notifications_open: false,
             toolbar_start: init.toolbar,
             touches_start: init.touches,
+            update_auto: init.update_check,
+            update: None,
             home_height: 0,
             mirror: init.mirror,
             waiting: init.wait.map(|w| Waiting::new(w.serial, w.wifi, Status::Looking)),
@@ -731,6 +740,8 @@ impl App {
             muted: audio::is_muted(),
             toolbar: self.renderer.as_ref().is_some_and(|r| r.toolbar_visible()),
             touches: self.renderer.as_ref().is_some_and(|r| r.show_touches()),
+            update_auto: self.update_auto,
+            update: self.update.as_ref().map(|u| u.version.clone()),
             clipboard: self.cap.clipboard,
             mirroring: self.mirror.is_some(),
             usb: self.mirror.as_ref().is_some_and(|m| !connect::is_wireless(m.session.serial())),
@@ -836,6 +847,12 @@ impl App {
                     let _ = self.window.as_ref().unwrap().request_inner_size(size);
                 }
             }
+            "update" => self.check_for_update(true),
+            "update-open" => crate::tools::open_url(self.update.as_ref().map_or(update::RELEASES, |u| u.url.as_str())),
+            "update-auto" => {
+                self.update_auto = !self.update_auto;
+                settings::save_bool("update-check", self.update_auto);
+            }
             "touches" => {
                 if let Some(r) = self.renderer.as_mut() {
                     let on = !r.show_touches();
@@ -936,6 +953,42 @@ impl App {
         }
     }
 
+    /// Ask GitHub for the latest release in the background.
+    fn check_for_update(&self, manual: bool) {
+        let proxy = self.proxy.clone();
+        std::thread::spawn(move || {
+            let _ = proxy.send_event(UserEvent::Update(update::latest(), manual));
+        });
+    }
+
+    fn on_update(&mut self, result: Result<update::Release, String>, manual: bool) {
+        match result {
+            Ok(rel) => {
+                settings::save("update-checked", &update::now().to_string());
+                if update::is_newer(&rel.version, &update::current()) {
+                    let text = format!("UPDATE {} AVAILABLE - CLICK TO OPEN", rel.version);
+                    self.toast = Some(Toast {
+                        text,
+                        since: Instant::now(),
+                        ttl: TOAST_SAVED,
+                        path: None,
+                        url: Some(rel.url.clone()),
+                    });
+                    self.update = Some(rel);
+                    self.refresh_overlay();
+                } else if manual {
+                    self.show_toast(&format!("UP TO DATE ({})", update::current()));
+                }
+            }
+            Err(e) => {
+                eprintln!("update check failed: {e}");
+                if manual {
+                    self.show_toast("COULD NOT CHECK FOR UPDATES");
+                }
+            }
+        }
+    }
+
     /// Install a dropped APK or copy another file to the phone's Downloads.
     fn drop_file(&mut self, path: std::path::PathBuf) {
         let Some(serial) = self.mirror.as_ref().map(|m| m.session.serial().to_string()) else {
@@ -954,7 +1007,7 @@ impl App {
     }
 
     fn show_toast(&mut self, text: &str) {
-        self.toast = Some(Toast { text: text.to_string(), since: Instant::now(), ttl: TOAST, path: None });
+        self.toast = Some(Toast { text: text.to_string(), since: Instant::now(), ttl: TOAST, path: None, url: None });
         self.refresh_overlay();
     }
 
@@ -966,13 +1019,13 @@ impl App {
             eprintln!("clipboard: {}", if copied { "copied" } else { "copy failed" });
         }
         let text = format!("{what} {} - CLICK TO SHOW", if copied { "COPIED" } else { "SAVED" });
-        self.toast = Some(Toast { text, since: Instant::now(), ttl: TOAST_SAVED, path: Some(path) });
+        self.toast = Some(Toast { text, since: Instant::now(), ttl: TOAST_SAVED, path: Some(path), url: None });
         self.refresh_overlay();
     }
 
     /// Is the cursor on a clickable capture toast?
     fn toast_hit(&self) -> bool {
-        self.toast.as_ref().is_some_and(|t| t.path.is_some())
+        self.toast.as_ref().is_some_and(|t| t.path.is_some() || t.url.is_some())
             && self.renderer.as_ref().is_some_and(|r| r.overlay_contains(self.cursor.0 as f32, self.cursor.1 as f32))
     }
 
@@ -1214,6 +1267,10 @@ impl ApplicationHandler<UserEvent> for App {
             Ok(mut r) => {
                 r.set_toolbar_visible(self.toolbar_start);
                 r.set_show_touches(self.touches_start);
+                let last = settings::Settings::load().get("update-checked").and_then(|t| t.parse().ok());
+                if self.update_auto && self.auto_record.is_none() && update::due(last, update::now()) {
+                    self.check_for_update(false);
+                }
                 self.renderer = Some(r);
             }
             Err(e) => {
@@ -1316,6 +1373,7 @@ impl ApplicationHandler<UserEvent> for App {
                     Err(e) => eprintln!("could not list the phone's apps: {e}"),
                 }
             }
+            UserEvent::Update(result, manual) => self.on_update(result, manual),
             UserEvent::Transfer(result) => match result {
                 Ok(text) => self.show_toast(&text.to_uppercase()),
                 Err(e) => {
@@ -1475,10 +1533,12 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. }
                 if self.toast_hit() =>
             {
-                if let Some(t) = self.toast.take()
-                    && let Some(path) = t.path
-                {
-                    capture::reveal(&path);
+                if let Some(t) = self.toast.take() {
+                    if let Some(path) = t.path {
+                        capture::reveal(&path);
+                    } else if let Some(url) = t.url {
+                        crate::tools::open_url(&url);
+                    }
                 }
                 self.refresh_overlay();
             }
