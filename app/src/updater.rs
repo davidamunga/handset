@@ -756,7 +756,8 @@ mod tests {
             // wait for no one: the pid of a process that has already ended
             let mut done = swap.clone();
             done.pid = 999_999;
-            let script = temp_dir("helper").join("update.sh");
+            // next to the log, so that tests running side by side never share a script
+            let script = swap.log.parent().unwrap().join("update.sh");
             std::fs::write(&script, super::super::script(&done)).unwrap();
             let _ = Command::new("/bin/sh").arg(&script).status();
         }
@@ -933,7 +934,8 @@ mod tests {
         fn run_helper(swap: &Swap) -> bool {
             let mut done = swap.clone();
             done.pid = 4_000_000; // no such process: nothing to wait for
-            let script = temp_dir("win-helper").join("update.ps1");
+            // next to the log, so that tests running side by side never share a script
+            let script = swap.log.parent().unwrap().join("update.ps1");
             std::fs::write(&script, super::super::script(&done)).unwrap();
             Command::new("powershell")
                 .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
