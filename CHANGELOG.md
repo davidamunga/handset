@@ -8,7 +8,7 @@
 
 - [#49](https://github.com/davidamunga/handset/pull/49) [`9e8c55a`](https://github.com/davidamunga/handset/commit/9e8c55afbe229405f11c0c2c951592727d8ef3d7) Thanks [@davidamunga](https://github.com/davidamunga)! - Update notices know how Handset was installed. With Homebrew, Scoop or winget the toast gives the command to run (`brew upgrade --cask handset`, `scoop update handset`, `winget upgrade davidamunga.Handset`) and a click copies it. The menu gains **What's New in X**, **Skip X** (that version stays quiet) and **Remind Me in 3 Days**.
 
-- [#50](https://github.com/davidamunga/handset/pull/50) [`e2a6df6`](https://github.com/davidamunga/handset/commit/e2a6df635626b49cb0d05b2a0ab164a801cf6914) Thanks [@davidamunga](https://github.com/davidamunga)! - Releases are now signed. `handset --verify-release <folder>` checks downloaded release files against the signed `SHA256SUMS` and says whether they can be trusted; a later version uses the same check to install updates.
+- [#50](https://github.com/davidamunga/handset/pull/50) [`e2a6df6`](https://github.com/davidamunga/handset/commit/e2a6df635626b49cb0d05b2a0ab164a801cf6914) Thanks [@davidamunga](https://github.com/davidamunga)! - Releases are now signed. `handset --verify-release <folder>` checks downloaded release files against the signed `SHA256SUMS` and says whether they can be trusted. Handset uses the same check before it installs an update.
 
 ### Patch Changes
 
