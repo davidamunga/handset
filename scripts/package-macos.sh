@@ -39,6 +39,12 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>NSHighResolutionCapable</key><true/>
   <key>NSCameraUsageDescription</key><string>Handset shows a connected iPhone or iPad screen, which macOS treats as a camera.</string>
   <key>NSMicrophoneUsageDescription</key><string>Handset plays and records the sound of a connected iPhone or iPad.</string>
+  <key>NSLocalNetworkUsageDescription</key><string>Handset finds Android phones on your Wi-Fi to pair and connect with them.</string>
+  <key>NSBonjourServices</key>
+  <array>
+    <string>_adb-tls-pairing._tcp</string>
+    <string>_adb-tls-connect._tcp</string>
+  </array>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
 </dict>
 </plist>
