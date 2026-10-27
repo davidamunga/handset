@@ -58,3 +58,7 @@ colour picker in the bitmap-font overlay, would have been a lot more code for a 
 Playing a recording in the preview uses a worker thread that has ffmpeg decode small RGBA frames at their real
 pace (a single frame per seek while scrubbing, newest request wins). The backdrop is drawn once per style
 change and only the picture is blended again per frame. The preview is silent; audio is only in the export.
+
+Trimming (`trim.rs`) is applied at the ffmpeg input (`-ss` and `-t` before `-i`), so only the kept part is
+decoded and styled and the audio is cut with it. The start and end are clamped so that a clip is never shorter
+than 0.2 s, and a trim within 0.05 s of the whole recording counts as no trim. It is not applied to pictures.

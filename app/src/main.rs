@@ -26,6 +26,7 @@ mod style;
 mod toolbar;
 mod tools;
 mod transfer;
+mod trim;
 mod update;
 
 use std::sync::{Arc, Mutex};

@@ -8,6 +8,7 @@
 
 use crate::restyle;
 use crate::style::{ASPECTS, Aspect, Background, GRADIENTS, Img, Layout, Style, WALLPAPERS};
+use crate::trim::{self, Trim};
 use eframe::egui;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -453,25 +454,66 @@ fn slider_row(ui: &mut egui::Ui, label: &str, value: &mut u32, max: u32, unit: &
     changed
 }
 
-/// A slim track with a thumb; the new position when it is clicked or dragged.
-fn scrubber(ui: &mut egui::Ui, pos: f64, duration: f64, width: f32) -> Option<f64> {
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 28.0), egui::Sense::click_and_drag());
-    let track = egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width() - 14.0, 4.0));
-    let frac = (pos / duration).clamp(0.0, 1.0) as f32;
-    let thumb_x = track.left() + track.width() * frac;
+/// What the person did to the scrubber.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Scrub {
+    /// Moved the playhead.
+    Seek(f64),
+    /// Dragged the start of the kept part.
+    Start(f64),
+    /// Dragged the end of the kept part.
+    End(f64),
+}
+
+/// A slim track with a playhead and, at the ends of the kept part, two handles to trim by.
+fn scrubber(ui: &mut egui::Ui, pos: f64, duration: f64, trim: Trim, width: f32) -> Option<Scrub> {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 30.0), egui::Sense::click_and_drag());
+    let track = egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width() - 20.0, 4.0));
+    let x = |t: f64| trim::x_at(t, track.left(), track.width(), duration);
+    let (x0, x1, xp) = (x(trim.start), x(trim.end), x(pos));
+    let mut result = None;
+
+    // the two handles sit over the track, so they take the pointer first
+    let handle = |ui: &mut egui::Ui, id: &str, cx: f32| {
+        let area = egui::Rect::from_center_size(egui::pos2(cx, rect.center().y), egui::vec2(18.0, rect.height()));
+        ui.interact(area, ui.make_persistent_id(id), egui::Sense::click_and_drag())
+            .on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
+    };
+    let start = handle(ui, "trim-start", x0);
+    let end = handle(ui, "trim-end", x1);
+    let pointer = |r: &egui::Response| {
+        r.interact_pointer_pos().map(|p| trim::time_at(p.x, track.left(), track.width(), duration))
+    };
+    if start.dragged() {
+        result = pointer(&start).map(Scrub::Start);
+    } else if end.dragged() {
+        result = pointer(&end).map(Scrub::End);
+    } else if (resp.dragged() || resp.clicked())
+        && !start.is_pointer_button_down_on()
+        && !end.is_pointer_button_down_on()
+    {
+        result = pointer(&resp).map(Scrub::Seek);
+    }
+
     let p = ui.painter();
-    p.rect_filled(track, 2.0, theme::LINE);
-    p.rect_filled(egui::Rect::from_min_max(track.min, egui::pos2(thumb_x, track.max.y)), 2.0, theme::ACCENT);
+    let dim = theme::LINE;
+    p.rect_filled(track, 2.0, dim);
+    // the kept part is brighter than what will be cut away
+    let kept = egui::Rect::from_min_max(egui::pos2(x0, track.min.y - 1.0), egui::pos2(x1, track.max.y + 1.0));
+    p.rect_filled(kept, 2.0, egui::Color32::from_rgb(0x3a, 0x3a, 0x45));
+    p.rect_filled(
+        egui::Rect::from_min_max(egui::pos2(x0, track.min.y), egui::pos2(xp.max(x0), track.max.y)),
+        2.0,
+        theme::ACCENT,
+    );
+    for (cx, edge) in [(x0, -1.0), (x1, 1.0)] {
+        let bar = egui::Rect::from_center_size(egui::pos2(cx + edge * 2.0, rect.center().y), egui::vec2(8.0, 22.0));
+        p.rect_filled(bar, 3.0, theme::ACCENT);
+        p.rect_filled(egui::Rect::from_center_size(bar.center(), egui::vec2(2.0, 10.0)), 1.0, theme::ON_ACCENT);
+    }
     let r = if resp.hovered() || resp.dragged() { 8.0 } else { 6.5 };
-    p.circle_filled(egui::pos2(thumb_x, track.center().y), r, egui::Color32::WHITE);
-    if resp.hovered() {
-        ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
-    }
-    if resp.dragged() || resp.clicked() {
-        let x = resp.interact_pointer_pos()?.x;
-        return Some(((x - track.left()) / track.width()).clamp(0.0, 1.0) as f64 * duration);
-    }
-    None
+    p.circle_filled(egui::pos2(xp, track.center().y), r, egui::Color32::WHITE);
+    result
 }
 
 fn play_button(ui: &mut egui::Ui, playing: bool) -> bool {
@@ -567,6 +609,8 @@ struct VideoState {
     pos: f64,
     playing: bool,
     looping: bool,
+    /// The part of the recording that is played and exported.
+    trim: Trim,
 }
 
 impl Editor {
@@ -601,6 +645,7 @@ impl Editor {
                 pos: 0.0,
                 playing: false,
                 looping: false,
+                trim: Trim::full(info.duration.max(0.1)),
             }
         });
         let tab = tab_of(&style.background);
@@ -689,8 +734,9 @@ impl Editor {
         let (tx, rx) = channel();
         let control = std::sync::Arc::new(restyle::Control::default());
         let (path, style, ctx, job) = (self.path.clone(), self.style.clone(), ctx.clone(), control.clone());
+        let trim = self.video.as_ref().filter(|v| !v.trim.is_full(v.duration)).map(|v| v.trim);
         std::thread::spawn(move || {
-            let _ = tx.send(restyle::export_with(&path, &style, &job));
+            let _ = tx.send(restyle::export_with(&path, &style, trim, &job));
             ctx.request_repaint();
         });
         self.export = Some((rx, control));
@@ -703,8 +749,9 @@ impl Editor {
             let _ = v.player.cmd.send(Cmd::Pause);
             v.playing = false;
         } else {
-            if v.pos >= v.duration - 0.1 {
-                v.pos = 0.0;
+            // from the start of the kept part when the playhead is outside it or at its end
+            if v.pos < v.trim.start || v.pos >= v.trim.end - 0.1 {
+                v.pos = v.trim.start;
             }
             let _ = v.player.cmd.send(Cmd::Play(v.pos));
             v.playing = true;
@@ -719,18 +766,29 @@ impl Editor {
             match m {
                 Msg::Frame(t, img) => newest = Some((t, img)),
                 Msg::Ended if v.looping => {
-                    v.pos = 0.0;
-                    let _ = v.player.cmd.send(Cmd::Play(0.0));
+                    v.pos = v.trim.start;
+                    let _ = v.player.cmd.send(Cmd::Play(v.trim.start));
                 }
                 Msg::Ended => {
                     v.playing = false;
-                    v.pos = v.duration;
+                    v.pos = v.trim.end;
                 }
             }
         }
         if let Some((t, img)) = newest {
             if v.playing {
                 v.pos = t.min(v.duration);
+                // the kept part ends here, even if the recording goes on
+                if v.pos >= v.trim.end {
+                    if v.looping {
+                        v.pos = v.trim.start;
+                        let _ = v.player.cmd.send(Cmd::Play(v.trim.start));
+                    } else {
+                        v.playing = false;
+                        v.pos = v.trim.end;
+                        let _ = v.player.cmd.send(Cmd::Pause);
+                    }
+                }
             }
             self.src = img;
             self.frame_dirty = true;
@@ -870,7 +928,11 @@ impl Editor {
 
     fn export_area(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let l = self.effective_style().layout(self.full_size);
-        let kind = if self.is_video() { "video" } else { "picture" };
+        let kind = match &self.video {
+            Some(v) if !v.trim.is_full(v.duration) => format!("video, {}", clock(v.trim.len())),
+            Some(_) => "video".to_string(),
+            None => "picture".to_string(),
+        };
         ui.label(egui::RichText::new(format!("{} x {} px {kind}", l.out.0, l.out.1)).size(11.5).color(theme::WEAK));
         let busy = self.export.is_some();
         let label = if busy { "Exporting..." } else { "Export" };
@@ -929,32 +991,61 @@ impl Editor {
 
     fn transport(&mut self, ui: &mut egui::Ui) {
         let Some(v) = self.video.as_mut() else { return };
-        let mut seek = None;
+        let mut scrub = None;
         let mut toggle = false;
+        let mut reset = false;
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
             toggle = play_button(ui, v.playing);
-            let clock = |s: f64| format!("{}:{:02}", s as u64 / 60, s as u64 % 60);
-            let label = format!("{} / {}", clock(v.pos), clock(v.duration));
-            let w = (ui.available_width() - 92.0).max(80.0);
-            let w = w - 60.0;
-            seek = scrubber(ui, v.pos, v.duration, w);
+            let label = format!("{} / {}", clock(v.pos - v.trim.start), clock(v.trim.len()));
+            let w = (ui.available_width() - 92.0).max(80.0) - 60.0;
+            scrub = scrubber(ui, v.pos, v.duration, v.trim, w);
             if chip(ui, "Loop", egui::vec2(48.0, 26.0), v.looping, theme::CARD) {
                 v.looping = !v.looping;
             }
             ui.label(egui::RichText::new(label).size(12.0).color(theme::WEAK));
         });
+        if !v.trim.is_full(v.duration) {
+            ui.horizontal(|ui| {
+                ui.add_space(48.0);
+                let kept = format!("Keeping {} of {}", clock(v.trim.len()), clock(v.duration));
+                ui.label(egui::RichText::new(kept).size(11.5).color(theme::WEAK));
+                reset = ui.link("Reset trim").clicked();
+            });
+        }
         ui.add_space(8.0);
-        if let Some(t) = seek {
-            v.pos = t;
+        let mut seek_to = None;
+        match scrub {
+            Some(Scrub::Seek(t)) => seek_to = Some(v.trim.clamp_pos(t)),
+            Some(Scrub::Start(t)) => {
+                v.trim = v.trim.with_start(t);
+                seek_to = Some(v.trim.start);
+            }
+            Some(Scrub::End(t)) => {
+                v.trim = v.trim.with_end(t, v.duration);
+                seek_to = Some(v.trim.end);
+            }
+            None => {}
+        }
+        if reset {
+            v.trim = Trim::full(v.duration);
+        }
+        if let Some(t) = seek_to {
+            v.pos = v.trim.clamp_pos(t);
             v.playing = false;
-            let _ = v.player.cmd.send(Cmd::Seek(t));
+            let _ = v.player.cmd.send(Cmd::Seek(v.pos));
         }
         if toggle {
             self.toggle_play();
         }
     }
+}
+
+/// `m:ss` for a number of seconds.
+fn clock(s: f64) -> String {
+    let s = s.max(0.0);
+    format!("{}:{:02}", s as u64 / 60, s as u64 % 60)
 }
 
 impl eframe::App for Editor {
@@ -1082,5 +1173,93 @@ fn checkerboard(painter: &egui::Painter, rect: egui::Rect) {
             let cell_rect = egui::Rect::from_min_size(min, egui::vec2(cell, cell)).intersect(rect);
             painter.rect_filled(cell_rect, 0.0, egui::Color32::from_gray(54));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Run the scrubber in a headless egui context, moving the pointer through `steps` (a press at the first
+    /// point, then drags), and return the last thing it reported.
+    fn drive(trim: Trim, steps: &[egui::Pos2]) -> Option<Scrub> {
+        let ctx = egui::Context::default();
+        let mut found = None;
+        let frame = |events: Vec<egui::Event>, found: &mut Option<Scrub>| {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(600.0, 100.0))),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+                    if let Some(s) = scrubber(ui, 2.0, 8.0, trim, 500.0) {
+                        *found = Some(s);
+                    }
+                });
+            });
+            out.textures_delta.clear();
+        };
+        frame(vec![], &mut found);
+        let button = |pos, pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        };
+        frame(vec![egui::Event::PointerMoved(steps[0])], &mut found);
+        frame(vec![button(steps[0], true)], &mut found);
+        for p in &steps[1..] {
+            frame(vec![egui::Event::PointerMoved(*p)], &mut found);
+        }
+        found
+    }
+
+    /// Where the scrubber puts the track, found from the content it lays out: the panel's margin and the
+    /// 10 px of padding either side of the track.
+    fn track_x(trim_t: f64) -> f32 {
+        let (left, width) = (8.0 + 10.0, 500.0 - 20.0);
+        trim::x_at(trim_t, left, width, 8.0)
+    }
+
+    #[test]
+    fn dragging_the_start_handle_reports_a_new_start() {
+        let trim = Trim { start: 1.0, end: 6.0 };
+        let y = 8.0 + 15.0;
+        let got = drive(trim, &[egui::pos2(track_x(1.0), y), egui::pos2(track_x(2.0), y)]);
+        match got {
+            Some(Scrub::Start(t)) => assert!((t - 2.0).abs() < 0.3, "{t}"),
+            other => panic!("expected a start drag, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dragging_the_end_handle_reports_a_new_end() {
+        let trim = Trim { start: 1.0, end: 6.0 };
+        let y = 8.0 + 15.0;
+        let got = drive(trim, &[egui::pos2(track_x(6.0), y), egui::pos2(track_x(5.0), y)]);
+        match got {
+            Some(Scrub::End(t)) => assert!((t - 5.0).abs() < 0.3, "{t}"),
+            other => panic!("expected an end drag, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dragging_the_track_moves_the_playhead() {
+        let trim = Trim { start: 1.0, end: 6.0 };
+        let y = 8.0 + 15.0;
+        let got = drive(trim, &[egui::pos2(track_x(3.0), y), egui::pos2(track_x(4.0), y)]);
+        match got {
+            Some(Scrub::Seek(t)) => assert!((t - 4.0).abs() < 0.3, "{t}"),
+            other => panic!("expected a seek, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn clock_shows_minutes_and_seconds() {
+        assert_eq!(clock(0.0), "0:00");
+        assert_eq!(clock(75.4), "1:15");
+        assert_eq!(clock(-3.0), "0:00");
     }
 }

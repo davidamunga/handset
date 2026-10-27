@@ -5,6 +5,7 @@
 //! backdrop picture that has a hole cut in it for the capture (see `Style::punch_hole`).
 
 use crate::style::{Background, DARK, Img, Style};
+use crate::trim::Trim;
 use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -72,14 +73,15 @@ pub struct Control {
 
 /// Style a saved capture and return the path of the new file.
 pub fn export(input: &Path, style: &Style) -> Result<PathBuf, String> {
-    export_with(input, style, &Control::default())
+    export_with(input, style, None, &Control::default())
 }
 
-pub fn export_with(input: &Path, style: &Style, control: &Control) -> Result<PathBuf, String> {
+/// Like [`export`], keeping only `trim` of a recording (ignored for pictures) and reporting to `control`.
+pub fn export_with(input: &Path, style: &Style, trim: Option<Trim>, control: &Control) -> Result<PathBuf, String> {
     let out = styled_path(input);
     let image = load_background(style)?;
     if is_video(input) {
-        style_video(input, &out, style, image.as_ref(), control)?;
+        style_video(input, &out, style, image.as_ref(), trim, control)?;
     } else if ext(input) == "png" {
         let src = read_png(input)?;
         write_png(&out, &style.compose(&src, image.as_ref()))?;
@@ -223,7 +225,14 @@ pub fn first_frame(path: &Path) -> Result<Img, String> {
     img
 }
 
-fn style_video(input: &Path, out: &Path, style: &Style, image: Option<&Img>, control: &Control) -> Result<(), String> {
+fn style_video(
+    input: &Path,
+    out: &Path,
+    style: &Style,
+    image: Option<&Img>,
+    trim: Option<Trim>,
+    control: &Control,
+) -> Result<(), String> {
     let info = probe(input)?;
     let size = info.size;
     let matte = load_matte(input, size);
@@ -251,7 +260,12 @@ fn style_video(input: &Path, out: &Path, style: &Style, image: Option<&Img>, con
         graph.push_str(",format=yuv420p[o]");
     }
     let mut cmd = crate::tools::command(crate::tools::find("ffmpeg"));
-    cmd.args(["-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1", "-y", "-i"]).arg(input);
+    cmd.args(["-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1", "-y"]);
+    if let Some(t) = trim {
+        // cut at the input, so only the kept part is decoded and styled
+        cmd.args(["-ss", &format!("{:.3}", t.start), "-t", &format!("{:.3}", t.len())]);
+    }
+    cmd.arg("-i").arg(input);
     cmd.args(["-loop", "1", "-i"]).arg(&bd_path);
     cmd.args(["-filter_complex", &graph, "-map", "[o]"]);
     if !gif {
@@ -259,7 +273,7 @@ fn style_video(input: &Path, out: &Path, style: &Style, image: Option<&Img>, con
         cmd.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-movflags", "+faststart"]);
     }
     cmd.arg(out).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let result = run_with_progress(cmd, info.duration, control);
+    let result = run_with_progress(cmd, trim.map_or(info.duration, |t| t.len()), control);
     let _ = std::fs::remove_file(&bd_path);
     if result.is_err() {
         let _ = std::fs::remove_file(out);
@@ -348,15 +362,56 @@ mod tests {
                 .success()
         );
         let done = Control::default();
-        let out = export_with(&src, &Style::default(), &done).unwrap();
+        let out = export_with(&src, &Style::default(), None, &done).unwrap();
         assert!(out.exists());
         assert_eq!(done.progress.load(Ordering::Relaxed), 1000);
 
         let stopped = Control::default();
         stopped.cancel.store(true, Ordering::Relaxed);
-        let err = export_with(&src, &Style::default(), &stopped).unwrap_err();
+        let err = export_with(&src, &Style::default(), None, &stopped).unwrap_err();
         assert_eq!(err, "Cancelled");
         assert!(!dir.join("clip-styled-2.mp4").exists(), "a cancelled export leaves no file behind");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_trimmed_export_keeps_only_that_part_with_its_audio() {
+        if !ffmpeg_present() {
+            return;
+        }
+        let dir = temp_dir("trim");
+        let src = dir.join("clip.mp4");
+        assert!(
+            crate::tools::command(crate::tools::find("ffmpeg"))
+                .args([
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=160x240:rate=10:duration=4"
+                ])
+                .args(["-f", "lavfi", "-i", "sine=duration=4", "-pix_fmt", "yuv420p", "-shortest"])
+                .arg(&src)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let whole = export(&src, &Style::default()).unwrap();
+        let cut =
+            export_with(&src, &Style::default(), Some(Trim { start: 1.0, end: 2.5 }), &Control::default()).unwrap();
+        let (whole, cut) = (probe(&whole).unwrap(), probe(&cut).unwrap());
+        assert!((whole.duration - 4.0).abs() < 0.3, "untrimmed export keeps all of it: {}", whole.duration);
+        assert!((cut.duration - 1.5).abs() < 0.3, "trimmed export is 1.5 s long: {}", cut.duration);
+        assert_eq!(cut.size, whole.size);
+        let banner = crate::tools::command(crate::tools::find("ffmpeg"))
+            .args(["-hide_banner", "-i"])
+            .arg(dir.join("clip-styled-2.mp4"))
+            .output()
+            .unwrap();
+        assert!(String::from_utf8_lossy(&banner.stderr).contains("Audio:"), "the audio is kept");
         let _ = std::fs::remove_dir_all(dir);
     }
 
