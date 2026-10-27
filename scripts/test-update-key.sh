@@ -21,7 +21,8 @@ key="$HOME/.config/handset/update-signing-key.pem"
 refuse "signing without a key says so" "$script" sign "$tmp/nothing"
 out="$("$script" generate 2>&1)"; code=$?
 [ $code = 0 ] && [ -f "$key" ] && ok "generate makes a key" || bad "generate makes a key: $out"
-[ "$(stat -f %Lp "$key" 2>/dev/null || stat -c %a "$key")" = 600 ] && ok "the key file is private to its owner" || bad "the key file is private to its owner"
+# the permission string from ls is the same on macOS and Linux (stat's flags are not)
+[ "$(ls -l "$key" | cut -c1-10)" = "-rw-------" ] && ok "the key file is private to its owner" || bad "the key file is private to its owner"
 pub="$("$script" public)"
 [[ "$pub" =~ ^[0-9a-f]{64}$ ]] && ok "the public key is 64 hex characters" || bad "the public key is 64 hex characters: $pub"
 case "$out" in *"$pub"*) ok "generate prints the public key" ;; *) bad "generate prints the public key" ;; esac
