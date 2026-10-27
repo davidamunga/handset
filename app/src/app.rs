@@ -103,6 +103,8 @@ struct Waiting {
     paused: bool,
     /// An iOS device that is plugged in (macOS): its capture id and name. Offered, never started by itself.
     iphone: Option<(String, String)>,
+    /// The address or pairing code being typed, which takes the keyboard while it is open.
+    field: Option<connect::Field>,
 }
 
 impl Waiting {
@@ -131,6 +133,7 @@ impl Waiting {
             next_retry: Instant::now() + RECONNECT_EVERY,
             paused: false,
             iphone: None,
+            field: None,
             recent: crate::recent::load(),
         }
     }
@@ -330,6 +333,7 @@ impl App {
                 doctor: wt.doctor.as_deref(),
                 ios: cfg!(target_os = "macos"),
                 iphone: wt.iphone.as_ref().map(|(uid, name)| (uid.as_str(), name.as_str())),
+                field: wt.field.as_ref(),
             };
             connect::render(pw, ph, &model)
         };
@@ -476,13 +480,13 @@ impl App {
                 wt.busy = false;
                 wt.note = Some(brief(&e));
             }
-            LandingEvent::Typed(Some(addr)) => {
+            LandingEvent::Typed(addr) => {
+                wt.field = None;
                 wt.busy = true;
                 wt.note = Some(format!("Connecting to {}...", crate::adb::normalize_addr(&addr)));
                 connect::connect_async(proxy, addr);
             }
-            LandingEvent::Typed(None) => redraw = false,
-            LandingEvent::Code(Some(code)) => {
+            LandingEvent::Code(code) => {
                 // the phone's own pairing screen, not the one our QR code made
                 let ours = wt.qr.as_ref().map(|q| q.name.as_str());
                 match wt
@@ -491,6 +495,7 @@ impl App {
                     .find(|s| s.kind == crate::adb::ServiceKind::Pairing && Some(s.name.as_str()) != ours)
                 {
                     Some(p) => {
+                        wt.field = None;
                         wt.pairing = true;
                         wt.note = Some("Pairing...".into());
                         connect::pair_async(proxy, p.addr.clone(), code);
@@ -501,12 +506,40 @@ impl App {
                     }
                 }
             }
-            LandingEvent::Code(None) => redraw = false,
             LandingEvent::Doctor(checks) => wt.doctor = Some(checks),
         }
         if redraw {
             self.draw_connect();
         }
+    }
+
+    /// A key pressed while the connect screen's text field is open goes to the field. Returns whether it did.
+    fn on_field_key(&mut self, event: &winit::event::KeyEvent) -> bool {
+        let cmd = self.mods.super_key() || self.mods.control_key();
+        let Some(field) = self.waiting.as_mut().and_then(|wt| wt.field.as_mut()) else { return false };
+        match &event.logical_key {
+            Key::Named(NamedKey::Escape) => self.on_action(Action::Cancel),
+            Key::Named(NamedKey::Enter) => self.on_action(Action::Submit),
+            Key::Named(NamedKey::Backspace) => {
+                field.backspace();
+                self.draw_connect();
+            }
+            Key::Character(c) if cmd && c.eq_ignore_ascii_case("v") => {
+                if let Some(clip) = crate::clipboard::read_mac() {
+                    field.paste(&clip);
+                    self.draw_connect();
+                }
+            }
+            // other shortcuts (zoom, for one) keep working while the field is open
+            _ if cmd => return false,
+            _ => {
+                if let Some(t) = &event.text {
+                    field.insert(t);
+                    self.draw_connect();
+                }
+            }
+        }
+        true
     }
 
     /// A landing screen button was clicked.
@@ -523,11 +556,13 @@ impl App {
         match action {
             Action::Open(View::Wifi) => {
                 wt.view = View::Wifi;
+                wt.field = None;
                 wt.note = None;
                 connect::want_mdns(true);
             }
             Action::Open(View::Qr) => {
                 wt.view = View::Qr;
+                wt.field = None;
                 wt.note = None;
                 wt.pairing = false;
                 wt.paired_ip = None;
@@ -542,6 +577,7 @@ impl App {
             }
             Action::Open(View::Home) | Action::Back => {
                 wt.view = View::Home;
+                wt.field = None;
                 wt.note = None;
                 wt.qr = None;
                 connect::want_mdns(false);
@@ -551,8 +587,19 @@ impl App {
                 wt.note = Some(format!("Connecting to {addr}..."));
                 connect::connect_async(proxy, addr);
             }
-            Action::TypeAddress if !wt.busy => connect::ask_address_async(proxy),
-            Action::PairWithCode if !wt.busy && !wt.pairing => connect::ask_code_async(proxy),
+            Action::TypeAddress if !wt.busy => wt.field = Some(connect::Field::new(connect::FieldKind::Address)),
+            Action::PairWithCode if !wt.busy && !wt.pairing => {
+                wt.field = Some(connect::Field::new(connect::FieldKind::Code));
+            }
+            Action::Submit => {
+                // the field stays open (with what was typed) until connecting or pairing actually starts
+                if let Some(event) = wt.field.as_ref().and_then(|f| f.submit()) {
+                    wt.hover = None;
+                    self.on_landing(event);
+                }
+                return;
+            }
+            Action::Cancel => wt.field = None,
             Action::Mirror(serial) => {
                 wt.paused = false;
                 wt.starting = Some((serial.clone(), Instant::now() + Duration::from_millis(300)));
@@ -1699,10 +1746,18 @@ impl ApplicationHandler<UserEvent> for App {
             }
         }
         if self.waiting.is_some() {
-            // HANDSET_LANDING=wifi|qr opens that view first (for looking at it without clicking)
+            // HANDSET_LANDING=wifi|qr|address|code opens that view (or field) first, for looking at it without clicking
             match std::env::var("HANDSET_LANDING").as_deref() {
                 Ok("wifi") => self.on_action(Action::Open(View::Wifi)),
                 Ok("qr") => self.on_action(Action::Open(View::Qr)),
+                Ok("address") => {
+                    self.on_action(Action::Open(View::Wifi));
+                    self.on_action(Action::TypeAddress);
+                }
+                Ok("code") => {
+                    self.on_action(Action::Open(View::Qr));
+                    self.on_action(Action::PairWithCode);
+                }
                 _ => self.draw_connect(),
             }
         }
@@ -2077,6 +2132,9 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 if self.debug {
                     eprintln!("key {:?} text {:?}", event.logical_key, event.text);
+                }
+                if self.on_field_key(&event) {
+                    return;
                 }
                 let code = match &event.logical_key {
                     Key::Named(NamedKey::Escape) => Some(keycode::BACK),

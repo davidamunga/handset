@@ -84,9 +84,14 @@ pub enum Action {
     Back,
     /// Connect to `ip:port`.
     Connect(String),
+    /// Open the address field.
     TypeAddress,
-    /// Pair with the code the phone shows on its "Pair device with pairing code" screen.
+    /// Open the field for the code the phone shows on its "Pair device with pairing code" screen.
     PairWithCode,
+    /// Send what is in the open field.
+    Submit,
+    /// Close the open field.
+    Cancel,
     /// Switch this USB phone to adb over Wi-Fi.
     SwitchToWifi(String),
     /// Mirror this ready phone (when mirroring was ended on purpose).
@@ -113,10 +118,10 @@ pub enum LandingEvent {
     Paired(Result<String, String>),
     /// `adb connect` or the Wi-Fi switch finished: the serial to mirror, or why not.
     Connected(Result<String, String>),
-    /// The address typed into the prompt, or `None` if it was cancelled.
-    Typed(Option<String>),
-    /// The pairing code typed into the prompt, or `None` if it was cancelled.
-    Code(Option<String>),
+    /// The address typed into the field.
+    Typed(String),
+    /// The pairing code typed into the field.
+    Code(String),
     /// The doctor finished.
     Doctor(Vec<crate::doctor::Check>),
 }
@@ -192,59 +197,71 @@ pub fn pair_async(proxy: EventLoopProxy<UserEvent>, addr: String, password: Stri
     });
 }
 
-/// Ask for the six digit pairing code with a native prompt.
-pub fn ask_code_async(proxy: EventLoopProxy<UserEvent>) {
-    std::thread::spawn(move || send(&proxy, LandingEvent::Code(ask_code())));
+/// What a text field on the connect screen is for.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FieldKind {
+    /// A phone's address, as ip or ip:port.
+    Address,
+    /// The six digits the phone shows under "Pair device with pairing code".
+    Code,
 }
 
-/// Ask for a phone address with a native prompt (the landing screen has no text field).
-pub fn ask_address_async(proxy: EventLoopProxy<UserEvent>) {
-    std::thread::spawn(move || {
-        let typed = ask_address();
-        send(&proxy, LandingEvent::Typed(typed));
-    });
+/// A line of text typed into the connect screen. It is drawn in the window rather than asked for with a system
+/// dialog, so it works on desktops without zenity or kdialog. Typing appends and Backspace removes the last
+/// character: there is no selection or moving the caret, which an address or a six digit code does not need.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Field {
+    pub kind: FieldKind,
+    pub text: String,
 }
 
-#[cfg(target_os = "macos")]
-fn ask_address() -> Option<String> {
-    let script = "text returned of (display dialog \"Phone address, as ip or ip:port (shown under Wireless debugging):\" \
-                  default answer \"192.168.\" buttons {\"Cancel\", \"Connect\"} default button \"Connect\" with title \"Handset\")";
-    let out = std::process::Command::new("osascript").args(["-e", script]).output().ok()?;
-    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string()).filter(|s| !s.is_empty())
-}
+const ADDRESS_START: &str = "192.168.";
+const ADDRESS_MAX: usize = 64;
+const CODE_LEN: usize = 6;
 
-#[cfg(windows)]
-fn ask_address() -> Option<String> {
-    let script = "Add-Type -AssemblyName Microsoft.VisualBasic; \
-                  [Console]::OutputEncoding=[Text.Encoding]::UTF8; \
-                  [Microsoft.VisualBasic.Interaction]::InputBox('Phone address, as ip or ip:port (shown under Wireless debugging):', 'Handset', '192.168.')";
-    crate::tools::powershell(script, None).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
-}
+impl Field {
+    pub fn new(kind: FieldKind) -> Self {
+        let text = if kind == FieldKind::Address { ADDRESS_START } else { "" };
+        Self { kind, text: text.to_string() }
+    }
 
-#[cfg(not(any(target_os = "macos", windows)))]
-fn ask_address() -> Option<String> {
-    crate::tools::linux::ask("Phone address, as ip or ip:port (shown under Wireless debugging):", "192.168.")
-}
+    /// Typed text: characters the field cannot hold are dropped.
+    pub fn insert(&mut self, typed: &str) {
+        for ch in typed.chars() {
+            let fits = match self.kind {
+                FieldKind::Address => {
+                    !ch.is_whitespace() && !ch.is_control() && self.text.chars().count() < ADDRESS_MAX
+                }
+                FieldKind::Code => ch.is_ascii_digit() && self.text.len() < CODE_LEN,
+            };
+            if fits {
+                self.text.push(ch);
+            }
+        }
+    }
 
-#[cfg(target_os = "macos")]
-fn ask_code() -> Option<String> {
-    let script = "text returned of (display dialog \"Pairing code, as shown on the phone under Pair device with pairing code:\" \
-                  default answer \"\" buttons {\"Cancel\", \"Pair\"} default button \"Pair\" with title \"Handset\")";
-    let out = std::process::Command::new("osascript").args(["-e", script]).output().ok()?;
-    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string()).filter(|s| !s.is_empty())
-}
+    pub fn backspace(&mut self) {
+        self.text.pop();
+    }
 
-#[cfg(windows)]
-fn ask_code() -> Option<String> {
-    let script = "Add-Type -AssemblyName Microsoft.VisualBasic; \
-                  [Console]::OutputEncoding=[Text.Encoding]::UTF8; \
-                  [Microsoft.VisualBasic.Interaction]::InputBox('Pairing code, as shown on the phone under Pair device with pairing code:', 'Handset', '')";
-    crate::tools::powershell(script, None).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
-}
+    /// Pasted text replaces the untouched `192.168.`, since a copied address is usually a whole one.
+    pub fn paste(&mut self, clip: &str) {
+        if self.kind == FieldKind::Address && self.text == ADDRESS_START {
+            self.text.clear();
+        }
+        self.insert(clip.trim());
+    }
 
-#[cfg(not(any(target_os = "macos", windows)))]
-fn ask_code() -> Option<String> {
-    crate::tools::linux::ask("Pairing code, as shown on the phone under Pair device with pairing code:", "")
+    /// What to send when the field is submitted, if it holds enough.
+    pub fn submit(&self) -> Option<LandingEvent> {
+        match self.kind {
+            FieldKind::Address if !self.text.is_empty() && self.text != ADDRESS_START => {
+                Some(LandingEvent::Typed(self.text.clone()))
+            }
+            FieldKind::Code if self.text.len() == CODE_LEN => Some(LandingEvent::Code(self.text.clone())),
+            _ => None,
+        }
+    }
 }
 
 /// A QR code that pairs a phone: scanning it on the phone (Wireless debugging > Pair device with QR code)
@@ -798,6 +815,8 @@ pub struct Model<'a> {
     pub ios: bool,
     /// An iOS device that is plugged in and can be mirrored: its capture id and name.
     pub iphone: Option<(&'a str, &'a str)>,
+    /// The text field open in the Wi-Fi or QR view, which then shows only the field.
+    pub field: Option<&'a Field>,
 }
 
 pub struct Screen {
@@ -814,6 +833,7 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
     let (btn_h, gap) = (92.0 * u, 16.0 * u);
     let mut buttons: Vec<Button> = Vec::new();
     let dots = ".".repeat((m.tick % 4) as usize);
+    let field = m.field.filter(|_| matches!(m.view, View::Wifi | View::Qr));
 
     // header: the icon large on the home screen, small beside the title elsewhere
     let mut y;
@@ -840,9 +860,11 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
         y += c.line(46.0) + 14.0 * u;
     } else {
         c.logo(56.0, 70.0, 92.0);
-        let title = match m.view {
-            View::Wifi => "Phones on Wi-Fi",
-            View::Doctor => "Checks",
+        let title = match (m.view, field) {
+            (_, Some(f)) if f.kind == FieldKind::Address => "Type an address",
+            (_, Some(_)) => "Pair with a code",
+            (View::Wifi, _) => "Phones on Wi-Fi",
+            (View::Doctor, _) => "Checks",
             _ => "Scan to pair",
         };
         c.text(
@@ -868,8 +890,64 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
         *bottom -= gap;
     };
 
-    match m.view {
-        View::Home => {
+    match (m.view, field) {
+        (View::Wifi | View::Qr, Some(f)) => {
+            let (label, hint, submit) = match f.kind {
+                FieldKind::Address => (
+                    "Phone address",
+                    "On the phone: Developer options, Wireless debugging. Type the IP address and port shown there.",
+                    "Connect",
+                ),
+                FieldKind::Code => (
+                    "Pairing code",
+                    "On the phone: Developer options, Wireless debugging, Pair device with pairing code. Type the six digits it shows.",
+                    "Pair",
+                ),
+            };
+            c.text(margin, y, Weight::Semibold, 32.0, MUTED, label);
+            y += c.line(32.0) + 14.0 * u;
+            let (box_h, pad) = (112.0 * u, 32.0 * u);
+            c.round_rect([margin, y, content_w, box_h], 26.0 * u, Some(SURFACE), Some((MUTED, 3.0 * u)));
+            // a long address shrinks, then shows its end, so what was just typed stays in view
+            let room = content_w - 2.0 * pad - 8.0 * u;
+            let mut size = 44.0;
+            while size > 28.0 && measure(Weight::Semibold, c.px(size), &f.text) > room {
+                size -= 2.0;
+            }
+            let mut shown = f.text.as_str();
+            while measure(Weight::Semibold, c.px(size), shown) > room {
+                let mut chars = shown.chars();
+                chars.next();
+                shown = chars.as_str();
+            }
+            let cy = y + box_h / 2.0;
+            let top = cy - c.cap_middle(0.0, size);
+            let tw = if shown.is_empty() && f.kind == FieldKind::Code {
+                c.text(margin + pad, top, Weight::Regular, size, [96, 98, 104], "6 digits");
+                0.0
+            } else {
+                c.text(margin + pad, top, Weight::Semibold, size, TEXT, shown)
+            };
+            let caret_x = margin + pad + tw + 3.0 * u;
+            let half = c.px(size) * 0.42;
+            c.stroke((caret_x, cy - half), (caret_x, cy + half), 3.0 * u, TEXT);
+            y += box_h + 22.0 * u;
+            y = c.para(margin, y, content_w, Style(Weight::Regular, 28.0, MUTED), hint) + 10.0 * u;
+            if let Some(note) = m.note {
+                y = c.para(margin, y + 6.0 * u, content_w, Style(Weight::Semibold, 30.0, AMBER), note);
+            }
+            y += 30.0 * u;
+            let half_w = (content_w - gap) / 2.0;
+            for (i, (label, action)) in [("Cancel", Action::Cancel), (submit, Action::Submit)].into_iter().enumerate() {
+                let x = margin + i as f32 * (half_w + gap);
+                buttons.push(Button {
+                    rect: [x as u32, y as u32, half_w as u32, btn_h as u32],
+                    label: label.into(),
+                    action,
+                });
+            }
+        }
+        (View::Home, _) => {
             stack(&mut bottom, "Run checks", Action::Open(View::Doctor), &mut buttons);
             stack(&mut bottom, "QR code", Action::Open(View::Qr), &mut buttons);
             stack(&mut bottom, "Wi-Fi", Action::Open(View::Wifi), &mut buttons);
@@ -993,7 +1071,7 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
             let lead = if m.ios { "Android without a cable?" } else { "No cable? Connect another way" };
             c.text_centered(w as f32 / 2.0, lead_in, Weight::Regular, 28.0, MUTED, lead);
         }
-        View::Wifi => {
+        (View::Wifi, _) => {
             stack(&mut bottom, "Back", Action::Back, &mut buttons);
             if let Some(usb) = m.usb.filter(|u| !is_wireless(u)) {
                 stack(
@@ -1053,7 +1131,7 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
                 c.text(margin, ny, Weight::Regular, 30.0, MUTED, "A USB phone is plugged in.");
             }
         }
-        View::Qr => {
+        (View::Qr, _) => {
             stack(&mut bottom, "Back", Action::Back, &mut buttons);
             stack(&mut bottom, "Pair with a code", Action::PairWithCode, &mut buttons);
             if let Some(qr) = m.qr {
@@ -1095,7 +1173,7 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
             };
             c.para(margin, y, content_w, Style(Weight::Semibold, 32.0, colour), &text);
         }
-        View::Doctor => {
+        (View::Doctor, _) => {
             stack(&mut bottom, "Back", Action::Back, &mut buttons);
             stack(&mut bottom, "Run again", Action::RunChecks, &mut buttons);
             match m.doctor {
@@ -1149,7 +1227,8 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
             Action::Mirror(_) => (Kind::Primary, Some(Glyph::Phone)),
             Action::MirrorIos(_) if !android => (Kind::Primary, Some(Glyph::Phone)),
             Action::MirrorIos(_) => (Kind::Secondary, Some(Glyph::Phone)),
-            Action::RunChecks => (Kind::Primary, None),
+            Action::RunChecks | Action::Submit => (Kind::Primary, None),
+            Action::Cancel => (Kind::Quiet, None),
             Action::Back => (Kind::Quiet, Some(Glyph::Back)),
             Action::Open(View::Wifi) => (Kind::Secondary, Some(Glyph::Wifi)),
             Action::Open(View::Qr) => (Kind::Secondary, Some(Glyph::Qr)),
@@ -1310,6 +1389,97 @@ mod tests {
         assert_ne!(Qr::new().unwrap().password, qr.password);
     }
 
+    #[test]
+    fn the_address_field_starts_at_the_home_network_and_takes_an_address() {
+        let mut f = Field::new(FieldKind::Address);
+        assert_eq!(f.text, "192.168.");
+        // nothing typed yet: there is nothing to connect to
+        assert!(f.submit().is_none());
+        f.insert("1.23 :5555\t");
+        assert_eq!(f.text, "192.168.1.23:5555");
+        f.backspace();
+        f.backspace();
+        assert_eq!(f.text, "192.168.1.23:55");
+        assert!(matches!(f.submit(), Some(LandingEvent::Typed(a)) if a == "192.168.1.23:55"));
+        f.insert(&"9".repeat(100));
+        assert_eq!(f.text.chars().count(), ADDRESS_MAX);
+        let mut empty = Field::new(FieldKind::Address);
+        for _ in 0..20 {
+            empty.backspace();
+        }
+        assert!(empty.text.is_empty() && empty.submit().is_none());
+    }
+
+    #[test]
+    fn the_code_field_takes_six_digits_only() {
+        let mut f = Field::new(FieldKind::Code);
+        assert!(f.text.is_empty());
+        f.insert("12a-3");
+        assert_eq!(f.text, "123");
+        assert!(f.submit().is_none());
+        f.insert("4567890");
+        assert_eq!(f.text, "123456");
+        assert!(matches!(f.submit(), Some(LandingEvent::Code(c)) if c == "123456"));
+        f.backspace();
+        assert!(f.submit().is_none());
+    }
+
+    #[test]
+    fn pasting_trims_and_replaces_the_untouched_start() {
+        let mut f = Field::new(FieldKind::Address);
+        f.paste("  10.0.0.7:41789\n");
+        assert_eq!(f.text, "10.0.0.7:41789");
+        // once something was typed a paste adds to it
+        let mut f = Field::new(FieldKind::Address);
+        f.insert("1.");
+        f.paste(" 23\n");
+        assert_eq!(f.text, "192.168.1.23");
+        let mut f = Field::new(FieldKind::Code);
+        f.paste(" 482 913\r\n");
+        assert_eq!(f.text, "482913");
+    }
+
+    #[test]
+    fn an_open_field_replaces_the_view_with_the_field_and_its_two_buttons() {
+        let (w, h) = (702u32, 1560u32);
+        let looking = Status::Looking;
+        let qr = Qr::new().unwrap();
+        let mut address = Field::new(FieldKind::Address);
+        address.insert("1.23:5555");
+        let code = Field::new(FieldKind::Code);
+        let nearby = [svc(adb::ServiceKind::Connect, "192.168.0.20:41789")];
+        for (view, f, submit) in [(View::Wifi, &address, "Connect"), (View::Qr, &code, "Pair")] {
+            let m = Model { field: Some(f), ..model(&looking, view, &nearby, Some("W82202003817"), Some(&qr), None) };
+            let screen = render(w, h, &m);
+            let actions: Vec<_> = screen.buttons.iter().map(|b| (b.action.clone(), b.label.as_str())).collect();
+            assert_eq!(actions, [(Action::Cancel, "Cancel"), (Action::Submit, submit)]);
+            let [cancel, ok] = [screen.buttons[0].rect, screen.buttons[1].rect];
+            // side by side, Cancel first, inside the picture
+            assert_eq!(cancel[1], ok[1]);
+            assert!(cancel[0] + cancel[2] < ok[0] && ok[0] + ok[2] <= w && ok[1] + ok[3] <= h);
+            let px = |x: u32, y: u32| {
+                let i = ((y * w + x) * 3) as usize;
+                [screen.rgb[i], screen.rgb[i + 1], screen.rgb[i + 2]]
+            };
+            // the click areas are where the buttons are drawn: Connect is filled, Cancel is not
+            let mid = |r: [u32; 4]| (r[0] + r[3] / 2, r[1] + r[3] / 2);
+            assert_eq!(px(mid(ok).0, mid(ok).1), PRIMARY);
+            assert_eq!(px(mid(cancel).0, mid(cancel).1), BG);
+            // the field's box sits above the buttons
+            let box_y = (cancel[1] as f32 * 0.25 + 200.0 * 0.75) as u32;
+            let surface = (box_y..cancel[1]).any(|y| px(w - 80, y) == SURFACE);
+            assert!(surface, "no field box above the buttons");
+        }
+        // a field is only drawn in the Wi-Fi and QR views
+        let home = render(w, h, &Model { field: Some(&address), ..model(&looking, View::Home, &[], None, None, None) });
+        assert!(!home.buttons.iter().any(|b| b.action == Action::Submit));
+        // an address too long for the box still draws
+        let mut long = Field::new(FieldKind::Address);
+        long.insert(&"8".repeat(80));
+        let m = Model { field: Some(&long), ..model(&looking, View::Wifi, &[], None, None, Some("Could not connect")) };
+        assert_eq!(render(w, h, &m).buttons.len(), 2);
+    }
+
     fn model<'a>(
         status: &'a Status,
         view: View,
@@ -1331,6 +1501,7 @@ mod tests {
             doctor: None,
             ios: false,
             iphone: None,
+            field: None,
         }
     }
 
@@ -1464,6 +1635,10 @@ mod tests {
         let lost = Status::Lost("192.168.0.20:5555".into());
         let disconnected = Status::Disconnected;
         let checks = sample_checks();
+        let mut typed = Field::new(FieldKind::Address);
+        typed.insert("1.23:41789");
+        let mut code = Field::new(FieldKind::Code);
+        code.insert("4829");
         let screens = [
             model(&disconnected, View::Home, &[], Some("W82202003817"), None, None),
             model(&lost, View::Home, &[], None, None, None),
@@ -1480,6 +1655,8 @@ mod tests {
                 iphone: Some(("uid-1", "iPhone")),
                 ..model(&looking, View::Home, &[], None, None, None)
             },
+            Model { field: Some(&typed), ..model(&looking, View::Wifi, &[], None, None, None) },
+            Model { field: Some(&code), ..model(&looking, View::Qr, &[], None, Some(&qr), None) },
             // the looking scene at several steps of its animation
             Model { tick: 1, ..model(&looking, View::Home, &[], None, None, None) },
             Model { tick: 2, ..model(&looking, View::Home, &[], None, None, None) },

@@ -103,8 +103,8 @@ Optional helpers (`handset --doctor` lists any that are missing and says what to
 
 - `xdg-open`: open links and captures
 - `wl-clipboard` on Wayland or `xclip`/`xsel` on X11: the clipboard and "copy capture"
-- `zenity` or `kdialog`: the address prompt and error dialogs. A stock Omarchy has no `zenity`, so the address
-  and pairing-code prompts do nothing until you `pacman -S zenity`.
+- `zenity` or `kdialog`: error dialogs, when Handset is started without a terminal to print them in. The address
+  and pairing-code fields are drawn in the window and need neither.
 
 File dialogs go through the desktop portal (`xdg-desktop-portal` with a backend for your desktop), not GTK.
 On a tiling compositor such as Hyprland, float the window or it is tiled to fit. The class is `handset` on Wayland

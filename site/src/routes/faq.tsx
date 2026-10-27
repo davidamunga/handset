@@ -64,9 +64,9 @@ function Faq() {
           plug it in again.
         </li>
         <li>
-          <strong>Copy and the address prompt do nothing.</strong> Handset uses small helper programs: a clipboard tool (
-          <code>wl-clipboard</code> on Wayland, <code>xclip</code> on X11) and <code>zenity</code> or <code>kdialog</code> for the
-          prompts. <code>handset --doctor</code> lists any that are missing.
+          <strong>Copy does nothing.</strong> Handset uses small helper programs: a clipboard tool (<code>wl-clipboard</code> on
+          Wayland, <code>xclip</code> on X11) and <code>zenity</code> or <code>kdialog</code> for error dialogs.{' '}
+          <code>handset --doctor</code> lists any that are missing.
         </li>
         <li>
           <strong>The phone is tiled or squashed.</strong> On a tiling desktop such as Hyprland, make the window float. In Hyprland
