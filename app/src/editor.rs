@@ -1075,76 +1075,88 @@ impl Editor {
                     }
                 });
             });
+            // the save tile comes first so it stays in reach, and a long list scrolls inside the card instead of
+            // pushing the other controls away; a sliver of the third row shows that there is more
             let tiles = all.len() + 1;
-            grid(ui, 3, 0.95, tiles, |ui, k, size| {
-                let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-                let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
-                let art = egui::Rect::from_min_size(rect.min, egui::vec2(size.x, size.y - 20.0));
-                let p = ui.painter();
-                p.rect_filled(art, 9.0, theme::card_hi());
-                let label_pos = egui::pos2(rect.center().x, art.max.y + 11.0);
-                let font = egui::FontId::new(11.0, egui::FontFamily::Proportional);
-                let mut name = String::from("Save current");
-                if let Some((preset, mine)) = all.get(k) {
-                    name = preset.name.clone();
-                    if let Some(tex) = self.thumbs.get(&preset.style.to_spec()) {
-                        let t = tex.size_vec2();
-                        let room = art.shrink(5.0);
-                        let scale = (room.width() / t.x).min(room.height() / t.y);
-                        let img = egui::Rect::from_center_size(art.center(), t * scale);
-                        p.image(
-                            tex.id(),
-                            img,
-                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                            egui::Color32::WHITE,
-                        );
-                    }
-                    if *mine {
-                        p.circle_filled(art.right_top() + egui::vec2(-8.0, 8.0), 3.0, theme::accent());
-                    }
-                    if preset.style == self.style {
-                        p.rect_stroke(
-                            art.expand(2.0),
-                            11.0,
-                            egui::Stroke::new(2.0, theme::accent()),
-                            egui::StrokeKind::Outside,
-                        );
-                    }
-                    if resp.clicked() {
-                        apply = Some(preset.style.clone());
-                    }
-                    if *mine {
-                        resp.clone().context_menu(|ui| {
-                            if ui.button("Delete preset").clicked() {
-                                delete = Some(preset.name.clone());
-                                ui.close();
+            let cell = ((ui.available_width() - 16.0) / 3.0).floor();
+            let rows_shown = 2.4;
+            let max_height = (cell * 0.95).round() * rows_shown + 8.0 * (rows_shown - 1.0);
+            let scroll = tiles > 6;
+            egui::ScrollArea::vertical()
+                .id_salt("presets")
+                .max_height(if scroll { max_height } else { f32::INFINITY })
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
+                    grid(ui, 3, 0.95, tiles, |ui, k, size| {
+                        let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+                        let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+                        let art = egui::Rect::from_min_size(rect.min, egui::vec2(size.x, size.y - 20.0));
+                        let p = ui.painter();
+                        p.rect_filled(art, 9.0, theme::card_hi());
+                        let label_pos = egui::pos2(rect.center().x, art.max.y + 11.0);
+                        let font = egui::FontId::new(11.0, egui::FontFamily::Proportional);
+                        let mut name = String::from("Save current");
+                        if let Some((preset, mine)) = k.checked_sub(1).and_then(|i| all.get(i)) {
+                            name = preset.name.clone();
+                            if let Some(tex) = self.thumbs.get(&preset.style.to_spec()) {
+                                let t = tex.size_vec2();
+                                let room = art.shrink(5.0);
+                                let scale = (room.width() / t.x).min(room.height() / t.y);
+                                let img = egui::Rect::from_center_size(art.center(), t * scale);
+                                p.image(
+                                    tex.id(),
+                                    img,
+                                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                    egui::Color32::WHITE,
+                                );
                             }
-                        });
-                    }
-                } else {
-                    // the last tile: a plus that opens the name field
-                    let c = art.center();
-                    let stroke = egui::Stroke::new(2.0, theme::weak());
-                    p.line_segment([c + egui::vec2(-8.0, 0.0), c + egui::vec2(8.0, 0.0)], stroke);
-                    p.line_segment([c + egui::vec2(0.0, -8.0), c + egui::vec2(0.0, 8.0)], stroke);
-                    if resp.clicked() {
-                        open_naming = true;
-                    }
-                }
-                if resp.hovered() {
-                    p.rect_stroke(art, 9.0, egui::Stroke::new(1.5, theme::weak()), egui::StrokeKind::Inside);
-                }
-                let mut job = egui::text::LayoutJob::simple_singleline(name, font, theme::text());
-                job.wrap = egui::text::TextWrapping {
-                    max_width: size.x,
-                    max_rows: 1,
-                    break_anywhere: true,
-                    overflow_character: Some('…'),
-                };
-                let galley = ui.painter().layout_job(job);
-                let at = label_pos - egui::vec2(galley.size().x / 2.0, galley.size().y / 2.0);
-                ui.painter().galley(at, galley, theme::text());
-            });
+                            if *mine {
+                                p.circle_filled(art.right_top() + egui::vec2(-8.0, 8.0), 3.0, theme::accent());
+                            }
+                            if preset.style == self.style {
+                                p.rect_stroke(
+                                    art.expand(2.0),
+                                    11.0,
+                                    egui::Stroke::new(2.0, theme::accent()),
+                                    egui::StrokeKind::Outside,
+                                );
+                            }
+                            if resp.clicked() {
+                                apply = Some(preset.style.clone());
+                            }
+                            if *mine {
+                                resp.clone().context_menu(|ui| {
+                                    if ui.button("Delete preset").clicked() {
+                                        delete = Some(preset.name.clone());
+                                        ui.close();
+                                    }
+                                });
+                            }
+                        } else {
+                            // the last tile: a plus that opens the name field
+                            let c = art.center();
+                            let stroke = egui::Stroke::new(2.0, theme::weak());
+                            p.line_segment([c + egui::vec2(-8.0, 0.0), c + egui::vec2(8.0, 0.0)], stroke);
+                            p.line_segment([c + egui::vec2(0.0, -8.0), c + egui::vec2(0.0, 8.0)], stroke);
+                            if resp.clicked() {
+                                open_naming = true;
+                            }
+                        }
+                        if resp.hovered() {
+                            p.rect_stroke(art, 9.0, egui::Stroke::new(1.5, theme::weak()), egui::StrokeKind::Inside);
+                        }
+                        let mut job = egui::text::LayoutJob::simple_singleline(name, font, theme::text());
+                        job.wrap = egui::text::TextWrapping {
+                            max_width: size.x,
+                            max_rows: 1,
+                            break_anywhere: true,
+                            overflow_character: Some('…'),
+                        };
+                        let galley = ui.painter().layout_job(job);
+                        let at = label_pos - egui::vec2(galley.size().x / 2.0, galley.size().y / 2.0);
+                        ui.painter().galley(at, galley, theme::text());
+                    });
+                });
             if self.naming {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
