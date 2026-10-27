@@ -33,6 +33,7 @@ mod tools;
 mod transfer;
 mod trim;
 mod update;
+mod verify;
 
 use std::sync::{Arc, Mutex};
 use winit::event_loop::EventLoop;
@@ -44,6 +45,7 @@ fn usage() -> ! {
          \x20      handset --pair <ip:port> <code>\n\
          \x20      handset --restyle <png|mp4|gif> [--style <look name|style>]\n\
          \x20      handset --edit [png|mp4|gif]\n\
+         \x20      handset --verify-release <folder>\n\
          \x20      handset --doctor\n\
          \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--show-touches] [--style <look>] [--style-captures] [--no-update-check] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
          built-in frames: {}\n\
@@ -137,6 +139,10 @@ fn main() {
                 }
             }
             "--doctor" => std::process::exit(doctor::run()),
+            "--verify-release" => {
+                let dir = args.next().unwrap_or_else(|| usage());
+                std::process::exit(verify::run(std::path::Path::new(&dir)));
+            }
             "-h" | "--help" => usage(),
             s if s.starts_with('-') => usage(),
             s => serial = Some(s.to_string()),

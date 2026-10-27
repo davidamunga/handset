@@ -21,3 +21,18 @@ jobs:
     name: build the files
     uses: ./.github/workflows/build-release-files.yml
     secrets: inherit
+
+  signing:
+    name: check the update signing key
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: The secret is the key the app trusts
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          if [ -z "$UPDATE_SIGNING_KEY" ]; then
+            echo "::warning::UPDATE_SIGNING_KEY is not set: a release made now would not be signed."
+            exit 0
+          fi
+          scripts/update-key.sh check

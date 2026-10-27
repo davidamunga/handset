@@ -62,6 +62,20 @@ jobs:
           pattern: release-files*
           merge-multiple: true
           path: release-files
+      - name: Sign the checksum files
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          # the app installs an update only when SHA256SUMS carries a signature it trusts (ADR 0024)
+          if [ -z "$UPDATE_SIGNING_KEY" ]; then
+            echo "::warning::UPDATE_SIGNING_KEY is not set, so this release is not signed: Handset will announce it but not install it in place."
+            exit 0
+          fi
+          scripts/update-key.sh check   # the secret must be the key whose public half is built into the app
+          for sums in release-files/SHA256SUMS release-files/SHA256SUMS-windows; do
+            [ -f "$sums" ] && scripts/update-key.sh sign "$sums"
+          done
+          ls -l release-files
       - name: Create the tag and the GitHub release
         run: |
           awk -v v="$VERSION" '$0 == "## " v { found = 1; next } /^## / { found = 0 } found' CHANGELOG.md > notes.md

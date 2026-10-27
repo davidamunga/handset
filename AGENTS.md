@@ -27,11 +27,12 @@ small native Rust app that implements the desktop side of the scrcpy protocol an
 | `app/src/presets.rs` | Named looks (a style saved under a name): built-in ones, yours in `~/.config/handset/looks`, and `--style <name>` |
 | `app/src/editor.rs` | `handset --edit <file>`: egui window with live preview and playback, run as its own process |
 | `app/src/update.rs`, `install.rs` | Looking for a newer release; how this copy was installed (Homebrew, Scoop, winget, a download) and what the update notice says for each |
+| `app/src/verify.rs` | Release signature and checksum checks (Ed25519 over `SHA256SUMS`), and `--verify-release` |
 | `app/src/menu.rs`, `tools.rs` | Native macOS menu; tool lookup, error dialogs, default arguments |
 | `app/assets/` | Embedded scrcpy server, the built-in phone frames and the Inter fonts |
 | `frames/` | Script that generates the frame PNGs |
 | `app/packaging/` | App icon: SVG sources, `AppIcon.icns` and a README PNG (rebuild with `scripts/make-icon.sh`) |
-| `scripts/` | Packaging, icon, version-sync, release-branch (`release-branches.sh`, tested by `test-release-branches.sh`) and hook scripts |
+| `scripts/` | Packaging, icon, version-sync, release-branch (`release-branches.sh`, tested by `test-release-branches.sh`), update-key (`update-key.sh`, tested by `test-update-key.sh`) and hook scripts |
 | `.changeset/`, `package.json` | Changesets config and the version it bumps (release tooling only, see `docs/runbooks/release.md`) |
 | `docs/adr/`, `docs/runbooks/` | Architecture decisions and repeatable procedures |
 

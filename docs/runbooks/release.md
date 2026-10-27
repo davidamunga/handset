@@ -45,6 +45,26 @@ A release happens only when you start it. Merging a version pull request does no
    ad-hoc signed and Gatekeeper blocks a downloaded copy until it is opened with right-click, Open
    (or `xattr -dr com.apple.quarantine`).
 
+## Update signing
+
+Handset only installs an update whose `SHA256SUMS` file carries an Ed25519 signature that verifies against a public
+key built into the app (`app/src/verify.rs`, ADR 0024). The release workflow signs `SHA256SUMS` and
+`SHA256SUMS-windows` and attaches `SHA256SUMS.sig` and `SHA256SUMS-windows.sig` (the raw 64-byte signatures).
+
+- **The key.** `scripts/update-key.sh generate` makes it once, in `~/.config/handset/update-signing-key.pem`, and
+  prints the public half. **Back that file up**: it cannot be recovered. Store it for the workflow with
+  `gh secret set UPDATE_SIGNING_KEY < ~/.config/handset/update-signing-key.pem`.
+- **What the workflow does.** Before it signs, it runs `scripts/update-key.sh check`, which fails the release if the
+  secret is not a key whose public half is in `verify.rs`. Without the secret the release is published unsigned
+  with a warning: the app announces it but does not install it in place. `release-dry-run` runs the same check.
+- **Checking a download by hand.** Put the release files and the `.sig` next to each other and run
+  `handset --verify-release <folder>`: it prints `ok` for each file whose hash is in the signed list and exits
+  non-zero if anything does not match.
+- **Rotating the key.** Add the new public key to `KEYS` in `verify.rs` (several can be trusted at once) and release a
+  version that carries it. Sign with the new key only once most people have that version; remove the old key
+  later. A key that is lost or leaked has the same remedy, but people who do not update by hand cannot be
+  told, which is why the file is worth backing up.
+
 ## Release branches
 
 `release/X.Y.Z` is the line that produced `vX.Y.Z`: the `release` workflow creates it at the commit it tags,
