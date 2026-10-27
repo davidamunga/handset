@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.1
+
+### Patch Changes
+
+- [#82](https://github.com/davidamunga/handset/pull/82) [`1a7df6a`](https://github.com/davidamunga/handset/commit/1a7df6a9c1a1c7f5f9fb956e3eccbdf8ffbab05e) Thanks [@davidamunga](https://github.com/davidamunga)! - Fix memory that grew by gigabytes, until the app stopped responding, while the Handset window was covered by other windows during mirroring. Each new phone frame was copied to the GPU but never released while the window could not be drawn. Handset now stops drawing while its window is hidden and starts again when it shows.
+
+- [#84](https://github.com/davidamunga/handset/pull/84) [`356fbcc`](https://github.com/davidamunga/handset/commit/356fbcc0c820d0be4a247f50abd123bc7f080740) Thanks [@davidamunga](https://github.com/davidamunga)! - A newer release now shows a solid blue banner across the bottom of the phone (white text, with an X to hide it for three days) instead of a toast that faded after ten seconds, and a green update button in the toolbar that stays while there is an update. Clicking either installs the update, copies the package manager's command, or opens the download page, depending on how Handset was installed. Long toasts, such as the capture toast with EDIT at the end, now wrap onto more lines to fit the phone's screen instead of being cut off.
+
 ## 0.8.0
 
 ### Minor Changes
