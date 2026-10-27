@@ -308,7 +308,7 @@ impl Worker {
 // ---- look -----------------------------------------------------------------------------------------
 
 mod theme {
-    //! Device Gray: the greys of the app icon, one set for each OS theme. `set_dark` is called every frame
+    //! Device Gray: the greys of the app icon, one set for each OS theme. The dark set is near black, like the connect screen. `set_dark` is called every frame
     //! from the theme egui reports, so the palette follows the system setting.
     use eframe::egui::Color32;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -332,19 +332,19 @@ mod theme {
     }
 
     pub fn bg() -> Color32 {
-        pick(0x17181b, 0xe3e5e9)
+        pick(0x000000, 0xe3e5e9)
     }
     pub fn panel() -> Color32 {
-        pick(0x1f2024, 0xf2f3f5)
+        pick(0x0b0b0d, 0xf2f3f5)
     }
     pub fn card() -> Color32 {
-        pick(0x2a2c30, 0xffffff)
+        pick(0x161618, 0xffffff)
     }
     pub fn card_hi() -> Color32 {
-        pick(0x34363c, 0xe7e8eb)
+        pick(0x222226, 0xe7e8eb)
     }
     pub fn line() -> Color32 {
-        pick(0x3c3e44, 0xd5d8dd)
+        pick(0x2a2a2f, 0xd5d8dd)
     }
     pub fn text() -> Color32 {
         pick(0xeceef0, 0x1f2024)
@@ -363,17 +363,17 @@ mod theme {
         pick(0x1f2024, 0xffffff)
     }
     pub fn accent_dim() -> Color32 {
-        pick(0x4a4d55, 0xcdd0d6)
+        pick(0x3a3a40, 0xcdd0d6)
     }
     pub fn hover() -> Color32 {
-        pick(0x3f4248, 0xd5d8dd)
+        pick(0x2f2f35, 0xd5d8dd)
     }
     pub fn pressed() -> Color32 {
-        pick(0x4a4d55, 0xc5c8cf)
+        pick(0x3a3a41, 0xc5c8cf)
     }
     /// The part of a recording that is kept, brighter than the track.
     pub fn kept() -> Color32 {
-        pick(0x4a4d55, 0xb9bcc2)
+        pick(0x3a3a40, 0xb9bcc2)
     }
     /// The playhead knob.
     pub fn knob() -> Color32 {
