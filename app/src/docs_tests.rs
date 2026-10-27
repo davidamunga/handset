@@ -7,6 +7,7 @@ use std::path::Path;
 const GUIDE: &str = include_str!("../../docs/styling.md");
 const README: &str = include_str!("../../README.md");
 const MAIN: &str = include_str!("main.rs");
+const UPDATES: &str = include_str!("../../docs/updates.md");
 
 fn docs_dir() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs")
@@ -100,4 +101,43 @@ fn the_guide_is_linked_from_the_readme_and_points_at_the_adr() {
     assert!(README.contains("docs/styling.md"));
     assert!(GUIDE.contains("adr/0022-style-captures-with-a-shared-compositor.md"));
     assert!(docs_dir().join("adr/0022-style-captures-with-a-shared-compositor.md").is_file());
+}
+
+#[test]
+fn the_update_guide_gives_the_real_commands_for_each_package_manager() {
+    use crate::install::Source;
+    for s in [Source::Homebrew, Source::Scoop, Source::Winget] {
+        let cmd = s.upgrade_command().unwrap();
+        assert!(UPDATES.contains(&format!("copies `{cmd}`")), "docs/updates.md does not give {cmd}");
+        assert!(
+            UPDATES.contains(&format!("CLICK TO COPY: {}", cmd.to_uppercase())),
+            "the toast for {cmd} is not shown"
+        );
+        assert!(README.contains(cmd), "the README does not give {cmd}");
+    }
+}
+
+#[test]
+fn the_update_guide_matches_the_snooze_the_settings_and_the_environment() {
+    assert_eq!(crate::update::SNOOZE, 3 * 24 * 60 * 60);
+    assert!(UPDATES.contains("Remind Me in 3 Days") && UPDATES.contains("three days"));
+    assert!(UPDATES.contains("`update-check=off`"));
+    for name in ["HANDSET_UPDATE_BASE", "HANDSET_UPDATE_CURRENT"] {
+        assert!(UPDATES.contains(name), "{name} is not in docs/updates.md");
+        assert!(
+            include_str!("updater.rs").contains(name) || include_str!("update.rs").contains(name),
+            "{name} is documented but not used"
+        );
+    }
+}
+
+#[test]
+fn the_update_guide_names_the_files_the_updater_really_downloads() {
+    use crate::updater::Os;
+    assert!(UPDATES.contains(&format!("`{}`", Os::Mac.zip_name("X"))));
+    assert!(UPDATES.contains(&format!("`{}`", Os::Windows.zip_name("X"))));
+    assert!(UPDATES.contains(&format!("`{}`", Os::Windows.sums_name())));
+    assert!(UPDATES.contains("handset-update-<id>/update.log"));
+    assert!(MAIN.contains("--verify-release") && UPDATES.contains("--verify-release"));
+    assert!(README.contains("docs/updates.md"));
 }

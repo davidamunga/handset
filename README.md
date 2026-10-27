@@ -130,8 +130,10 @@ instead: `cargo install --path app --locked`.
   file). The request goes to `api.github.com` through `curl` and carries only a `handset/<version>` User-Agent.
   Handset knows how it was installed: with Homebrew, Scoop or winget the toast gives the command to run
   (`brew upgrade --cask handset`, `scoop update handset`, `winget upgrade davidamunga.Handset`) and a click
-  copies it, so the package manager stays in charge. The menu also offers **What's New**, **Skip** (that version
-  stays quiet) and **Remind Me in 3 Days**.
+  copies it, so the package manager stays in charge. A downloaded app (macOS) or unzipped release (Windows) can
+  install the update itself: it checks the release's signature and checksum, replaces the app and restarts, and puts the
+  old one back if anything fails. The menu also offers **What's New**, **Skip** (that version stays quiet) and **Remind
+  Me in 3 Days**. How it works: [docs/updates.md](docs/updates.md).
 - **Style a capture:** click **EDIT** on the toast after a capture is saved (or **Recent Captures > Edit Style...**)
   to open the editor, or turn on **Recording > Save a styled copy of each capture**. The guide is in
   [docs/styling.md](docs/styling.md).
@@ -164,6 +166,7 @@ instead: `cargo install --path app --locked`.
 | `--connect <ip[:port]>` | Connect to a phone over Wi-Fi (`adb connect`, default port 5555) and mirror it |
 | `--last` | Reconnect to the phone you last used over Wi-Fi (Handset remembers the last few in `~/.config/handset/recent`) |
 | `--pair <ip:port> <code>` | Pair with a phone using its Wireless debugging pairing code, then exit |
+| `--verify-release <folder>` | Check downloaded release files against the signed `SHA256SUMS` and say whether they can be trusted |
 | `--doctor` | Check `adb`, `ffmpeg` and each connected phone (authorised, online, Android version, screen on) and say what to fix; exits 1 when something blocks mirroring |
 | `--wifi` | Switch a USB-connected phone to Wi-Fi, connect, and mirror (you can unplug the cable) |
 | `--start-app <package>` | Open an app on the phone once it is mirrored, e.g. `--start-app com.android.chrome` (a leading `?` searches app names) |
