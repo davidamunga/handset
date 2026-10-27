@@ -36,7 +36,7 @@ The preview on the right is the capture as it will be exported. A change shows a
 | **Corner radius** | Rounds the capture's corners, 0 to 25 percent of its shorter side. A recording of a framed phone is cut out along the phone's own outline, so there is nothing to round and this control is hidden |
 | **Shadow** | 0 to 100. The shadow follows the capture's outline |
 | **Aspect ratio** | **Auto** (the capture plus its padding), 1:1, 16:9, 9:16, 4:5, 4:3 or 3:2. The short side is widened; the capture is never shrunk |
-| **Looks** | Saves the current style under a name and brings it back with one click (see below) |
+| **Presets** | Styles kept under a name, shown as thumbnails of your picture, and applied with one click (see below) |
 | **Export** | Saves `<name>-styled.<ext>` beside the original and remembers the look for next time. A video export shows its progress and can be cancelled |
 
 The size under **Export** is the size of the file you will get.
@@ -54,21 +54,23 @@ Everything is drawn by Handset, so nothing needs a licence:
 
 Under the preview of a recording there is a player.
 
-- **Play and pause** with the green button or the space bar, and **drag the scrubber** to any moment.
+- **Play and pause** with the round button or the space bar, and **drag the scrubber** to any moment.
   The preview plays the recording's sound too. **Sound** mutes it, and **Loop** repeats.
-- **Trim** by dragging the two green handles at the ends of the scrubber. Playback and Loop stay inside the
+- **Trim** by dragging the two handles at the ends of the scrubber. Playback and Loop stay inside the
   kept part, and the exported file is cut to it, audio included. **Reset trim** brings the whole recording back.
   A clip cannot be shorter than 0.2 seconds.
 
 The preview is a small, lower-quality copy so it stays smooth. The export is full quality (H.264, with the
 audio copied as it is).
 
-### Looks
+### Presets
 
-The **Looks** menu at the top of the editor keeps styles under names. A few come with Handset: `Clean white`,
-`Dark card`, `Sunset 4:5`, `Aurora 16:9` and `Dusk square`. Type a name and press **Save** to keep the current
-style; saving an existing name replaces it, and the small **x** forgets a look. Yours are stored in
-`~/.config/handset/looks`, one `name<TAB>style` per line.
+The **Presets** card at the top of the editor shows styles kept under names, each drawn over your own picture.
+A few come with Handset: `Clean white`, `Dark card`, `Sunset 4:5`, `Aurora 16:9` and `Dusk square`. Click one to
+apply it. Click **Save current**, type a name and press **Save** to keep the current style; saving an existing name
+replaces it. Yours have a small dot, and a right-click on one offers **Delete preset**. **Reset** goes back to the
+default style. Yours are stored in `~/.config/handset/looks`, one `name<TAB>style` per line (the file keeps its
+old name so saved presets carry over).
 
 ### Other things
 
@@ -111,7 +113,7 @@ one.
 |---|---|
 | `<name>-styled.<ext>` | The styled copy, next to the original (`-styled-2` and so on if you make several) |
 | `<name>.matte` | Next to each recording: the outline of the framed phone, so the phone can be cut out of the recording's dark backdrop when it is styled. It is a small greyscale PNG. Handset removes the ones whose recording is gone |
-| `~/.config/handset/looks` | Your saved looks |
+| `~/.config/handset/looks` | Your saved presets |
 | `~/.config/handset/settings` | `style=` (the last look) and `auto-style=` (styled copies of every capture) |
 
 A recording made before styling existed has no `.matte`. It is styled as a rounded card on its own dark

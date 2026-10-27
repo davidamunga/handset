@@ -35,7 +35,7 @@ and Wi-Fi and QR code options for connecting without a cable.
 - Framed screenshots (transparent PNG) and recordings (MP4 with audio, or GIF) via ffmpeg
 - A style editor for captures: put a screenshot or recording on a gradient, wallpaper, colour or your own picture,
   with padding, shadow, rounded corners and an aspect ratio (1:1, 16:9, 4:5 ...); trim and play recordings
-  with sound; save looks. Your original is kept. See [docs/styling.md](docs/styling.md)
+  with sound; keep your own presets. Your original is kept. See [docs/styling.md](docs/styling.md)
 - A Dock icon that shows what Handset is doing: grey eyes while waiting for a phone, amber while connecting, white
   while mirroring, red with a dot while recording
 - A toolbar beside the phone and a native right-click menu

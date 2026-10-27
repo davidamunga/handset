@@ -120,6 +120,12 @@ fn preview_size(w: u32, h: u32) -> (u32, u32) {
     (((w as f32 / f).round() as u32).max(1), ((h as f32 / f).round() as u32).max(1))
 }
 
+/// The size a preset thumbnail's picture is drawn at: the picture's shape, its long edge 180 px.
+fn thumb_size(w: u32, h: u32) -> (u32, u32) {
+    let f = 180.0 / w.max(h).max(1) as f32;
+    (((w as f32 * f).round() as u32).max(1), ((h as f32 * f).round() as u32).max(1))
+}
+
 fn downscale(src: &Img, (w, h): (u32, u32)) -> Img {
     if (w, h) == (src.w, src.h) {
         return Img { w, h, rgba: src.rgba.clone() };
@@ -683,9 +689,13 @@ struct Editor {
     style_dirty: bool,
     frame_dirty: bool,
     swatches: Vec<(Background, egui::TextureHandle)>,
-    /// The looks you saved, and the name being typed for the next one.
+    /// The presets you saved, the name being typed for the next one, and whether that field is open.
     saved_looks: Vec<Preset>,
     look_name: String,
+    naming: bool,
+    /// The picture at thumbnail size, and each preset drawn over it, keyed by the preset's style.
+    thumb_src: Img,
+    thumbs: std::collections::HashMap<String, egui::TextureHandle>,
     export: Option<Export>,
     /// Earlier looks, for undo, and the look as of the last frame.
     history: Vec<Style>,
@@ -768,6 +778,9 @@ impl Editor {
             swatches,
             saved_looks: presets::load(),
             look_name: String::new(),
+            naming: false,
+            thumb_src: downscale(&source.first, thumb_size(source.first.w, source.first.h)),
+            thumbs: std::collections::HashMap::new(),
             export: None,
             history: Vec::new(),
             last_push: Instant::now(),
@@ -1020,73 +1033,163 @@ impl Editor {
         presets::remove(&mut self.saved_looks, name)
     }
 
-    /// What the Looks menu shows: a field to save the current look, then the saved and built-in ones.
-    fn looks_contents(&mut self, ui: &mut egui::Ui) {
-        {
-            ui.horizontal(|ui| {
-                let w = ui.available_width() - 72.0;
-                let edit = egui::TextEdit::singleline(&mut self.look_name)
-                    .hint_text("Name this look")
-                    .desired_width(w)
-                    .char_limit(32);
-                let enter = ui.add(edit).lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                let name = presets::clean_name(&self.look_name);
-                let save = ui.add_enabled(name.is_some(), egui::Button::new("Save")).clicked();
-                if name.is_some() && (save || enter) && self.save_look(&self.look_name.clone()) {
-                    presets::save(&self.saved_looks);
-                    self.look_name.clear();
-                }
-            });
-            let mut apply = None;
-            let mut delete = None;
-            let all: Vec<(Preset, bool)> = self
-                .saved_looks
-                .iter()
-                .map(|p| (p.clone(), true))
-                .chain(
-                    presets::builtin()
-                        .into_iter()
-                        .filter(|b| !self.saved_looks.iter().any(|s| s.name.eq_ignore_ascii_case(&b.name)))
-                        .map(|p| (p, false)),
-                )
-                .collect();
-            egui::ScrollArea::vertical().max_height(220.0).auto_shrink([false, true]).show(ui, |ui| {
-                for (look, mine) in &all {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        let w = ui.available_width() - if *mine { 34.0 } else { 0.0 };
-                        let on = look.style == self.style;
-                        let button = egui::Button::new(egui::RichText::new(&look.name).color(if on {
-                            theme::accent()
-                        } else {
-                            theme::text()
-                        }))
-                        .fill(if on { theme::accent_dim() } else { theme::bg() })
-                        .min_size(egui::vec2(w, 28.0));
-                        if ui.add(button).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                            apply = Some(look.style.clone());
-                        }
-                        if *mine
-                            && ui
-                                .add(egui::Button::new("x").min_size(egui::vec2(28.0, 28.0)))
-                                .on_hover_text("Forget this look")
-                                .clicked()
-                        {
-                            delete = Some(look.name.clone());
-                        }
-                    });
-                }
-            });
-            if let Some(style) = apply {
-                self.apply_look(&style);
-                ui.close();
-            }
-            if let Some(name) = delete
-                && self.forget_look(&name)
-            {
-                presets::save(&self.saved_looks);
+    /// The presets (the built-in ones, then yours) as thumbnails of this picture, with a tile to save the current
+    /// style. Returns whether the style changed.
+    fn presets_card(&mut self, ui: &mut egui::Ui) -> bool {
+        let all: Vec<(Preset, bool)> = self
+            .saved_looks
+            .iter()
+            .map(|p| (p.clone(), true))
+            .chain(
+                presets::builtin()
+                    .into_iter()
+                    .filter(|b| !self.saved_looks.iter().any(|s| s.name.eq_ignore_ascii_case(&b.name)))
+                    .map(|p| (p, false)),
+            )
+            .collect();
+        for (preset, _) in &all {
+            let key = preset.style.to_spec();
+            if !self.thumbs.contains_key(&key) {
+                let l = preset.style.layout((self.thumb_src.w, self.thumb_src.h));
+                let bd = preset.style.backdrop(&l, None, None);
+                let out = preset.style.compose_over(&bd, &l, &self.thumb_src);
+                let img = egui::ColorImage::from_rgba_unmultiplied([out.w as usize, out.h as usize], &out.rgba);
+                let tex = ui.ctx().load_texture(format!("preset-{key}"), img, egui::TextureOptions::LINEAR);
+                self.thumbs.insert(key, tex);
             }
         }
+        let mut apply = None;
+        let mut delete = None;
+        let mut reset = false;
+        let mut open_naming = false;
+        card(ui, |ui| {
+            ui.horizontal(|ui| {
+                section_title(ui, "PRESETS");
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui
+                        .link(egui::RichText::new("Reset").size(12.0))
+                        .on_hover_text("Back to the default style")
+                        .clicked()
+                    {
+                        reset = true;
+                    }
+                });
+            });
+            let tiles = all.len() + 1;
+            grid(ui, 3, 0.95, tiles, |ui, k, size| {
+                let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+                let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+                let art = egui::Rect::from_min_size(rect.min, egui::vec2(size.x, size.y - 20.0));
+                let p = ui.painter();
+                p.rect_filled(art, 9.0, theme::card_hi());
+                let label_pos = egui::pos2(rect.center().x, art.max.y + 11.0);
+                let font = egui::FontId::new(11.0, egui::FontFamily::Proportional);
+                let mut name = String::from("Save current");
+                if let Some((preset, mine)) = all.get(k) {
+                    name = preset.name.clone();
+                    if let Some(tex) = self.thumbs.get(&preset.style.to_spec()) {
+                        let t = tex.size_vec2();
+                        let room = art.shrink(5.0);
+                        let scale = (room.width() / t.x).min(room.height() / t.y);
+                        let img = egui::Rect::from_center_size(art.center(), t * scale);
+                        p.image(
+                            tex.id(),
+                            img,
+                            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                            egui::Color32::WHITE,
+                        );
+                    }
+                    if *mine {
+                        p.circle_filled(art.right_top() + egui::vec2(-8.0, 8.0), 3.0, theme::accent());
+                    }
+                    if preset.style == self.style {
+                        p.rect_stroke(
+                            art.expand(2.0),
+                            11.0,
+                            egui::Stroke::new(2.0, theme::accent()),
+                            egui::StrokeKind::Outside,
+                        );
+                    }
+                    if resp.clicked() {
+                        apply = Some(preset.style.clone());
+                    }
+                    if *mine {
+                        resp.clone().context_menu(|ui| {
+                            if ui.button("Delete preset").clicked() {
+                                delete = Some(preset.name.clone());
+                                ui.close();
+                            }
+                        });
+                    }
+                } else {
+                    // the last tile: a plus that opens the name field
+                    let c = art.center();
+                    let stroke = egui::Stroke::new(2.0, theme::weak());
+                    p.line_segment([c + egui::vec2(-8.0, 0.0), c + egui::vec2(8.0, 0.0)], stroke);
+                    p.line_segment([c + egui::vec2(0.0, -8.0), c + egui::vec2(0.0, 8.0)], stroke);
+                    if resp.clicked() {
+                        open_naming = true;
+                    }
+                }
+                if resp.hovered() {
+                    p.rect_stroke(art, 9.0, egui::Stroke::new(1.5, theme::weak()), egui::StrokeKind::Inside);
+                }
+                let mut job = egui::text::LayoutJob::simple_singleline(name, font, theme::text());
+                job.wrap = egui::text::TextWrapping {
+                    max_width: size.x,
+                    max_rows: 1,
+                    break_anywhere: true,
+                    overflow_character: Some('…'),
+                };
+                let galley = ui.painter().layout_job(job);
+                let at = label_pos - egui::vec2(galley.size().x / 2.0, galley.size().y / 2.0);
+                ui.painter().galley(at, galley, theme::text());
+            });
+            if self.naming {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    let w = ui.available_width() - 130.0;
+                    let edit = egui::TextEdit::singleline(&mut self.look_name)
+                        .hint_text("Name this preset")
+                        .desired_width(w)
+                        .char_limit(32);
+                    let resp = ui.add(edit);
+                    if open_naming {
+                        resp.request_focus();
+                    }
+                    let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                    let name = presets::clean_name(&self.look_name);
+                    let save = ui.add_enabled(name.is_some(), egui::Button::new("Save")).clicked();
+                    if name.is_some() && (save || enter) && self.save_look(&self.look_name.clone()) {
+                        presets::save(&self.saved_looks);
+                        self.look_name.clear();
+                        self.naming = false;
+                    }
+                    if ui.link("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                        self.look_name.clear();
+                        self.naming = false;
+                    }
+                });
+            }
+        });
+        if open_naming {
+            self.naming = true;
+        }
+        if let Some(name) = delete
+            && self.forget_look(&name)
+        {
+            presets::save(&self.saved_looks);
+        }
+        if reset {
+            self.style = Style::default();
+            self.tab = Tab::Gradient;
+            return true;
+        }
+        if let Some(style) = apply {
+            self.apply_look(&style);
+            return true;
+        }
+        false
     }
 
     fn layout_card(&mut self, ui: &mut egui::Ui) -> bool {
@@ -1134,8 +1237,8 @@ impl Editor {
         if ui.add_enabled(!busy, button).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
             self.start_export(ctx);
         }
-        ui.horizontal(|ui| {
-            if let Some((_, control)) = &self.export {
+        if let Some((_, control)) = &self.export {
+            ui.horizontal(|ui| {
                 let p = control.progress.load(std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
                 if self.is_video() {
                     ui.add(egui::ProgressBar::new(p).desired_width(ui.available_width() - 64.0).fill(theme::accent()));
@@ -1146,12 +1249,8 @@ impl Editor {
                 if ui.link("Cancel").clicked() {
                     control.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
-            } else if ui.link("Reset look").clicked() {
-                self.style = Style::default();
-                self.tab = Tab::Gradient;
-                self.style_dirty = true;
-            }
-        });
+            });
+        }
         match &self.status {
             Some(Ok(p)) => {
                 let name: String = p.file_name().map_or(String::new(), |n| n.to_string_lossy().into());
@@ -1283,24 +1382,15 @@ impl eframe::App for Editor {
             .resizable(false)
             .frame(egui::Frame::new().fill(theme::panel()).inner_margin(egui::Margin::symmetric(14, 0)))
             .show(ui, |ui| {
-                // the Looks menu sits beside the window buttons
-                ui.allocate_ui_with_layout(
-                    egui::vec2(ui.available_width(), TOP),
-                    egui::Layout::right_to_left(egui::Align::Center),
-                    |ui| {
-                        ui.menu_button(egui::RichText::new("Looks").size(13.0).family(semibold()), |ui| {
-                            ui.set_width(250.0);
-                            self.looks_contents(ui);
-                        });
-                    },
-                );
+                ui.add_space(TOP);
                 egui::Panel::bottom("export").show_separator_line(false).frame(egui::Frame::NONE).show(ui, |ui| {
                     ui.add_space(8.0);
                     self.export_area(ui, &ctx);
                     ui.add_space(14.0);
                 });
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    let mut changed = self.background_card(ui);
+                    let mut changed = self.presets_card(ui);
+                    changed |= self.background_card(ui);
                     changed |= self.layout_card(ui);
                     if changed && matches!(self.style.background, Background::Image(_)) {
                         self.ensure_image();
