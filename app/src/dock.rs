@@ -22,6 +22,7 @@ pub fn state_for(recording: bool, mirroring: bool, connecting: bool) -> State {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn icon(state: State) -> &'static [u8] {
     match state {
         State::Idle => include_bytes!("../packaging/icon/state-idle.png"),

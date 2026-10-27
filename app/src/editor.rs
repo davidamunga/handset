@@ -532,6 +532,8 @@ const TOP: f32 = if cfg!(target_os = "macos") { 34.0 } else { 8.0 };
 
 struct Editor {
     path: PathBuf,
+    /// Drawn in the hidden title bar, which only macOS has.
+    #[cfg(target_os = "macos")]
     name: String,
     full_size: (u32, u32),
     style: Style,
@@ -605,6 +607,7 @@ impl Editor {
         });
         let tab = tab_of(&style.background);
         let mut ed = Self {
+            #[cfg(target_os = "macos")]
             name: path.file_name().map_or(String::new(), |n| n.to_string_lossy().into()),
             full_size: source.size,
             matte: source.matte.is_some(),
