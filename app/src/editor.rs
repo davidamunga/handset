@@ -17,7 +17,12 @@ use std::time::{Duration, Instant};
 
 const PREVIEW_LONG_SIDE: u32 = 720;
 const SWATCH: f32 = 36.0;
-const PANEL: f32 = 336.0;
+/// The controls take a third of the window, within these limits.
+const PANEL_MIN: f32 = 320.0;
+const PANEL_MAX: f32 = 360.0;
+/// The window cannot be made smaller or larger than this, so nothing has to squeeze or stretch.
+const MIN_SIZE: [f32; 2] = [860.0, 600.0];
+const MAX_SIZE: [f32; 2] = [1360.0, 960.0];
 const COLORS: [[u8; 3]; 16] = [
     [24, 24, 27],
     [255, 255, 255],
@@ -54,8 +59,9 @@ pub fn run(path: PathBuf, style: Style) -> Result<(), String> {
     let opts = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(format!("Style - {name}"))
-            .with_inner_size([940.0, 620.0])
-            .with_min_inner_size([800.0, 540.0])
+            .with_inner_size([960.0, 700.0])
+            .with_min_inner_size(MIN_SIZE)
+            .with_max_inner_size(MAX_SIZE)
             .with_fullsize_content_view(true)
             .with_title_shown(false)
             .with_titlebar_shown(false)
@@ -345,6 +351,8 @@ fn setup_style(ctx: &egui::Context) {
         s.spacing.item_spacing = egui::vec2(8.0, 8.0);
         s.spacing.button_padding = egui::vec2(12.0, 6.0);
         s.spacing.slider_rail_height = 4.0;
+        // text never wraps to a second line: it is cut short instead
+        s.wrap_mode = Some(egui::TextWrapMode::Truncate);
     });
 }
 
@@ -407,19 +415,43 @@ fn chip(ui: &mut egui::Ui, label: &str, size: egui::Vec2, on: bool) -> bool {
     };
     ui.painter().rect_filled(rect, 9.0, fill);
     let color = if on { theme::ACCENT } else { theme::TEXT };
-    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, egui::FontId::new(12.5, semibold()), color);
+    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, egui::FontId::new(11.5, semibold()), color);
     resp.clicked()
 }
 
-fn slider_row(ui: &mut egui::Ui, label: &str, value: &mut u32, max: u32, unit: &str) -> bool {
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(label).color(theme::WEAK));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.label(egui::RichText::new(format!("{value}{unit}")).family(semibold()));
+/// Swatches in rows of exactly `cols`, filling the width; `ratio` is height over width.
+fn grid(
+    ui: &mut egui::Ui,
+    cols: usize,
+    ratio: f32,
+    count: usize,
+    mut cell: impl FnMut(&mut egui::Ui, usize, egui::Vec2),
+) {
+    let gap = 8.0;
+    let w = ((ui.available_width() - gap * (cols as f32 - 1.0)) / cols as f32).floor();
+    let size = egui::vec2(w, (w * ratio).round());
+    for row in (0..count).step_by(cols) {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = gap;
+            for i in row..(row + cols).min(count) {
+                cell(ui, i, size);
+            }
         });
+    }
+}
+
+fn slider_row(ui: &mut egui::Ui, label: &str, value: &mut u32, max: u32, unit: &str) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(egui::vec2(98.0, 24.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.label(egui::RichText::new(label).color(theme::WEAK));
+        });
+        ui.spacing_mut().slider_width = (ui.available_width() - 52.0).max(40.0);
+        changed = ui.add(egui::Slider::new(value, 0..=max).show_value(false).trailing_fill(true)).changed();
+        let text = egui::RichText::new(format!("{value}{unit}")).family(semibold());
+        ui.add_sized([36.0, 24.0], egui::Label::new(text));
     });
-    ui.spacing_mut().slider_width = ui.available_width() - 6.0;
-    ui.add(egui::Slider::new(value, 0..=max).show_value(false).trailing_fill(true)).changed()
+    changed
 }
 
 /// A slim track with a thumb; the new position when it is clicked or dragged.
@@ -683,8 +715,13 @@ impl Editor {
         }
     }
 
-    fn swatch(ui: &mut egui::Ui, selected: bool, paint: impl FnOnce(&egui::Painter, egui::Rect)) -> bool {
-        let (rect, resp) = ui.allocate_exact_size(egui::vec2(SWATCH, SWATCH), egui::Sense::click());
+    fn swatch(
+        ui: &mut egui::Ui,
+        size: egui::Vec2,
+        selected: bool,
+        paint: impl FnOnce(&egui::Painter, egui::Rect),
+    ) -> bool {
+        let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
         paint(ui.painter(), rect);
         if selected {
             ui.painter().rect_stroke(
@@ -699,12 +736,14 @@ impl Editor {
         resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
     }
 
-    fn texture_swatches(&mut self, ui: &mut egui::Ui, range: std::ops::Range<usize>) -> bool {
+    fn texture_grid(&mut self, ui: &mut egui::Ui, range: std::ops::Range<usize>, cols: usize, ratio: f32) -> bool {
+        let items: Vec<usize> = range.collect();
         let mut changed = false;
-        for i in range {
+        grid(ui, cols, ratio, items.len(), |ui, k, size| {
+            let i = items[k];
             let (bg, tex) = (self.swatches[i].0.clone(), self.swatches[i].1.clone());
             let selected = self.style.background == bg;
-            if Self::swatch(ui, selected, |p, r| {
+            if Self::swatch(ui, size, selected, |p, r| {
                 p.add(
                     egui::epaint::RectShape::filled(r, 9.0, egui::Color32::WHITE)
                         .with_texture(tex.id(), egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0))),
@@ -713,7 +752,7 @@ impl Editor {
                 self.style.background = bg;
                 changed = true;
             }
-        }
+        });
         changed
     }
 
@@ -732,53 +771,50 @@ impl Editor {
             }
             ui.add_space(4.0);
             let grad = GRADIENTS.len();
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = egui::vec2(9.0, 9.0);
-                match self.tab {
-                    Tab::None => {
-                        ui.label(
-                            egui::RichText::new(
-                                "Nothing behind the capture. Recordings cannot be transparent and use a dark color.",
-                            )
-                            .color(theme::WEAK),
-                        );
-                    }
-                    Tab::Gradient => changed |= self.texture_swatches(ui, 0..grad),
-                    Tab::Wallpaper => changed |= self.texture_swatches(ui, grad..self.swatches.len()),
-                    Tab::Color => {
-                        for c in COLORS {
-                            let selected = self.style.background == Background::Color(c);
-                            if Self::swatch(ui, selected, |p, r| {
-                                p.rect_filled(r, 9.0, egui::Color32::from_rgb(c[0], c[1], c[2]));
-                            }) {
-                                self.style.background = Background::Color(c);
-                                self.custom = c;
-                                changed = true;
-                            }
+            match self.tab {
+                Tab::None => {
+                    let text = if self.is_video() { "Recordings use a dark color." } else { "Transparent background." };
+                    ui.label(egui::RichText::new(text).color(theme::WEAK));
+                }
+                Tab::Gradient => changed |= self.texture_grid(ui, 0..grad, 5, 1.0),
+                Tab::Wallpaper => changed |= self.texture_grid(ui, grad..self.swatches.len(), 3, 0.62),
+                Tab::Color => {
+                    grid(ui, 8, 1.0, COLORS.len(), |ui, i, size| {
+                        let c = COLORS[i];
+                        let selected = self.style.background == Background::Color(c);
+                        if Self::swatch(ui, size, selected, |p, r| {
+                            p.rect_filled(r, 8.0, egui::Color32::from_rgb(c[0], c[1], c[2]));
+                        }) {
+                            self.style.background = Background::Color(c);
+                            self.custom = c;
+                            changed = true;
                         }
-                        ui.add_space(4.0);
+                    });
+                    ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("Custom").color(theme::WEAK));
                         if egui::color_picker::color_edit_button_srgb(ui, &mut self.custom).changed() {
                             self.style.background = Background::Color(self.custom);
                             changed = true;
                         }
+                    });
+                }
+                Tab::Image => {
+                    let wide =
+                        egui::Button::new("Choose a picture...").min_size(egui::vec2(ui.available_width(), 32.0));
+                    if ui.add(wide).clicked()
+                        && let Some(file) = rfd::FileDialog::new()
+                            .add_filter("Images", &["png", "jpg", "jpeg", "webp", "heic", "bmp", "gif", "tiff"])
+                            .pick_file()
+                    {
+                        self.style.background = Background::Image(file);
+                        changed = true;
                     }
-                    Tab::Image => {
-                        if ui.button("Choose a picture...").clicked()
-                            && let Some(file) = rfd::FileDialog::new()
-                                .add_filter("Images", &["png", "jpg", "jpeg", "webp", "heic", "bmp", "gif", "tiff"])
-                                .pick_file()
-                        {
-                            self.style.background = Background::Image(file);
-                            changed = true;
-                        }
-                        if let Background::Image(p) = &self.style.background {
-                            let name: String = p.file_name().map_or(String::new(), |n| n.to_string_lossy().into());
-                            ui.label(egui::RichText::new(name).color(theme::WEAK));
-                        }
+                    if let Background::Image(p) = &self.style.background {
+                        let name: String = p.file_name().map_or(String::new(), |n| n.to_string_lossy().into());
+                        ui.label(egui::RichText::new(name).color(theme::WEAK));
                     }
                 }
-            });
+            }
         });
         changed
     }
@@ -795,11 +831,12 @@ impl Editor {
         });
         card(ui, |ui| {
             section_title(ui, "ASPECT RATIO");
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
-                let w = (ui.available_width() - 6.0 * 3.0) / 4.0;
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                let n = ASPECTS.len() as f32;
+                let w = ((ui.available_width() - 4.0 * (n - 1.0)) / n).floor();
                 for a in ASPECTS {
-                    if chip(ui, &a.label(), egui::vec2(w.floor(), 30.0), self.style.aspect == a) {
+                    if chip(ui, &a.label(), egui::vec2(w, 30.0), self.style.aspect == a) {
                         self.style.aspect = a;
                         changed = true;
                     }
@@ -903,8 +940,9 @@ impl eframe::App for Editor {
             self.toggle_play();
         }
 
+        let panel = (ctx.content_rect().width() * 0.34).clamp(PANEL_MIN, PANEL_MAX);
         egui::Panel::left("controls")
-            .exact_size(PANEL)
+            .exact_size(panel)
             .resizable(false)
             .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(14, 0)))
             .show(ui, |ui| {
@@ -951,11 +989,11 @@ impl eframe::App for Editor {
         // the title bar is hidden: draw the file name there, and let the strip drag the window
         let screen = ctx.content_rect();
         let strip = egui::Rect::from_min_max(
-            egui::pos2(screen.min.x + PANEL + 90.0, screen.min.y),
+            egui::pos2(screen.min.x + panel + 90.0, screen.min.y),
             egui::pos2(screen.max.x, screen.min.y + TOP),
         );
         ui.painter().text(
-            egui::pos2((screen.min.x + PANEL + screen.max.x) / 2.0, screen.min.y + TOP / 2.0),
+            egui::pos2((screen.min.x + panel + screen.max.x) / 2.0, screen.min.y + TOP / 2.0),
             egui::Align2::CENTER_CENTER,
             &self.name,
             egui::FontId::new(12.5, egui::FontFamily::Proportional),
