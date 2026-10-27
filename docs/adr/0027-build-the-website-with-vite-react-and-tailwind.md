@@ -25,8 +25,9 @@ npm package, apart from the Changesets setup at the root, and nothing in it is p
   post-build step writes them into a copy of `index.html` per URL, and writes `sitemap.xml` and `robots.txt`),
   and the home page carries `SoftwareApplication` structured data and the author's handle for the card.
 - Credit for the author (David Amunga, @davidamunga_) is on the page, in the footer and, for the app, in the
-  **About Handset** item of its menu. The wallpaper in the frame screenshot is the public-domain Cosmic Cliffs
-  image from NASA, ESA, CSA and STScI, and the page says so.
+  **About Handset** item of its menu. The wallpaper in the frame screenshot is the macOS Ventura desktop picture
+  (© Apple Inc.), used only as a backdrop in screenshots and credited on the page; the original file is not
+  in the repository. If that ever becomes a problem, any other picture can be restyled in its place.
 - Screenshots are of Handset itself: the connect screens are rendered by the app's code, and the mirroring
   and editor pictures were taken of the app mirroring a stock Android emulator, so no one's own phone is shown.
 

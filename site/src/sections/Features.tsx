@@ -34,15 +34,15 @@ export function Features() {
         <figure>
           <img
             src={img('styled-example.jpg')}
-            alt="A framed Android phone in front of a desktop wallpaper of orange and blue space clouds, 16 by 9"
+            alt="A framed Android phone in front of an orange and blue macOS wallpaper, 16 by 9"
             width={1600}
             height={900}
             loading="lazy"
             className="w-full rounded-3xl border border-line"
           />
           <figcaption className="mt-3 text-sm text-ink-2">
-            Wallpaper: the Cosmic Cliffs of the Carina Nebula, by NASA, ESA, CSA and STScI (public domain). The phone
-            is a stock Android emulator.
+            Wallpaper: macOS Ventura, © Apple Inc., shown only as a desktop behind the phone. The phone is a stock
+            Android emulator.
           </figcaption>
         </figure>
       </Row>
