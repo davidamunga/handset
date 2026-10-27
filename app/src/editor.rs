@@ -302,18 +302,87 @@ impl Worker {
 // ---- look -----------------------------------------------------------------------------------------
 
 mod theme {
+    //! Device Gray: the greys of the app icon, one set for each OS theme. `set_dark` is called every frame
+    //! from the theme egui reports, so the palette follows the system setting.
     use eframe::egui::Color32;
-    pub const BG: Color32 = Color32::from_rgb(0x0f, 0x0f, 0x12);
-    pub const PANEL: Color32 = Color32::from_rgb(0x16, 0x16, 0x1a);
-    pub const CARD: Color32 = Color32::from_rgb(0x1d, 0x1d, 0x23);
-    pub const CARD_HI: Color32 = Color32::from_rgb(0x28, 0x28, 0x30);
-    pub const LINE: Color32 = Color32::from_rgb(0x2c, 0x2c, 0x35);
-    pub const TEXT: Color32 = Color32::from_rgb(0xee, 0xee, 0xf2);
-    pub const WEAK: Color32 = Color32::from_rgb(0x8d, 0x8d, 0x99);
-    /// Handset's green.
-    pub const ACCENT: Color32 = Color32::from_rgb(0x30, 0xdd, 0x81);
-    pub const ON_ACCENT: Color32 = Color32::from_rgb(0x04, 0x2b, 0x19);
-    pub const ACCENT_DIM: Color32 = Color32::from_rgb(0x1d, 0x4a, 0x36);
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static DARK: AtomicBool = AtomicBool::new(true);
+
+    pub fn set_dark(dark: bool) {
+        DARK.store(dark, Ordering::Relaxed);
+    }
+
+    pub fn dark() -> bool {
+        DARK.load(Ordering::Relaxed)
+    }
+
+    const fn rgb(v: u32) -> Color32 {
+        Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8)
+    }
+
+    fn pick(dark_value: u32, light_value: u32) -> Color32 {
+        rgb(if dark() { dark_value } else { light_value })
+    }
+
+    pub fn bg() -> Color32 {
+        pick(0x17181b, 0xe3e5e9)
+    }
+    pub fn panel() -> Color32 {
+        pick(0x1f2024, 0xf2f3f5)
+    }
+    pub fn card() -> Color32 {
+        pick(0x2a2c30, 0xffffff)
+    }
+    pub fn card_hi() -> Color32 {
+        pick(0x34363c, 0xe7e8eb)
+    }
+    pub fn line() -> Color32 {
+        pick(0x3c3e44, 0xd5d8dd)
+    }
+    pub fn text() -> Color32 {
+        pick(0xeceef0, 0x1f2024)
+    }
+    pub fn weak() -> Color32 {
+        pick(0x9b9ea6, 0x6b6e75)
+    }
+    /// The one accent: near-white on dark, graphite on light.
+    pub fn accent() -> Color32 {
+        pick(0xe7e8eb, 0x2e3036)
+    }
+    pub fn accent_hover() -> Color32 {
+        pick(0xffffff, 0x1f2024)
+    }
+    pub fn on_accent() -> Color32 {
+        pick(0x1f2024, 0xffffff)
+    }
+    pub fn accent_dim() -> Color32 {
+        pick(0x4a4d55, 0xcdd0d6)
+    }
+    pub fn hover() -> Color32 {
+        pick(0x3f4248, 0xd5d8dd)
+    }
+    pub fn pressed() -> Color32 {
+        pick(0x4a4d55, 0xc5c8cf)
+    }
+    /// The part of a recording that is kept, brighter than the track.
+    pub fn kept() -> Color32 {
+        pick(0x4a4d55, 0xb9bcc2)
+    }
+    /// The playhead knob.
+    pub fn knob() -> Color32 {
+        pick(0xffffff, 0x2e3036)
+    }
+    pub fn error() -> Color32 {
+        pick(0xff8a80, 0xc5221a)
+    }
+    pub fn checker() -> (Color32, Color32) {
+        if dark() {
+            (Color32::from_gray(40), Color32::from_gray(54))
+        } else {
+            (Color32::from_gray(222), Color32::from_gray(238))
+        }
+    }
 }
 
 fn semibold() -> egui::FontFamily {
@@ -334,29 +403,35 @@ fn setup_style(ctx: &egui::Context) {
     fonts.families.insert(semibold(), vec!["inter-semibold".into()]);
     ctx.set_fonts(fonts);
 
-    let mut v = egui::Visuals::dark();
-    v.panel_fill = theme::PANEL;
-    v.window_fill = theme::CARD;
-    v.extreme_bg_color = theme::BG;
-    v.faint_bg_color = theme::CARD;
-    v.override_text_color = Some(theme::TEXT);
-    v.selection.bg_fill = theme::ACCENT;
-    v.selection.stroke = egui::Stroke::new(1.0, theme::ON_ACCENT);
-    v.hyperlink_color = theme::ACCENT;
-    v.handle_shape = egui::style::HandleShape::Circle;
-    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, theme::LINE);
-    let radius = egui::CornerRadius::same(9);
-    for w in [&mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open] {
-        w.corner_radius = radius;
-        w.bg_stroke = egui::Stroke::NONE;
+    for dark in [true, false] {
+        theme::set_dark(dark);
+        let mut v = if dark { egui::Visuals::dark() } else { egui::Visuals::light() };
+        v.panel_fill = theme::panel();
+        v.window_fill = theme::card();
+        v.extreme_bg_color = theme::bg();
+        v.faint_bg_color = theme::card();
+        v.override_text_color = Some(theme::text());
+        v.selection.bg_fill = theme::accent();
+        v.selection.stroke = egui::Stroke::new(1.0, theme::on_accent());
+        v.hyperlink_color = theme::accent();
+        v.handle_shape = egui::style::HandleShape::Circle;
+        v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, theme::line());
+        let radius = egui::CornerRadius::same(9);
+        for w in [&mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open] {
+            w.corner_radius = radius;
+            w.bg_stroke = egui::Stroke::NONE;
+        }
+        v.widgets.inactive.weak_bg_fill = theme::card_hi();
+        v.widgets.inactive.bg_fill = theme::card_hi();
+        v.widgets.hovered.weak_bg_fill = theme::hover();
+        v.widgets.hovered.bg_fill = theme::hover();
+        v.widgets.active.weak_bg_fill = theme::pressed();
+        v.widgets.active.bg_fill = theme::pressed();
+        ctx.set_visuals_of(if dark { egui::Theme::Dark } else { egui::Theme::Light }, v);
     }
-    v.widgets.inactive.weak_bg_fill = theme::CARD_HI;
-    v.widgets.inactive.bg_fill = theme::CARD_HI;
-    v.widgets.hovered.weak_bg_fill = egui::Color32::from_rgb(0x33, 0x33, 0x3d);
-    v.widgets.hovered.bg_fill = egui::Color32::from_rgb(0x33, 0x33, 0x3d);
-    v.widgets.active.weak_bg_fill = egui::Color32::from_rgb(0x3d, 0x3d, 0x48);
-    v.widgets.active.bg_fill = egui::Color32::from_rgb(0x3d, 0x3d, 0x48);
-    ctx.set_visuals(v);
+    // follow the operating system's light or dark setting
+    ctx.set_theme(egui::ThemePreference::System);
+    theme::set_dark(ctx.theme() == egui::Theme::Dark);
 
     ctx.all_styles_mut(|s| {
         use egui::{FontFamily::Proportional, FontId, TextStyle};
@@ -373,12 +448,12 @@ fn setup_style(ctx: &egui::Context) {
 }
 
 fn section_title(ui: &mut egui::Ui, text: &str) {
-    ui.label(egui::RichText::new(text).size(11.0).family(semibold()).color(theme::WEAK));
+    ui.label(egui::RichText::new(text).size(11.0).family(semibold()).color(theme::weak()));
     ui.add_space(2.0);
 }
 
 fn card(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
-    egui::Frame::new().fill(theme::CARD).corner_radius(12).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
+    egui::Frame::new().fill(theme::card()).corner_radius(12).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
         ui.set_width(ui.available_width());
         add(ui);
     });
@@ -389,12 +464,12 @@ fn segmented(ui: &mut egui::Ui, id: &str, labels: &[&str], selected: Option<usiz
     let font = egui::FontId::new(12.0, semibold());
     let widths: Vec<f32> = labels
         .iter()
-        .map(|l| ui.painter().layout_no_wrap((*l).to_string(), font.clone(), theme::TEXT).size().x + 8.0)
+        .map(|l| ui.painter().layout_no_wrap((*l).to_string(), font.clone(), theme::text()).size().x + 8.0)
         .collect();
     let total = ui.available_width();
     let extra = ((total - 4.0 - widths.iter().sum::<f32>()) / labels.len() as f32).max(0.0);
     let (track, _) = ui.allocate_exact_size(egui::vec2(total, 34.0), egui::Sense::hover());
-    ui.painter().rect_filled(track, 10.0, theme::BG);
+    ui.painter().rect_filled(track, 10.0, theme::bg());
     let mut x = track.min.x + 2.0;
     let mut clicked = None;
     for (i, label) in labels.iter().enumerate() {
@@ -405,11 +480,11 @@ fn segmented(ui: &mut egui::Ui, id: &str, labels: &[&str], selected: Option<usiz
             .on_hover_cursor(egui::CursorIcon::PointingHand);
         let on = selected == Some(i);
         if on {
-            ui.painter().rect_filled(seg, 8.0, theme::ACCENT_DIM);
+            ui.painter().rect_filled(seg, 8.0, theme::accent_dim());
         } else if resp.hovered() {
-            ui.painter().rect_filled(seg, 8.0, theme::CARD);
+            ui.painter().rect_filled(seg, 8.0, theme::card());
         }
-        let color = if on { theme::ACCENT } else { theme::WEAK };
+        let color = if on { theme::accent() } else { theme::weak() };
         ui.painter().text(seg.center(), egui::Align2::CENTER_CENTER, *label, font.clone(), color);
         if resp.clicked() {
             clicked = Some(i);
@@ -423,14 +498,14 @@ fn chip(ui: &mut egui::Ui, label: &str, size: egui::Vec2, on: bool, off: egui::C
     let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
     let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
     let fill = if on {
-        theme::ACCENT_DIM
+        theme::accent_dim()
     } else if resp.hovered() {
-        theme::CARD_HI
+        theme::card_hi()
     } else {
         off
     };
     ui.painter().rect_filled(rect, 9.0, fill);
-    let color = if on { theme::ACCENT } else { theme::TEXT };
+    let color = if on { theme::accent() } else { theme::text() };
     ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, egui::FontId::new(11.5, semibold()), color);
     resp.clicked()
 }
@@ -461,7 +536,7 @@ fn slider_row(ui: &mut egui::Ui, label: &str, value: &mut u32, max: u32, unit: &
     ui.horizontal(|ui| {
         ui.allocate_ui_with_layout(egui::vec2(98.0, 24.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.set_min_width(98.0);
-            ui.label(egui::RichText::new(label).color(theme::WEAK));
+            ui.label(egui::RichText::new(label).color(theme::weak()));
         });
         ui.spacing_mut().slider_width = (ui.available_width() - 52.0).max(40.0);
         changed = ui.add(egui::Slider::new(value, 0..=max).show_value(false).trailing_fill(true)).changed();
@@ -513,30 +588,30 @@ fn scrubber(ui: &mut egui::Ui, pos: f64, duration: f64, trim: Trim, width: f32) 
     }
 
     let p = ui.painter();
-    let dim = theme::LINE;
+    let dim = theme::line();
     p.rect_filled(track, 2.0, dim);
     // the kept part is brighter than what will be cut away
     let kept = egui::Rect::from_min_max(egui::pos2(x0, track.min.y - 1.0), egui::pos2(x1, track.max.y + 1.0));
-    p.rect_filled(kept, 2.0, egui::Color32::from_rgb(0x3a, 0x3a, 0x45));
+    p.rect_filled(kept, 2.0, theme::kept());
     p.rect_filled(
         egui::Rect::from_min_max(egui::pos2(x0, track.min.y), egui::pos2(xp.max(x0), track.max.y)),
         2.0,
-        theme::ACCENT,
+        theme::accent(),
     );
     for (cx, edge) in [(x0, -1.0), (x1, 1.0)] {
         let bar = egui::Rect::from_center_size(egui::pos2(cx + edge * 2.0, rect.center().y), egui::vec2(8.0, 22.0));
-        p.rect_filled(bar, 3.0, theme::ACCENT);
-        p.rect_filled(egui::Rect::from_center_size(bar.center(), egui::vec2(2.0, 10.0)), 1.0, theme::ON_ACCENT);
+        p.rect_filled(bar, 3.0, theme::accent());
+        p.rect_filled(egui::Rect::from_center_size(bar.center(), egui::vec2(2.0, 10.0)), 1.0, theme::on_accent());
     }
     let r = if resp.hovered() || resp.dragged() { 8.0 } else { 6.5 };
-    p.circle_filled(egui::pos2(xp, track.center().y), r, egui::Color32::WHITE);
+    p.circle_filled(egui::pos2(xp, track.center().y), r, theme::knob());
     result
 }
 
 fn play_button(ui: &mut egui::Ui, playing: bool) -> bool {
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(36.0, 36.0), egui::Sense::click());
     let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
-    let fill = if resp.hovered() { egui::Color32::from_rgb(0x5a, 0xe8, 0x9d) } else { theme::ACCENT };
+    let fill = if resp.hovered() { theme::accent_hover() } else { theme::accent() };
     let c = rect.center();
     let p = ui.painter();
     p.circle_filled(c, 18.0, fill);
@@ -545,12 +620,12 @@ fn play_button(ui: &mut egui::Ui, playing: bool) -> bool {
             p.rect_filled(
                 egui::Rect::from_center_size(c + egui::vec2(dx, 0.0), egui::vec2(3.4, 12.0)),
                 1.0,
-                theme::ON_ACCENT,
+                theme::on_accent(),
             );
         }
     } else {
         let tri = vec![c + egui::vec2(-3.5, -7.0), c + egui::vec2(-3.5, 7.0), c + egui::vec2(7.0, 0.0)];
-        p.add(egui::Shape::convex_polygon(tri, theme::ON_ACCENT, egui::Stroke::NONE));
+        p.add(egui::Shape::convex_polygon(tri, theme::on_accent(), egui::Stroke::NONE));
     }
     resp.clicked()
 }
@@ -832,11 +907,11 @@ impl Editor {
             ui.painter().rect_stroke(
                 rect.expand(3.0),
                 11.0,
-                egui::Stroke::new(2.0, theme::ACCENT),
+                egui::Stroke::new(2.0, theme::accent()),
                 egui::StrokeKind::Outside,
             );
         } else if resp.hovered() {
-            ui.painter().rect_stroke(rect, 9.0, egui::Stroke::new(1.5, egui::Color32::WHITE), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(rect, 9.0, egui::Stroke::new(1.5, theme::accent()), egui::StrokeKind::Inside);
         }
         resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
     }
@@ -879,7 +954,7 @@ impl Editor {
             match self.tab {
                 Tab::None => {
                     let text = if self.is_video() { "Recordings use a dark color." } else { "Transparent background." };
-                    ui.label(egui::RichText::new(text).color(theme::WEAK));
+                    ui.label(egui::RichText::new(text).color(theme::weak()));
                 }
                 Tab::Gradient => changed |= self.texture_grid(ui, 0..grad, 5, 1.0),
                 Tab::Wallpaper => changed |= self.texture_grid(ui, grad..self.swatches.len(), 3, 0.62),
@@ -896,7 +971,7 @@ impl Editor {
                         }
                     });
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Custom").color(theme::WEAK));
+                        ui.label(egui::RichText::new("Custom").color(theme::weak()));
                         if egui::color_picker::color_edit_button_srgb(ui, &mut self.custom).changed() {
                             self.style.background = Background::Color(self.custom);
                             changed = true;
@@ -916,7 +991,7 @@ impl Editor {
                     }
                     if let Background::Image(p) = &self.style.background {
                         let name: String = p.file_name().map_or(String::new(), |n| n.to_string_lossy().into());
-                        ui.label(egui::RichText::new(name).color(theme::WEAK));
+                        ui.label(egui::RichText::new(name).color(theme::weak()));
                     }
                 }
             }
@@ -982,11 +1057,11 @@ impl Editor {
                         let w = ui.available_width() - if *mine { 34.0 } else { 0.0 };
                         let on = look.style == self.style;
                         let button = egui::Button::new(egui::RichText::new(&look.name).color(if on {
-                            theme::ACCENT
+                            theme::accent()
                         } else {
-                            theme::TEXT
+                            theme::text()
                         }))
-                        .fill(if on { theme::ACCENT_DIM } else { theme::BG })
+                        .fill(if on { theme::accent_dim() } else { theme::bg() })
                         .min_size(egui::vec2(w, 28.0));
                         if ui.add(button).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                             apply = Some(look.style.clone());
@@ -1031,7 +1106,7 @@ impl Editor {
                 let n = ASPECTS.len() as f32;
                 let w = ((ui.available_width() - 4.0 * (n - 1.0)) / n).floor();
                 for a in ASPECTS {
-                    if chip(ui, &a.label(), egui::vec2(w, 30.0), self.style.aspect == a, theme::BG) {
+                    if chip(ui, &a.label(), egui::vec2(w, 30.0), self.style.aspect == a, theme::bg()) {
                         self.style.aspect = a;
                         changed = true;
                     }
@@ -1048,12 +1123,12 @@ impl Editor {
             Some(_) => "video".to_string(),
             None => "picture".to_string(),
         };
-        ui.label(egui::RichText::new(format!("{} x {} px {kind}", l.out.0, l.out.1)).size(11.5).color(theme::WEAK));
+        ui.label(egui::RichText::new(format!("{} x {} px {kind}", l.out.0, l.out.1)).size(11.5).color(theme::weak()));
         let busy = self.export.is_some();
         let label = if busy { "Exporting..." } else { "Export" };
         let button =
-            egui::Button::new(egui::RichText::new(label).size(14.5).family(semibold()).color(theme::ON_ACCENT))
-                .fill(theme::ACCENT)
+            egui::Button::new(egui::RichText::new(label).size(14.5).family(semibold()).color(theme::on_accent()))
+                .fill(theme::accent())
                 .corner_radius(11)
                 .min_size(egui::vec2(ui.available_width(), 40.0));
         if ui.add_enabled(!busy, button).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
@@ -1063,10 +1138,10 @@ impl Editor {
             if let Some((_, control)) = &self.export {
                 let p = control.progress.load(std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
                 if self.is_video() {
-                    ui.add(egui::ProgressBar::new(p).desired_width(ui.available_width() - 64.0).fill(theme::ACCENT));
+                    ui.add(egui::ProgressBar::new(p).desired_width(ui.available_width() - 64.0).fill(theme::accent()));
                 } else {
                     ui.add(egui::Spinner::new().size(14.0));
-                    ui.label(egui::RichText::new("Rendering").color(theme::WEAK));
+                    ui.label(egui::RichText::new("Rendering").color(theme::weak()));
                 }
                 if ui.link("Cancel").clicked() {
                     control.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -1080,11 +1155,13 @@ impl Editor {
         match &self.status {
             Some(Ok(p)) => {
                 let name: String = p.file_name().map_or(String::new(), |n| n.to_string_lossy().into());
-                egui::Frame::new().fill(theme::ACCENT_DIM).corner_radius(10).inner_margin(egui::Margin::same(10)).show(
-                    ui,
-                    |ui| {
+                egui::Frame::new()
+                    .fill(theme::accent_dim())
+                    .corner_radius(10)
+                    .inner_margin(egui::Margin::same(10))
+                    .show(ui, |ui| {
                         ui.set_width(ui.available_width());
-                        ui.label(egui::RichText::new("Saved").family(semibold()).color(theme::ACCENT));
+                        ui.label(egui::RichText::new("Saved").family(semibold()).color(theme::accent()));
                         ui.label(egui::RichText::new(name).size(12.0));
                         ui.horizontal(|ui| {
                             if ui.link("Show in folder").clicked() {
@@ -1094,11 +1171,10 @@ impl Editor {
                                 crate::capture::open_file(p);
                             }
                         });
-                    },
-                );
+                    });
             }
             Some(Err(e)) => {
-                ui.colored_label(egui::Color32::from_rgb(0xff, 0x8a, 0x80), e);
+                ui.colored_label(theme::error(), e);
             }
             None => {}
         }
@@ -1116,19 +1192,19 @@ impl Editor {
             let label = format!("{} / {}", clock(v.pos - v.trim.start), clock(v.trim.len()));
             let w = (ui.available_width() - 92.0).max(80.0) - 60.0 - if v.has_audio { 68.0 } else { 0.0 };
             scrub = scrubber(ui, v.pos, v.duration, v.trim, w);
-            if chip(ui, "Loop", egui::vec2(48.0, 26.0), v.looping, theme::CARD) {
+            if chip(ui, "Loop", egui::vec2(48.0, 26.0), v.looping, theme::card()) {
                 v.looping = !v.looping;
             }
-            if v.has_audio && chip(ui, "Sound", egui::vec2(56.0, 26.0), !crate::audio::is_muted(), theme::CARD) {
+            if v.has_audio && chip(ui, "Sound", egui::vec2(56.0, 26.0), !crate::audio::is_muted(), theme::card()) {
                 crate::audio::set_muted(!crate::audio::is_muted());
             }
-            ui.label(egui::RichText::new(label).size(12.0).color(theme::WEAK));
+            ui.label(egui::RichText::new(label).size(12.0).color(theme::weak()));
         });
         if !v.trim.is_full(v.duration) {
             ui.horizontal(|ui| {
                 ui.add_space(48.0);
                 let kept = format!("Keeping {} of {}", clock(v.trim.len()), clock(v.duration));
-                ui.label(egui::RichText::new(kept).size(11.5).color(theme::WEAK));
+                ui.label(egui::RichText::new(kept).size(11.5).color(theme::weak()));
                 reset = ui.link("Reset trim").clicked();
             });
         }
@@ -1169,6 +1245,7 @@ fn clock(s: f64) -> String {
 impl eframe::App for Editor {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        theme::set_dark(ctx.theme() == egui::Theme::Dark);
         if let Some((rx, _)) = &self.export {
             if let Ok(result) = rx.try_recv() {
                 // a cancelled export is not an error worth showing
@@ -1204,7 +1281,7 @@ impl eframe::App for Editor {
         egui::Panel::left("controls")
             .exact_size(panel)
             .resizable(false)
-            .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(14, 0)))
+            .frame(egui::Frame::new().fill(theme::panel()).inner_margin(egui::Margin::symmetric(14, 0)))
             .show(ui, |ui| {
                 // the Looks menu sits beside the window buttons
                 ui.allocate_ui_with_layout(
@@ -1244,13 +1321,13 @@ impl eframe::App for Editor {
         if self.is_video() {
             egui::Panel::bottom("transport")
                 .show_separator_line(false)
-                .frame(egui::Frame::new().fill(theme::BG).inner_margin(egui::Margin::symmetric(20, 0)))
+                .frame(egui::Frame::new().fill(theme::bg()).inner_margin(egui::Margin::symmetric(20, 0)))
                 .show(ui, |ui| self.transport(ui));
         }
         if self.style_dirty || self.frame_dirty {
             self.render_preview(&ctx);
         }
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::BG)).show(ui, |ui| {
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::bg())).show(ui, |ui| {
             let area = ui.max_rect();
             let Some(t) = &self.texture else { return };
             let avail = egui::vec2(area.width() - 56.0, area.height() - TOP - 24.0);
@@ -1263,7 +1340,7 @@ impl eframe::App for Editor {
                 checkerboard(ui.painter(), rect);
             }
             ui.put(rect, egui::Image::new((t.id(), shown)).corner_radius(10.0));
-            ui.painter().rect_stroke(rect, 10.0, egui::Stroke::new(1.0, theme::LINE), egui::StrokeKind::Outside);
+            ui.painter().rect_stroke(rect, 10.0, egui::Stroke::new(1.0, theme::line()), egui::StrokeKind::Outside);
         });
 
         {
@@ -1278,7 +1355,7 @@ impl eframe::App for Editor {
                 egui::Align2::CENTER_CENTER,
                 &self.name,
                 egui::FontId::new(12.5, egui::FontFamily::Proportional),
-                theme::WEAK,
+                theme::weak(),
             );
             let drag = ui.interact(strip, ui.make_persistent_id("title-drag"), egui::Sense::click_and_drag());
             if drag.drag_started() {
@@ -1290,7 +1367,8 @@ impl eframe::App for Editor {
 
 fn checkerboard(painter: &egui::Painter, rect: egui::Rect) {
     let cell = 12.0;
-    painter.rect_filled(rect, 10.0, egui::Color32::from_gray(40));
+    let (dark_cell, light_cell) = theme::checker();
+    painter.rect_filled(rect, 10.0, dark_cell);
     let (cols, rows) = ((rect.width() / cell).ceil() as i32, (rect.height() / cell).ceil() as i32);
     for r in 0..rows {
         for c in 0..cols {
@@ -1299,7 +1377,7 @@ fn checkerboard(painter: &egui::Painter, rect: egui::Rect) {
             }
             let min = rect.min + egui::vec2(c as f32 * cell, r as f32 * cell);
             let cell_rect = egui::Rect::from_min_size(min, egui::vec2(cell, cell)).intersect(rect);
-            painter.rect_filled(cell_rect, 0.0, egui::Color32::from_gray(54));
+            painter.rect_filled(cell_rect, 0.0, light_cell);
         }
     }
 }
