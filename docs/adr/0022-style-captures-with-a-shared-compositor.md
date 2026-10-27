@@ -57,7 +57,7 @@ colour picker in the bitmap-font overlay, would have been a lot more code for a 
 
 Playing a recording in the preview uses a worker thread that has ffmpeg decode small RGBA frames at their real
 pace (a single frame per seek while scrubbing, newest request wins). The backdrop is drawn once per style
-change and only the picture is blended again per frame. The preview is silent; audio is only in the export.
+change and only the picture is blended again per frame. The preview plays the recording's sound too (see below); the export copies the audio.
 
 Trimming (`trim.rs`) is applied at the ffmpeg input (`-ss` and `-t` before `-i`), so only the kept part is
 decoded and styled and the audio is cut with it. The start and end are clamped so that a clip is never shorter
@@ -67,3 +67,11 @@ Saved looks (`presets.rs`) are a style under a name. Yours are kept in `~/.confi
 `name<TAB>style` per line, in the same text form the `style` setting uses, so the file is easy to read and
 edit; a line that cannot be read is skipped rather than losing the rest. Five built-in looks ship with the app.
 `--style` accepts a name (yours first, then the built-in ones, ignoring case) or a style written out.
+
+Sound in the preview (`audio_preview.rs`): a second ffmpeg decodes the audio to raw 48 kHz stereo PCM from the
+same moment the video starts, and a feeder thread hands it to the speakers in 20 ms chunks, each no earlier
+than its time and, when late, at once so it catches up. The speakers are driven by the same `audio::Playback`
+that plays the phone's audio. Pause, seek and the end of the video stop the decoder and empty the queue. A
+recording without an audio stream, or a machine without an output device, simply plays silently. The video
+and the sound are paced from the same start time, so they agree to within a few tens of milliseconds, not
+frame-exactly.

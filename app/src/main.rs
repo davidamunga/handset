@@ -4,6 +4,7 @@ mod adb;
 mod app;
 mod apps;
 mod audio;
+mod audio_preview;
 mod black;
 mod capture;
 mod clipboard;

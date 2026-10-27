@@ -19,7 +19,7 @@ const CODEC_RAW: u32 = 0x0072_6177; // "\0raw"
 /// Where the recorder, when one is running, gets its copy of the PCM stream.
 pub type RecSink = Arc<Mutex<Option<Sender<Vec<u8>>>>>;
 
-type Ring = Arc<Mutex<VecDeque<i16>>>;
+pub type Ring = Arc<Mutex<VecDeque<i16>>>;
 
 // Playback health, printed with HANDSET_DEBUG.
 static UNDERRUNS: AtomicU64 = AtomicU64::new(0);
@@ -91,7 +91,7 @@ impl Playback {
     }
 }
 
-fn push_samples(ring: &Ring, pcm: &[u8]) {
+pub fn push_samples(ring: &Ring, pcm: &[u8]) {
     let mut q = ring.lock().unwrap();
     if MUTED.load(Relaxed) {
         q.clear();

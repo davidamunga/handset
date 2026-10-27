@@ -161,6 +161,7 @@ pub struct Info {
     pub fps: f32,
     /// Seconds; 0 when unknown.
     pub duration: f64,
+    pub has_audio: bool,
 }
 
 pub fn probe(path: &Path) -> Result<Info, String> {
@@ -171,7 +172,17 @@ pub fn probe(path: &Path) -> Result<Info, String> {
         .map_err(|e| format!("cannot run ffmpeg (is it installed?): {e}"))?;
     let banner = String::from_utf8_lossy(&out.stderr);
     let size = parse_size(&banner).ok_or_else(|| format!("cannot read the size of {}", path.display()))?;
-    Ok(Info { size, fps: parse_fps(&banner).unwrap_or(30.0), duration: parse_duration(&banner).unwrap_or(0.0) })
+    Ok(Info {
+        size,
+        fps: parse_fps(&banner).unwrap_or(30.0),
+        duration: parse_duration(&banner).unwrap_or(0.0),
+        has_audio: parse_has_audio(&banner),
+    })
+}
+
+/// Does ffmpeg list an audio stream?
+fn parse_has_audio(banner: &str) -> bool {
+    banner.lines().any(|l| l.trim_start().starts_with("Stream #") && l.contains("Audio:"))
 }
 
 fn parse_fps(banner: &str) -> Option<f32> {
@@ -427,6 +438,49 @@ mod tests {
         let banner = "  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709), 720x1600 [SAR 1:1 DAR 9:20], 1234 kb/s, 30 fps";
         assert_eq!(parse_size(banner), Some((720, 1600)));
         assert_eq!(parse_size("Audio: aac"), None);
+    }
+
+    #[test]
+    fn spots_an_audio_stream_in_the_banner() {
+        let with =
+            "  Stream #0:0: Video: h264, yuv420p, 720x1600\n  Stream #0:1[0x2](und): Audio: aac (LC), 44100 Hz, mono";
+        assert!(parse_has_audio(with));
+        assert!(!parse_has_audio("  Stream #0:0: Video: h264, yuv420p, 720x1600"));
+        // the word in a metadata line is not a stream
+        assert!(!parse_has_audio("    comment: Audio: none\n  Stream #0:0: Video: gif"));
+    }
+
+    #[test]
+    fn probe_tells_a_recording_with_sound_from_one_without() {
+        if !ffmpeg_present() {
+            return;
+        }
+        let dir = temp_dir("probe-audio");
+        let (loud, quiet) = (dir.join("loud.mp4"), dir.join("quiet.mp4"));
+        let ff = |extra: &[&str], out: &Path| {
+            crate::tools::command(crate::tools::find("ffmpeg"))
+                .args([
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=64x64:rate=10:duration=1",
+                ])
+                .args(extra)
+                .args(["-pix_fmt", "yuv420p"])
+                .arg(out)
+                .status()
+                .unwrap()
+                .success()
+        };
+        assert!(ff(&["-f", "lavfi", "-i", "sine=duration=1", "-shortest"], &loud));
+        assert!(ff(&[], &quiet));
+        assert!(probe(&loud).unwrap().has_audio);
+        assert!(!probe(&quiet).unwrap().has_audio);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

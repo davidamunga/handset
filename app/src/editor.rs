@@ -171,11 +171,21 @@ struct Player {
 }
 
 impl Player {
-    fn spawn(ctx: egui::Context, path: PathBuf, size: (u32, u32), fps: f32, matte: Option<Img>) -> Self {
+    fn spawn(
+        ctx: egui::Context,
+        path: PathBuf,
+        size: (u32, u32),
+        fps: f32,
+        matte: Option<Img>,
+        has_audio: bool,
+    ) -> Self {
         let (cmd, rx) = channel::<Cmd>();
         let (tx, msgs) = channel::<Msg>();
         std::thread::spawn(move || {
-            let w = Worker { path, size, fps: fps.clamp(1.0, 30.0), matte, tx, ctx };
+            // the speakers' stream stays on this thread; a recording without sound, or a machine without an
+            // output device, is simply silent
+            let playback = has_audio.then(|| crate::audio::Playback::new().ok()).flatten();
+            let w = Worker { path, size, fps: fps.clamp(1.0, 30.0), matte, tx, ctx, playback };
             while let Ok(mut c) = rx.recv() {
                 loop {
                     // only the newest request matters: dragging the scrubber sends many
@@ -207,6 +217,7 @@ struct Worker {
     matte: Option<Img>,
     tx: Sender<Msg>,
     ctx: egui::Context,
+    playback: Option<crate::audio::Playback>,
 }
 
 impl Worker {
@@ -259,6 +270,8 @@ impl Worker {
             .ok()?;
         let mut out = child.stdout.take()?;
         let start = Instant::now();
+        let feeder =
+            self.playback.as_ref().and_then(|p| crate::audio_preview::Feeder::start(&self.path, from, start, p.ring()));
         let mut n = 0u32;
         let result = loop {
             let mut buf = vec![0u8; self.frame_len()];
@@ -277,6 +290,9 @@ impl Worker {
             self.send(from + n as f64 / self.fps as f64, self.finish(buf));
             n += 1;
         };
+        if let Some(f) = feeder {
+            f.stop();
+        }
         let _ = child.kill();
         let _ = child.wait();
         result
@@ -615,6 +631,8 @@ struct VideoState {
     looping: bool,
     /// The part of the recording that is played and exported.
     trim: Trim,
+    /// The recording has sound, which plays in the preview unless muted.
+    has_audio: bool,
 }
 
 impl Editor {
@@ -644,7 +662,8 @@ impl Editor {
         let video = source.video.as_ref().map(|info| {
             let matte = source.matte.as_ref().map(|m| downscale(m, pv));
             VideoState {
-                player: Player::spawn(ctx.clone(), path.clone(), pv, info.fps, matte),
+                player: Player::spawn(ctx.clone(), path.clone(), pv, info.fps, matte, info.has_audio),
+                has_audio: info.has_audio,
                 duration: info.duration.max(0.1),
                 pos: 0.0,
                 playing: false,
@@ -1095,10 +1114,13 @@ impl Editor {
             ui.spacing_mut().item_spacing.x = 12.0;
             toggle = play_button(ui, v.playing);
             let label = format!("{} / {}", clock(v.pos - v.trim.start), clock(v.trim.len()));
-            let w = (ui.available_width() - 92.0).max(80.0) - 60.0;
+            let w = (ui.available_width() - 92.0).max(80.0) - 60.0 - if v.has_audio { 68.0 } else { 0.0 };
             scrub = scrubber(ui, v.pos, v.duration, v.trim, w);
             if chip(ui, "Loop", egui::vec2(48.0, 26.0), v.looping, theme::CARD) {
                 v.looping = !v.looping;
+            }
+            if v.has_audio && chip(ui, "Sound", egui::vec2(56.0, 26.0), !crate::audio::is_muted(), theme::CARD) {
+                crate::audio::set_muted(!crate::audio::is_muted());
             }
             ui.label(egui::RichText::new(label).size(12.0).color(theme::WEAK));
         });
@@ -1414,5 +1436,73 @@ mod tests {
         assert!(!ed.forget_look("missing"));
         assert!(ed.forget_look("KEEP"));
         assert!(ed.saved_looks.is_empty());
+    }
+
+    /// A 2 s clip with sound, or `None` when ffmpeg is not installed.
+    fn clip_with_sound(name: &str) -> Option<PathBuf> {
+        let ffmpeg = crate::tools::find("ffmpeg");
+        if !crate::tools::command(&ffmpeg).arg("-version").output().is_ok_and(|o| o.status.success()) {
+            return None;
+        }
+        let dir = std::env::temp_dir().join(format!("handset-test-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let clip = dir.join("clip.mp4");
+        let ok = crate::tools::command(&ffmpeg)
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=size=64x96:rate=10:duration=2",
+            ])
+            .args(["-f", "lavfi", "-i", "sine=duration=2", "-pix_fmt", "yuv420p", "-shortest"])
+            .arg(&clip)
+            .status()
+            .unwrap()
+            .success();
+        ok.then_some(clip)
+    }
+
+    fn frames_within(player: &Player, wait: Duration) -> usize {
+        let until = Instant::now() + wait;
+        let mut n = 0;
+        while Instant::now() < until {
+            while let Ok(m) = player.msgs.try_recv() {
+                if matches!(m, Msg::Frame(..)) {
+                    n += 1;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        n
+    }
+
+    #[test]
+    fn a_recording_with_sound_plays_frames_even_without_an_audio_device() {
+        let Some(clip) = clip_with_sound("player-sound") else { return };
+        let player = Player::spawn(egui::Context::default(), clip.clone(), (64, 96), 10.0, None, true);
+        player.cmd.send(Cmd::Play(0.0)).unwrap();
+        // at 10 fps about 8 frames arrive in a second, whether or not the speakers could be opened
+        assert!(frames_within(&player, Duration::from_millis(1200)) >= 4);
+        let _ = std::fs::remove_dir_all(clip.parent().unwrap());
+    }
+
+    #[test]
+    fn pausing_stops_the_frames_and_seeking_shows_one_frame() {
+        let Some(clip) = clip_with_sound("player-pause") else { return };
+        let player = Player::spawn(egui::Context::default(), clip.clone(), (64, 96), 10.0, None, true);
+        player.cmd.send(Cmd::Play(0.0)).unwrap();
+        assert!(frames_within(&player, Duration::from_millis(700)) >= 2);
+        player.cmd.send(Cmd::Pause).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        let _ = frames_within(&player, Duration::from_millis(50)); // whatever was already on its way
+        assert_eq!(frames_within(&player, Duration::from_millis(500)), 0, "no frames after a pause");
+        player.cmd.send(Cmd::Seek(1.0)).unwrap();
+        assert_eq!(frames_within(&player, Duration::from_millis(800)), 1, "a seek shows exactly one frame");
+        let _ = std::fs::remove_dir_all(clip.parent().unwrap());
     }
 }
