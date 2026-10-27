@@ -323,7 +323,11 @@ impl App {
                 wt.buttons.iter().map(|b| (b.rect, b.label.clone())).collect::<Vec<_>>()
             );
         }
-        r.upload(&connect::to_yuv(&screen.rgb, pw, ph));
+        // drawn like a phone frame: uploaded only when the window draws (`upload_latest`)
+        let mut slot = self.slot.lock().unwrap();
+        slot.yuv = connect::to_yuv(&screen.rgb, pw, ph);
+        slot.fresh = true;
+        drop(slot);
         w.request_redraw();
     }
 
@@ -695,6 +699,18 @@ impl App {
     /// Mirroring an iOS device: view only, and its own frames.
     fn is_ios(&self) -> bool {
         self.mirror.as_ref().is_some_and(|m| m.is_ios())
+    }
+
+    /// Copy the newest frame to the GPU, right before something is drawn. Never when it arrives: wgpu
+    /// keeps each upload until the next submit, and a hidden or minimised window draws nothing, so
+    /// frames (megabytes each, up to 60 a second) would pile up.
+    fn upload_latest(&mut self) {
+        let Some(r) = self.renderer.as_mut() else { return };
+        let mut s = self.slot.lock().unwrap();
+        if s.fresh {
+            r.upload(&s.yuv);
+            s.fresh = false;
+        }
     }
 
     fn toolbar_button(&self) -> Option<Button> {
@@ -1275,6 +1291,7 @@ impl App {
     }
 
     fn screenshot(&mut self) {
+        self.upload_latest();
         let Some(r) = self.renderer.as_mut() else { return };
         let Some((w, h)) = r.capture_size(self.cap.rec_size.max(1800)) else { return };
         match r
@@ -1328,6 +1345,7 @@ impl App {
                     size.1
                 );
                 // the phone's outline, so a styled copy can cut the phone out of the recording's backdrop
+                self.upload_latest();
                 if let Some(rgba) = self.renderer.as_mut().and_then(|r| r.capture(size, None)) {
                     let _ = restyle::save_matte(&rec.path, &rgba, size.0, size.1);
                 }
@@ -1556,6 +1574,7 @@ impl ApplicationHandler<UserEvent> for App {
             self.next_tick = (self.next_tick + period).max(now.checked_sub(period).unwrap_or(now));
             let size = rec.size;
             let bg = Some(self.cap.rec_bg);
+            self.upload_latest();
             if let Some(r) = self.renderer.as_mut() {
                 if r.capture_size(self.cap.rec_size) != Some(size) {
                     // the phone rotated: continue in a new file with the new size
@@ -1618,12 +1637,11 @@ impl ApplicationHandler<UserEvent> for App {
             UserEvent::Landing(event) => self.on_landing(event),
             UserEvent::Frame => {
                 let (Some(r), Some(w)) = (self.renderer.as_mut(), self.window.as_ref()) else { return };
-                let mut s = self.slot.lock().unwrap();
+                // the frame itself goes to the GPU when it is drawn (`upload_latest`)
+                let s = self.slot.lock().unwrap();
                 let black = s.black;
                 if s.fresh {
-                    r.upload(&s.yuv);
                     self.device = (s.yuv.width as u16, s.yuv.height as u16);
-                    s.fresh = false;
                 }
                 drop(s);
 
@@ -1678,6 +1696,7 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::RedrawRequested => {
+                self.upload_latest();
                 if let Some(r) = self.renderer.as_mut() {
                     r.render();
                 }
