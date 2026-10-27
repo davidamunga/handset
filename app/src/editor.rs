@@ -516,8 +516,9 @@ const TABS: [(Tab, &str); 5] = [
     (Tab::Image, "Image"),
 ];
 
-/// Height of the strip along the top that holds the window buttons and drags the window.
-const TOP: f32 = 34.0;
+/// Height of the strip along the top that holds the window buttons and drags the window (macOS hides the
+/// title bar; elsewhere the system one stays and this is just a margin).
+const TOP: f32 = if cfg!(target_os = "macos") { 34.0 } else { 8.0 };
 
 struct Editor {
     path: PathBuf,
@@ -986,22 +987,25 @@ impl eframe::App for Editor {
             ui.painter().rect_stroke(rect, 10.0, egui::Stroke::new(1.0, theme::LINE), egui::StrokeKind::Outside);
         });
 
-        // the title bar is hidden: draw the file name there, and let the strip drag the window
-        let screen = ctx.content_rect();
-        let strip = egui::Rect::from_min_max(
-            egui::pos2(screen.min.x + panel + 90.0, screen.min.y),
-            egui::pos2(screen.max.x, screen.min.y + TOP),
-        );
-        ui.painter().text(
-            egui::pos2((screen.min.x + panel + screen.max.x) / 2.0, screen.min.y + TOP / 2.0),
-            egui::Align2::CENTER_CENTER,
-            &self.name,
-            egui::FontId::new(12.5, egui::FontFamily::Proportional),
-            theme::WEAK,
-        );
-        let drag = ui.interact(strip, ui.make_persistent_id("title-drag"), egui::Sense::click_and_drag());
-        if drag.drag_started() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+        #[cfg(target_os = "macos")]
+        {
+            // the title bar is hidden: draw the file name there, and let the strip drag the window
+            let screen = ctx.content_rect();
+            let strip = egui::Rect::from_min_max(
+                egui::pos2(screen.min.x + panel + 90.0, screen.min.y),
+                egui::pos2(screen.max.x, screen.min.y + TOP),
+            );
+            ui.painter().text(
+                egui::pos2((screen.min.x + panel + screen.max.x) / 2.0, screen.min.y + TOP / 2.0),
+                egui::Align2::CENTER_CENTER,
+                &self.name,
+                egui::FontId::new(12.5, egui::FontFamily::Proportional),
+                theme::WEAK,
+            );
+            let drag = ui.interact(strip, ui.make_persistent_id("title-drag"), egui::Sense::click_and_drag());
+            if drag.drag_started() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            }
         }
     }
 }
