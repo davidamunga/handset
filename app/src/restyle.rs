@@ -145,6 +145,39 @@ pub fn probe_size(path: &Path) -> Result<(u32, u32), String> {
         .ok_or_else(|| format!("cannot read the size of {}", path.display()))
 }
 
+/// What ffmpeg's banner says about a video.
+pub struct Info {
+    pub size: (u32, u32),
+    pub fps: f32,
+    /// Seconds; 0 when unknown.
+    pub duration: f64,
+}
+
+pub fn probe(path: &Path) -> Result<Info, String> {
+    let out = crate::tools::command(crate::tools::find("ffmpeg"))
+        .args(["-hide_banner", "-i"])
+        .arg(path)
+        .output()
+        .map_err(|e| format!("cannot run ffmpeg (is it installed?): {e}"))?;
+    let banner = String::from_utf8_lossy(&out.stderr);
+    let size = parse_size(&banner).ok_or_else(|| format!("cannot read the size of {}", path.display()))?;
+    Ok(Info { size, fps: parse_fps(&banner).unwrap_or(30.0), duration: parse_duration(&banner).unwrap_or(0.0) })
+}
+
+fn parse_fps(banner: &str) -> Option<f32> {
+    let line = banner.lines().find(|l| l.contains("Video:"))?;
+    line.split(',').find_map(|part| part.trim().strip_suffix(" fps")?.parse::<f32>().ok()).filter(|f| *f > 0.0)
+}
+
+/// `Duration: 00:00:03.00, start: ...`
+fn parse_duration(banner: &str) -> Option<f64> {
+    let rest = banner.lines().find_map(|l| l.trim().strip_prefix("Duration: "))?;
+    let mut parts = rest.split(',').next()?.trim().split(':');
+    let (h, m, s) =
+        (parts.next()?.parse::<f64>().ok()?, parts.next()?.parse::<f64>().ok()?, parts.next()?.parse::<f64>().ok()?);
+    Some(h * 3600.0 + m * 60.0 + s)
+}
+
 fn parse_size(banner: &str) -> Option<(u32, u32)> {
     let line = banner.lines().find(|l| l.contains("Video:"))?;
     // `Video: h264 (High) (avc1 / 0x31637661), yuv420p(...), 720x1600 [SAR 1:1 ...], ...`
@@ -248,6 +281,14 @@ mod tests {
         let banner = "  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709), 720x1600 [SAR 1:1 DAR 9:20], 1234 kb/s, 30 fps";
         assert_eq!(parse_size(banner), Some((720, 1600)));
         assert_eq!(parse_size("Audio: aac"), None);
+    }
+
+    #[test]
+    fn reads_fps_and_duration_from_the_banner() {
+        let banner = "  Duration: 00:01:02.50, start: 0.000000, bitrate: 346 kb/s\n  Stream #0:0: Video: h264, yuv420p, 720x1600, 1234 kb/s, 29.97 fps, 30 tbr";
+        assert_eq!(parse_duration(banner), Some(62.5));
+        assert_eq!(parse_fps(banner), Some(29.97));
+        assert_eq!(parse_duration("no duration here"), None);
     }
 
     #[test]

@@ -462,7 +462,14 @@ impl Style {
     /// Put a captured picture on its styled background.
     pub fn compose(&self, src: &Img, image: Option<&Img>) -> Img {
         let l = self.layout((src.w, src.h));
-        let mut out = self.backdrop(&l, Some(src), image);
+        let backdrop = self.backdrop(&l, Some(src), image);
+        self.compose_over(&backdrop, &l, src)
+    }
+
+    /// Like [`Self::compose`] with the backdrop already drawn, for a preview that changes only the picture
+    /// (a playing video) and not the style.
+    pub fn compose_over(&self, backdrop: &[u8], l: &Layout, src: &Img) -> Img {
+        let mut out = backdrop.to_vec();
         let ow = l.out.0;
         par_rows(&mut out[((l.y * ow) * 4) as usize..(((l.y + l.h) * ow) * 4) as usize], ow, |row_i, row| {
             let y = row_i;
