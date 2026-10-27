@@ -5,7 +5,8 @@ want to post (square, 16:9, 4:5 and so on). It works for PNG screenshots and for
 the original file is never touched: the styled copy is saved beside it as `<name>-styled.<ext>`.
 
 <p align="center">
-  <img src="images/styled-example.png" alt="A framed phone on a purple and green wallpaper, 16:9" width="560">
+  <img src="images/styled-example.jpg" alt="A framed phone in front of a desktop wallpaper of a nebula, 16:9" width="560">
+  <br><sub>Wallpaper: the Cosmic Cliffs of the Carina Nebula, by NASA, ESA, CSA and STScI (public domain).</sub>
 </p>
 
 Recordings need `ffmpeg`, as they do for recording itself. Screenshots do not.

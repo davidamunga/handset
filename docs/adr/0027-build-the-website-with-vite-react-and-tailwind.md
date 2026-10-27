@@ -14,12 +14,19 @@ words stay in step with what ships.
 The site is in `site/`, built with Vite, React, TypeScript, TanStack Router and Tailwind CSS 4. It is its own
 npm package, apart from the Changesets setup at the root, and nothing in it is part of a release.
 
-- Three routes, in `src/routes` (file-based, the tree in `routeTree.gen.ts` is generated and committed): the
-  home page, `/terms` and `/privacy`. The terms and the privacy policy describe what the app and the site
+- Four routes, in `src/routes` (file-based, the tree in `routeTree.gen.ts` is generated and committed): the
+  home page, `/changelog` (the repository's `CHANGELOG.md`, read at build time and rendered with
+  react-markdown, so it never needs copying), `/terms` and `/privacy`. The terms and the privacy policy describe what the app and the site
   really do (no account, no telemetry, one update check to GitHub), so they are to be kept in step with the app.
 - It is a single-page app. `scripts/route-pages.mjs` runs after the build and writes a copy of `index.html` for
   each legal URL with its own title, description and address, plus a `_redirects` fallback, so link previews read
   the right words and a static host needs no rewrite rule of its own.
+- Search and sharing: each page has its own title, description, canonical address and social card text (the
+  post-build step writes them into a copy of `index.html` per URL, and writes `sitemap.xml` and `robots.txt`),
+  and the home page carries `SoftwareApplication` structured data and the author's handle for the card.
+- Credit for the author (David Amunga, @davidamunga_) is on the page, in the footer and, for the app, in the
+  **About Handset** item of its menu. The wallpaper in the frame screenshot is the public-domain Cosmic Cliffs
+  image from NASA, ESA, CSA and STScI, and the page says so.
 - Screenshots are of Handset itself: the connect screens are rendered by the app's code, and the mirroring
   and editor pictures were taken of the app mirroring a stock Android emulator, so no one's own phone is shown.
 

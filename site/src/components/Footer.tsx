@@ -14,7 +14,7 @@ export function Footer() {
           <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2 text-[0.95rem]">
             <a className="hover:text-paper" href={REPO}>GitHub</a>
             <a className="hover:text-paper" href={`${REPO}/releases`}>Releases</a>
-            <a className="hover:text-paper" href={`${REPO}/blob/main/CHANGELOG.md`}>Changelog</a>
+            <Link className="hover:text-paper" to="/changelog">Changelog</Link>
             <a className="hover:text-paper" href={`${REPO}/issues`}>Report a problem</a>
             <a className="hover:text-paper" href={`${REPO}/blob/main/SECURITY.md`}>Security</a>
             <a className="hover:text-paper" href={`${REPO}/blob/main/NOTICE`}>Notices</a>
@@ -23,7 +23,7 @@ export function Footer() {
           </nav>
         </div>
         <p className="mt-8 max-w-3xl text-sm leading-relaxed">
-          © 2026 {AUTHOR.name}. Handset is Apache-2.0 licensed. scrcpy is © Genymobile and Romain Vimont. Android is a
+          © 2026 <a className="underline underline-offset-4 hover:text-paper" href={AUTHOR.url}>{AUTHOR.name}</a> (<a className="underline underline-offset-4 hover:text-paper" href={AUTHOR.social}>{AUTHOR.handle}</a>). Handset is Apache-2.0 licensed. scrcpy is © Genymobile and Romain Vimont. Android is a
           trademark of Google LLC. iPhone, iPad and macOS are trademarks of Apple Inc. Windows is a trademark of
           Microsoft. They are named here only to say what Handset works with, and none of those companies is affiliated
           with Handset.

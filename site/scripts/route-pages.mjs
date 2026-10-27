@@ -16,6 +16,11 @@ const pages = [
     description: 'The terms for using the Handset app and website: the Apache-2.0 licence, fair use, and no warranty.',
   },
   {
+    path: 'changelog',
+    title: 'Changelog | Handset',
+    description: 'What changed in each release of Handset, newest first.',
+  },
+  {
     path: 'privacy',
     title: 'Privacy Policy | Handset',
     description: 'What the Handset app and website do with your data: nothing is collected, and no account is needed.',
@@ -34,11 +39,24 @@ for (const p of pages) {
   html = swap(html, /(<meta property="og:title" content=")[^"]*(")/, `$1${p.title}$2`)
   html = swap(html, /(<meta\s+property="og:description"\s+content=")[^"]*(")/s, `$1${p.description}$2`)
   html = swap(html, /(<meta property="og:url" content=")[^"]*(")/, `$1${origin}/${p.path}$2`)
+  html = swap(html, /(<meta name="twitter:title" content=")[^"]*(")/, `$1${p.title}$2`)
+  html = swap(html, /(<meta\s+name="twitter:description"\s+content=")[^"]*(")/s, `$1${p.description}$2`)
   html = swap(html, /(<link rel="canonical" href=")[^"]*(")/, `$1${origin}/${p.path}$2`)
   mkdirSync(join(dist, p.path), { recursive: true })
   writeFileSync(join(dist, p.path, 'index.html'), html)
 }
 
+// a sitemap and robots file, so search engines find the four pages
+const sitemap = ['', ...pages.map((p) => p.path)]
+const today = new Date().toISOString().slice(0, 10)
+writeFileSync(
+  join(dist, 'sitemap.xml'),
+  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemap
+    .map((path) => `  <url><loc>${origin}/${path}</loc><lastmod>${today}</lastmod></url>`)
+    .join('\n')}\n</urlset>\n`,
+)
+writeFileSync(join(dist, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${origin}/sitemap.xml\n`)
+
 // hosts that understand this file (Cloudflare Pages, Netlify) send any other path to the app
 writeFileSync(join(dist, '_redirects'), '/*  /index.html  200\n')
-console.log(`wrote ${pages.map((p) => `/${p.path}`).join(', ')} and _redirects`)
+console.log(`wrote ${pages.map((p) => `/${p.path}`).join(', ')}, sitemap.xml, robots.txt and _redirects`)

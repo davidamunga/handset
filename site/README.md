@@ -1,7 +1,8 @@
 # Handset website
 
 The page at handsetapp.com: what Handset does, screenshots, downloads and credits. Vite, React, TypeScript,
-TanStack Router and Tailwind CSS 4. Routes are the files in `src/routes` (home, `/terms`, `/privacy`). See [ADR 0027](../docs/adr/0027-build-the-website-with-vite-react-and-tailwind.md).
+TanStack Router and Tailwind CSS 4. Routes are the files in `src/routes` (home, `/changelog`, `/terms`, `/privacy`). `/changelog` shows
+the repository's `CHANGELOG.md`. See [ADR 0027](../docs/adr/0027-build-the-website-with-vite-react-and-tailwind.md).
 
 ```sh
 cd site

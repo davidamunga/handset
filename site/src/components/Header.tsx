@@ -18,7 +18,10 @@ export function Header() {
         <Link to="/" hash="download" className="hidden rounded-lg px-3 py-2 hover:bg-paper-2 sm:block">
           Download
         </Link>
-        <a className="rounded-lg px-3 py-2 hover:bg-paper-2" href={REPO}>
+        <Link to="/changelog" className="hidden rounded-lg px-3 py-2 hover:bg-paper-2 sm:block">
+          Changelog
+        </Link>
+        <a className="hidden rounded-lg px-3 py-2 hover:bg-paper-2 min-[400px]:block" href={REPO}>
           GitHub
         </a>
         <a

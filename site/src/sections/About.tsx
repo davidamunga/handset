@@ -13,7 +13,11 @@ export function About() {
             <a className="font-medium text-ink underline underline-offset-4" href={AUTHOR.url}>
               {AUTHOR.name}
             </a>{' '}
-            and is licensed under{' '}
+            (
+            <a className="font-medium text-ink underline underline-offset-4" href={AUTHOR.social}>
+              {AUTHOR.handle}
+            </a>
+            ) and is licensed under{' '}
             <a className="font-medium text-ink underline underline-offset-4" href={`${REPO}/blob/main/LICENSE`}>
               Apache-2.0
             </a>

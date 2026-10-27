@@ -140,3 +140,14 @@ body {
   color: var(--color-ink);
   font-weight: 600;
 }
+.legal {
+  overflow-wrap: break-word;
+}
+.legal code {
+  overflow-wrap: anywhere;
+  border-radius: 0.375rem;
+  background: var(--color-paper-2);
+  padding: 0.1em 0.35em;
+  font-size: 0.9em;
+  color: var(--color-ink);
+}
