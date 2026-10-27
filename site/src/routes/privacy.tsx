@@ -50,13 +50,13 @@ function Privacy() {
 
       <h2>Checking for updates</h2>
       <p>
-        A few seconds after it starts, and at most once a day, Handset asks GitHub (<code>api.github.com</code>) for the latest
+        On every start, Handset asks GitHub (<code>api.github.com</code>) for the latest
         release. The request carries a user agent that names the app and its version, for example <code>handset/0.7.0</code>, and
         nothing else about you. As with any request, GitHub sees your IP address, and handles it as described in{' '}
         <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub&apos;s privacy statement</a>.
       </p>
       <p>
-        You can turn this off in the menu (<strong>Check for Updates Daily</strong>), with the <code>--no-update-check</code> option,
+        You can turn this off in the menu (<strong>Check for Updates on Start</strong>), with the <code>--no-update-check</code> option,
         or with <code>update-check=off</code> in the settings file. If you choose to install an update, Handset downloads it from the
         project&apos;s GitHub releases and checks its signature and checksum before it replaces anything.
       </p>
