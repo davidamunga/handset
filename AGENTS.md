@@ -20,8 +20,9 @@ small native Rust app that implements the desktop side of the scrcpy protocol an
 | `app/src/control.rs` | Control messages sent to the phone (touch, scroll, keys, text, rotate) |
 | `app/src/frame.rs`, `overlay.rs`, `toolbar.rs` | Bezel loading, bitmap-font pills, toolbar icons |
 | `app/src/audio.rs`, `capture.rs` | Raw PCM audio and playback; screenshots and ffmpeg recording |
+| `app/src/ios.rs` | `--ios` (macOS): an iPhone or iPad over USB through AVFoundation screen capture, video and audio, view only |
 | `app/src/audio_preview.rs` | Sound for the editor's video preview: ffmpeg decodes the audio and a feeder paces it to the speakers |
-| `app/src/connect.rs`, `mirror.rs` | The landing screen drawn in the frame while no phone is ready (USB status, Wi-Fi list, QR pairing, clickable buttons); one mirroring session (server, video, audio) |
+| `app/src/connect.rs`, `mirror.rs` | The landing screen drawn in the frame while no phone is ready (USB status, Wi-Fi list, QR pairing, clickable buttons); one mirroring session (scrcpy server or iOS capture, video, audio) |
 | `app/src/style.rs`, `restyle.rs` | Capture styling: background, padding, shadow, radius, aspect (pure pixels); styling saved PNG, MP4 and GIF files (ffmpeg for video) |
 | `app/src/trim.rs` | The part of a recording to keep (start and end, clamped), used by the editor's trim handles and the export |
 | `app/src/presets.rs` | Named looks (a style saved under a name): built-in ones, yours in `~/.config/handset/looks`, and `--style <name>` |

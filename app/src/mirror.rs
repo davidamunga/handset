@@ -7,9 +7,17 @@ use crate::stream::{self, Slot, UserEvent};
 use std::sync::{Arc, Mutex};
 use winit::event_loop::EventLoopProxy;
 
-/// Keeps the session alive: dropping it kills the server process and removes the adb forward.
+/// What is being mirrored.
+enum Source {
+    Android(server::Session),
+    #[cfg(target_os = "macos")]
+    Ios(crate::ios::Capture),
+}
+
+/// Keeps the session alive: dropping it kills the server process and removes the adb forward (or, for
+/// an iOS device, stops the capture).
 pub struct Mirror {
-    pub session: server::Session,
+    source: Source,
     /// The playback stream is not `Send`, so it stays on the thread that made it.
     _playback: Option<audio::Playback>,
 }
@@ -45,10 +53,65 @@ impl Mirror {
         }
 
         let control = Control::new(session.control.try_clone().unwrap());
-        Ok((Mirror { session, _playback: playback }, control))
+        Ok((Mirror { source: Source::Android(session), _playback: playback }, control))
+    }
+
+    /// Mirror an iOS device over USB, view only.
+    #[cfg(target_os = "macos")]
+    pub fn start_ios(
+        device: &crate::ios::Device,
+        with_audio: bool,
+        mute: bool,
+        proxy: EventLoopProxy<UserEvent>,
+        slot: Arc<Mutex<Slot>>,
+        audio_sink: audio::RecSink,
+    ) -> Result<Mirror, String> {
+        let playback = (with_audio && !mute)
+            .then(|| audio::Playback::new().map_err(|e| eprintln!("no local playback: {e}")).ok())
+            .flatten();
+        let capture = crate::ios::Capture::start(
+            device,
+            with_audio,
+            playback.as_ref().map(|p| p.ring()),
+            audio_sink,
+            slot,
+            proxy,
+        )?;
+        eprintln!("connected: {} (iOS, view only)", capture.name);
+        Ok(Mirror { source: Source::Ios(capture), _playback: playback })
     }
 
     pub fn with_audio(&self) -> bool {
-        self.session.audio.is_some()
+        match &self.source {
+            Source::Android(s) => s.audio.is_some(),
+            #[cfg(target_os = "macos")]
+            Source::Ios(c) => c.audio,
+        }
+    }
+
+    /// The adb serial, or the capture device's id for an iOS device.
+    pub fn serial(&self) -> &str {
+        match &self.source {
+            Source::Android(s) => s.serial(),
+            #[cfg(target_os = "macos")]
+            Source::Ios(c) => &c.uid,
+        }
+    }
+
+    pub fn device_name(&self) -> &str {
+        match &self.source {
+            Source::Android(s) => &s.device_name,
+            #[cfg(target_os = "macos")]
+            Source::Ios(c) => &c.name,
+        }
+    }
+
+    /// An iOS device: no control, and nothing for adb to wait for when it goes away.
+    pub fn is_ios(&self) -> bool {
+        match &self.source {
+            Source::Android(_) => false,
+            #[cfg(target_os = "macos")]
+            Source::Ios(_) => true,
+        }
     }
 }

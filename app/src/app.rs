@@ -507,7 +507,7 @@ impl App {
     /// Stop mirroring and return the frame to its idle state. Returns the serial that was mirrored.
     fn end_session(&mut self) -> Option<String> {
         let mirror = self.mirror.take()?;
-        let serial = mirror.session.serial().to_string();
+        let serial = mirror.serial().to_string();
         self.stop_recording();
         drop(mirror); // kills the server and removes the adb forward
         self.control = Control::disconnected();
@@ -538,6 +538,13 @@ impl App {
     fn on_disconnected(&mut self, el: &ActiveEventLoop) {
         // the stream of a session ended on purpose (Phone menu) reports its end late: the connect screen is up
         if self.mirror.is_none() && self.waiting.is_some() && self.auto_record.is_none() {
+            return;
+        }
+        // an iOS device has no connect screen to return to yet: finish any recording and quit
+        if self.mirror.as_ref().is_some_and(|m| m.is_ios()) {
+            eprintln!("the iOS device was disconnected");
+            self.end_session();
+            el.exit();
             return;
         }
         if self.mirror.is_none() || self.auto_record.is_some() {
@@ -622,14 +629,14 @@ impl App {
             Ok((mirror, control)) => {
                 self.with_audio = mirror.with_audio();
                 self.control = control;
-                self.list_apps(mirror.session.serial().to_string());
+                self.list_apps(mirror.serial().to_string());
                 if let Some(name) = self.start_app.take() {
                     let _ = self.control.start_app(&name);
                 }
                 if let Some(w) = &self.window {
-                    w.set_title(&mirror.session.device_name);
+                    w.set_title(mirror.device_name());
                 }
-                self.title = mirror.session.device_name.clone();
+                self.title = mirror.device_name().to_string();
                 self.mirror = Some(mirror);
                 self.black = Default::default();
                 self.hint = None;
@@ -766,7 +773,7 @@ impl App {
             clipboard: self.cap.clipboard,
             auto_style: self.cap.auto_style,
             mirroring: self.mirror.is_some(),
-            usb: self.mirror.as_ref().is_some_and(|m| !connect::is_wireless(m.session.serial())),
+            usb: self.mirror.as_ref().is_some_and(|m| !connect::is_wireless(m.serial())),
             sync: self.sync.lock().unwrap().enabled,
             apps: self.apps.clone(),
             apps_loading: self.apps_loading,
@@ -1122,10 +1129,14 @@ impl App {
 
     /// Install a dropped APK or copy another file to the phone's Downloads.
     fn drop_file(&mut self, path: std::path::PathBuf) {
-        let Some(serial) = self.mirror.as_ref().map(|m| m.session.serial().to_string()) else {
+        let Some(serial) = self.mirror.as_ref().map(|m| m.serial().to_string()) else {
             self.show_toast("CONNECT A PHONE FIRST");
             return;
         };
+        if self.mirror.as_ref().is_some_and(|m| m.is_ios()) {
+            self.show_toast("NOT AVAILABLE ON IOS YET");
+            return;
+        }
         let verb = if transfer::kind(&path) == transfer::Kind::Install { "INSTALLING" } else { "COPYING" };
         self.show_toast(&format!("{verb} {}...", transfer::name(&path).to_uppercase()));
         if let Some(t) = self.toast.as_mut() {
@@ -1467,7 +1478,7 @@ impl ApplicationHandler<UserEvent> for App {
         }
         self.home_height = window.inner_size().height;
         self.window = Some(window);
-        if let Some(serial) = self.mirror.as_ref().map(|m| m.session.serial().to_string()) {
+        if let Some(serial) = self.mirror.as_ref().filter(|m| !m.is_ios()).map(|m| m.serial().to_string()) {
             self.list_apps(serial);
             if let Some(name) = self.start_app.take() {
                 let _ = self.control.start_app(&name);

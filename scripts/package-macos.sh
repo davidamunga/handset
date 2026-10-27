@@ -37,6 +37,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>$version</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSCameraUsageDescription</key><string>Handset shows a connected iPhone or iPad screen, which macOS treats as a camera.</string>
+  <key>NSMicrophoneUsageDescription</key><string>Handset plays and records the sound of a connected iPhone or iPad.</string>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
 </dict>
 </plist>
