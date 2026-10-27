@@ -14,6 +14,7 @@ export function Footer() {
           <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2 text-[0.95rem]">
             <a className="hover:text-paper" href={REPO}>GitHub</a>
             <a className="hover:text-paper" href={`${REPO}/releases`}>Releases</a>
+            <Link className="hover:text-paper" to="/faq">FAQ</Link>
             <Link className="hover:text-paper" to="/changelog">Changelog</Link>
             <a className="hover:text-paper" href={`${REPO}/issues`}>Report a problem</a>
             <a className="hover:text-paper" href={`${REPO}/blob/main/SECURITY.md`}>Security</a>

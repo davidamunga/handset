@@ -21,6 +21,9 @@ export function Header() {
         <Link to="/changelog" className="hidden rounded-lg px-3 py-2 hover:bg-paper-2 sm:block">
           Changelog
         </Link>
+        <Link to="/faq" className="hidden rounded-lg px-3 py-2 hover:bg-paper-2 sm:block">
+          FAQ
+        </Link>
         <a className="hidden rounded-lg px-3 py-2 hover:bg-paper-2 min-[400px]:block" href={REPO}>
           GitHub
         </a>

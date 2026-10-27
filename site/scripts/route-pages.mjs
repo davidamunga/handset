@@ -16,6 +16,11 @@ const pages = [
     description: 'The terms for using the Handset app and website: the Apache-2.0 licence, fair use, and no warranty.',
   },
   {
+    path: 'faq',
+    title: 'FAQ | Handset',
+    description: 'Fixes for the usual problems: Wi-Fi pairing that fails, a phone that does not show up, and a restart of adb.',
+  },
+  {
     path: 'changelog',
     title: 'Changelog | Handset',
     description: 'What changed in each release of Handset, newest first.',
