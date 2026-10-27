@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0
+
+### Minor Changes
+
+- [#51](https://github.com/davidamunga/handset/pull/51) [`33feb02`](https://github.com/davidamunga/handset/commit/33feb025f4cbb4ccd52c24d5596e8574441dede7) Thanks [@davidamunga](https://github.com/davidamunga)! - A downloaded Handset (the app on macOS, the unzipped release on Windows) can now update itself: the update notice and **Install Handset X and Restart** in the menu download the release, check its signature and checksum, replace the app and start the new version, putting the old one back if anything fails. Releases without a valid signature are never installed this way.
+
+- [#49](https://github.com/davidamunga/handset/pull/49) [`9e8c55a`](https://github.com/davidamunga/handset/commit/9e8c55afbe229405f11c0c2c951592727d8ef3d7) Thanks [@davidamunga](https://github.com/davidamunga)! - Update notices know how Handset was installed. With Homebrew, Scoop or winget the toast gives the command to run (`brew upgrade --cask handset`, `scoop update handset`, `winget upgrade davidamunga.Handset`) and a click copies it. The menu gains **What's New in X**, **Skip X** (that version stays quiet) and **Remind Me in 3 Days**.
+
+- [#50](https://github.com/davidamunga/handset/pull/50) [`e2a6df6`](https://github.com/davidamunga/handset/commit/e2a6df635626b49cb0d05b2a0ab164a801cf6914) Thanks [@davidamunga](https://github.com/davidamunga)! - Releases are now signed. `handset --verify-release <folder>` checks downloaded release files against the signed `SHA256SUMS` and says whether they can be trusted; a later version uses the same check to install updates.
+
+### Patch Changes
+
+- [#53](https://github.com/davidamunga/handset/pull/53) [`48e8b81`](https://github.com/davidamunga/handset/commit/48e8b81352ee000e0389b73f47354ef3d00fea90) Thanks [@davidamunga](https://github.com/davidamunga)! - When Handset cannot replace itself where it is installed (for example in `/Applications` without administrator rights), it now opens the download page and says why instead of failing. Old update folders in the temporary folder are removed after a week.
+
 ## 0.5.0
 
 ### Minor Changes
