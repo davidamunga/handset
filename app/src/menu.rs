@@ -24,6 +24,8 @@ pub struct State {
     pub update: Option<String>,
     /// The command that updates a package-manager install, when this is one.
     pub update_command: Option<&'static str>,
+    /// This copy can install the update itself.
+    pub update_install: bool,
     pub clipboard: bool,
     /// Each new capture also gets a styled copy.
     pub auto_style: bool,
@@ -184,6 +186,14 @@ pub fn show(window: &Window, s: &State) {
     let _ = menu.append(&MenuItem::with_id("zoom:reset", format!("Default Size    {MOD}0"), true, None));
     let _ = menu.append(&PredefinedMenuItem::separator());
     if let Some(v) = &s.update {
+        if s.update_install {
+            let _ = menu.append(&MenuItem::with_id(
+                "update-install",
+                format!("Install Handset {v} and Restart"),
+                true,
+                None,
+            ));
+        }
         let open = match s.update_command {
             Some(cmd) => format!("Copy \"{cmd}\" to Update to {v}"),
             None => format!("Download Handset {v}..."),

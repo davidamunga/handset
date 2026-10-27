@@ -42,6 +42,8 @@ pub struct Notice {
     pub text: String,
     pub url: Option<String>,
     pub copy: Option<String>,
+    /// A click installs the update in place (a downloaded app that can replace itself).
+    pub install: bool,
 }
 
 pub fn notice(source: Source, version: &str, url: &str) -> Notice {
@@ -50,11 +52,16 @@ pub fn notice(source: Source, version: &str, url: &str) -> Notice {
             text: format!("UPDATE {version} - CLICK TO COPY: {}", cmd.to_uppercase()),
             url: None,
             copy: Some(cmd.to_string()),
+            install: false,
         },
+        None if crate::updater::os_for(source).is_some() => {
+            Notice { text: format!("UPDATE {version} - CLICK TO INSTALL"), url: None, copy: None, install: true }
+        }
         None => Notice {
             text: format!("UPDATE {version} AVAILABLE - CLICK TO OPEN"),
             url: Some(url.to_string()),
             copy: None,
+            install: false,
         },
     }
 }
@@ -134,8 +141,15 @@ mod tests {
         assert_eq!(n.copy.as_deref(), Some("brew upgrade --cask handset"));
         assert_eq!(n.url, None);
         assert!(n.text.contains("0.5.0") && n.text.contains("BREW UPGRADE --CASK HANDSET"), "{}", n.text);
-        let n = notice(Source::MacApp, "0.5.0", "https://example.com/r");
-        assert_eq!((n.url.as_deref(), n.copy), (Some("https://example.com/r"), None));
+        assert!(!n.install);
+        // a downloaded app or an unzipped release installs the update itself
+        for s in [Source::MacApp, Source::WindowsZip] {
+            let n = notice(s, "0.5.0", "https://example.com/r");
+            assert!(n.install && n.url.is_none() && n.copy.is_none(), "{s:?}");
+            assert!(n.text.contains("CLICK TO INSTALL"), "{}", n.text);
+        }
+        let n = notice(Source::Other, "0.5.0", "https://example.com/r");
+        assert_eq!((n.url.as_deref(), n.copy, n.install), (Some("https://example.com/r"), None, false));
         assert!(n.text.contains("CLICK TO OPEN"));
         assert_eq!(notice(Source::Scoop, "1.0.0", "u").copy.as_deref(), Some("scoop update handset"));
         assert!(notice(Source::Other, "1.0.0", "u").url.is_some());

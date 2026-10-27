@@ -180,6 +180,8 @@ pub struct App {
     update_auto: bool,
     update: Option<update::Release>,
     install: crate::install::Source,
+    /// An update is being downloaded or prepared.
+    updating: bool,
     /// Window height at start (physical pixels), what Default Size returns to.
     home_height: u32,
     mirror: Option<Mirror>,
@@ -205,6 +207,8 @@ struct Toast {
     edit_from: Option<f32>,
     /// Text a click puts on the clipboard (the command that updates a package-manager install).
     copy: Option<String>,
+    /// A click installs the waiting update.
+    install: bool,
 }
 
 const TOAST: Duration = Duration::from_millis(1800);
@@ -259,6 +263,7 @@ impl App {
             update_auto: init.update_check,
             update: None,
             install: crate::install::current(),
+            updating: false,
             home_height: 0,
             mirror: init.mirror,
             waiting: init.wait.map(|w| Waiting::new(w.serial, w.wifi, Status::Looking)),
@@ -752,6 +757,7 @@ impl App {
             update_auto: self.update_auto,
             update: self.update.as_ref().map(|u| u.version.clone()),
             update_command: self.install.upgrade_command(),
+            update_install: crate::updater::os_for(self.install).is_some(),
             clipboard: self.cap.clipboard,
             auto_style: self.cap.auto_style,
             mirroring: self.mirror.is_some(),
@@ -870,6 +876,7 @@ impl App {
                 }
                 None => crate::tools::open_url(self.update.as_ref().map_or(update::RELEASES, |u| u.url.as_str())),
             },
+            "update-install" => self.start_update(),
             "update-notes" => crate::tools::open_url(self.update.as_ref().map_or(update::RELEASES, |u| u.url.as_str())),
             "update-skip" => {
                 if let Some(u) = self.update.take() {
@@ -1017,6 +1024,7 @@ impl App {
                             url: n.url,
                             edit_from: None,
                             copy: n.copy,
+                            install: n.install,
                         });
                     }
                     self.update = Some(rel);
@@ -1030,6 +1038,74 @@ impl App {
                 if manual {
                     self.show_toast("COULD NOT CHECK FOR UPDATES");
                 }
+            }
+        }
+    }
+
+    /// Download, check and unpack the waiting update in the background; when it is ready the app quits and a
+    /// helper swaps it in and starts it (see `updater.rs`).
+    fn start_update(&mut self) {
+        let Some(rel) = self.update.clone() else { return };
+        if self.updating {
+            return;
+        }
+        if self.recorder.is_some() {
+            self.show_toast("STOP RECORDING FIRST");
+            return;
+        }
+        if crate::updater::os_for(self.install).is_none() {
+            crate::tools::open_url(&rel.url);
+            return;
+        }
+        self.updating = true;
+        self.show_toast("DOWNLOADING UPDATE...");
+        let (proxy, source) = (self.proxy.clone(), self.install);
+        std::thread::spawn(move || {
+            let work = std::env::temp_dir().join(format!("handset-update-{}", std::process::id()));
+            let exe = std::env::current_exe().unwrap_or_default();
+            let tell = proxy.clone();
+            let result = crate::updater::prepare(
+                &rel.version,
+                source,
+                &exe,
+                &work,
+                &crate::verify::trusted_keys(),
+                true,
+                &|p| {
+                    let _ = tell.send_event(UserEvent::UpdateProgress(p));
+                },
+            );
+            let _ = proxy.send_event(UserEvent::UpdateReady(result.map(|swap| (swap, work)), rel.url));
+        });
+    }
+
+    fn on_update_ready(
+        &mut self,
+        el: &ActiveEventLoop,
+        result: Result<(crate::updater::Swap, std::path::PathBuf), crate::updater::Failure>,
+        page: String,
+    ) {
+        use crate::updater::Failure;
+        self.updating = false;
+        match result {
+            Ok((swap, work)) => match crate::updater::spawn_helper(&swap, &work) {
+                Ok(()) => {
+                    eprintln!("update: restarting to install it");
+                    el.exit();
+                }
+                Err(e) => {
+                    eprintln!("update failed: {e}");
+                    self.show_toast("UPDATE FAILED");
+                }
+            },
+            Err(Failure::Unsigned) => {
+                eprintln!("update: the release is not signed, so it is not installed in place");
+                crate::tools::open_url(&page);
+                self.show_toast("NOT SIGNED - OPENING DOWNLOAD PAGE");
+            }
+            Err(Failure::Other(e)) => {
+                eprintln!("update failed: {e}");
+                self.show_toast("UPDATE FAILED - SEE THE LOG");
             }
         }
     }
@@ -1060,6 +1136,7 @@ impl App {
             url: None,
             edit_from: None,
             copy: None,
+            install: false,
         });
         self.refresh_overlay();
     }
@@ -1087,13 +1164,14 @@ impl App {
             url: None,
             edit_from,
             copy: None,
+            install: false,
         });
         self.refresh_overlay();
     }
 
     /// Is the cursor on a clickable capture toast?
     fn toast_hit(&self) -> bool {
-        self.toast.as_ref().is_some_and(|t| t.path.is_some() || t.url.is_some() || t.copy.is_some())
+        self.toast.as_ref().is_some_and(|t| t.path.is_some() || t.url.is_some() || t.copy.is_some() || t.install)
             && self.renderer.as_ref().is_some_and(|r| r.overlay_contains(self.cursor.0 as f32, self.cursor.1 as f32))
     }
 
@@ -1474,6 +1552,12 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             UserEvent::Update(result, manual) => self.on_update(result, manual),
+            UserEvent::UpdateProgress(p) => {
+                if self.updating {
+                    self.show_toast(&format!("DOWNLOADING UPDATE {}%", (p * 100.0).round() as u32));
+                }
+            }
+            UserEvent::UpdateReady(result, page) => self.on_update_ready(el, result, page),
             UserEvent::Transfer(result) => match result {
                 Ok(text) => self.show_toast(&text.to_uppercase()),
                 Err(e) => {
@@ -1658,6 +1742,8 @@ impl ApplicationHandler<UserEvent> for App {
                     } else if let Some(cmd) = t.copy {
                         crate::clipboard::write_text(&cmd);
                         self.show_toast(&format!("COPIED: {}", cmd.to_uppercase()));
+                    } else if t.install {
+                        self.start_update();
                     }
                 }
                 self.refresh_overlay();

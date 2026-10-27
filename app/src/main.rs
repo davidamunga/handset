@@ -33,6 +33,7 @@ mod tools;
 mod transfer;
 mod trim;
 mod update;
+mod updater;
 mod verify;
 
 use std::sync::{Arc, Mutex};

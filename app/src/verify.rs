@@ -24,7 +24,12 @@ pub fn parse_hex32(s: &str) -> Option<[u8; 32]> {
     Some(out)
 }
 
-fn keys_from(hex: &[&str]) -> Vec<VerifyingKey> {
+/// The keys built into the app.
+pub fn trusted_keys() -> Vec<VerifyingKey> {
+    keys_from(KEYS)
+}
+
+pub fn keys_from(hex: &[&str]) -> Vec<VerifyingKey> {
     hex.iter().filter_map(|h| parse_hex32(h)).filter_map(|b| VerifyingKey::from_bytes(&b).ok()).collect()
 }
 
@@ -33,6 +38,11 @@ fn keys_from(hex: &[&str]) -> Vec<VerifyingKey> {
 pub fn verify_with(keys: &[VerifyingKey], message: &[u8], sig: &[u8]) -> bool {
     let Ok(sig) = Signature::from_slice(sig) else { return false };
     keys.iter().any(|k| k.verify_strict(message, &sig).is_ok())
+}
+
+/// The hash `sums` lists for `name`.
+pub fn expected_hash(sums: &str, name: &str) -> Option<String> {
+    parse_sums(sums).into_iter().find(|(_, n)| n == name).map(|(h, _)| h)
 }
 
 /// The `(hash, file name)` pairs of a `SHA256SUMS` file: `<hash>  <name>`, or `<hash> *<name>` for binary mode.
@@ -210,6 +220,8 @@ mod tests {
             "c".repeat(10)
         );
         let list = parse_sums(&text);
+        assert_eq!(expected_hash(&text, "Handset-0.5.0-macos.zip"), Some(h1.clone()));
+        assert_eq!(expected_hash(&text, "missing.zip"), None);
         assert_eq!(
             list,
             vec![(h1, "Handset-0.5.0-macos.zip".into()), ("b".repeat(64), "handset-0.5.0-macos.tar.gz".into())]

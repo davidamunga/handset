@@ -29,6 +29,10 @@ pub enum UserEvent {
     Transfer(Result<String, String>),
     /// A capture was styled in the background: the new file, or why it failed.
     Styled(Result<std::path::PathBuf, String>),
+    /// How far the update's download and checks are, 0 to 1.
+    UpdateProgress(f32),
+    /// The update is downloaded, checked and unpacked (or why it was not), with the release page to fall back to.
+    UpdateReady(Result<(crate::updater::Swap, std::path::PathBuf), crate::updater::Failure>, String),
 }
 
 #[derive(Default)]

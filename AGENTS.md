@@ -27,6 +27,7 @@ small native Rust app that implements the desktop side of the scrcpy protocol an
 | `app/src/presets.rs` | Named looks (a style saved under a name): built-in ones, yours in `~/.config/handset/looks`, and `--style <name>` |
 | `app/src/editor.rs` | `handset --edit <file>`: egui window with live preview and playback, run as its own process |
 | `app/src/update.rs`, `install.rs` | Looking for a newer release; how this copy was installed (Homebrew, Scoop, winget, a download) and what the update notice says for each |
+| `app/src/updater.rs` | Updating a downloaded install in place: download, verify, unpack, then a helper script swaps the app (with rollback) |
 | `app/src/verify.rs` | Release signature and checksum checks (Ed25519 over `SHA256SUMS`), and `--verify-release` |
 | `app/src/menu.rs`, `tools.rs` | Native macOS menu; tool lookup, error dialogs, default arguments |
 | `app/assets/` | Embedded scrcpy server, the built-in phone frames and the Inter fonts |

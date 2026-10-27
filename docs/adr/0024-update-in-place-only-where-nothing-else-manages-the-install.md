@@ -49,5 +49,19 @@ which a checksum fetched from the same place cannot.
   and only people who update by hand get it. Keeping a backup of the key is part of the release process.
 - Windows builds are not code-signed (ADR 0020), so the Ed25519 signature is the only thing that vouches for
   an update there.
-- The updater is built in steps: the install-aware notice and skip/remind (this ADR's first change), then
-  the signing and verification, then the download and swap.
+- The updater was built in steps: the install-aware notice and skip/remind, then the signing and
+  verification, then the download and swap.
+
+## How the in-place update works
+
+`updater.rs` downloads `SHA256SUMS`, its `.sig` and the zip into a temporary folder; verifies the signature and
+the zip's hash; unpacks (`ditto` on macOS so the code signature survives, `tar` on Windows); and checks that what
+it unpacked is the announced version (the bundle's version, and the new program's own `--version`) and, on macOS,
+that the app's `codesign` seal is intact. A signed list that does not name the zip, or a zip whose contents are
+an older version, is refused, so a validly signed old release cannot be passed off as a new one.
+
+Only then does it write a helper script and quit. The helper (a shell script on macOS, PowerShell on Windows)
+waits for Handset to exit, copies the new app next to the old one, moves the old one aside, puts the new one in
+place, starts it, and deletes the old one. If the swap or the start fails, it puts the old one back and starts
+that. The update never starts if Handset cannot write where it is installed (for example `/Applications` for a
+non-administrator), while a recording is running, or for an install that a package manager owns.
