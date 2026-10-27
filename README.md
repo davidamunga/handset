@@ -116,7 +116,7 @@ a package from a release tag (`makepkg -si`; not on the AUR yet). On a tiling co
 window or it is tiled to fit: `windowrule = float, class:handset` (the class is `handset` on Wayland and X11).
 A stock Omarchy has no `zenity`, so the address and pairing-code prompts do nothing until you `pacman -S zenity`.
 
- `dist/linux/Handset-<version>-linux-<arch>.tar.gz` (the binary, a
+`scripts/package-linux.sh` builds `dist/linux/Handset-<version>-linux-<arch>.tar.gz` (the binary, a
 `handset.desktop` entry, the icon and the licences) and, when `appimagetool` is installed, an AppImage; CI
 attaches the tarball to each run. Neither is part of a release yet, and neither bundles GTK or ALSA, so those
 must be installed. There is no in-place update on Linux.
