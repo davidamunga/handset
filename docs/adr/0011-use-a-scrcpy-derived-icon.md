@@ -1,6 +1,6 @@
 # 0011. Use an icon derived from scrcpy's
 
-- Status: accepted
+- Status: superseded by [0026](0026-draw-an-original-icon-and-a-device-gray-look.md)
 - Date: 2026-10-26
 
 ## Context

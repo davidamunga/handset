@@ -1,4 +1,4 @@
-<p align="center"><img src="app/packaging/icon/handset-icon-512.png" alt="Handset icon" width="128"></p>
+<p align="center"><img src="docs/images/og/og-brand.png" alt="Handset: your phone, on your desktop" width="720"></p>
 
 # Handset
 
@@ -36,7 +36,7 @@ and Wi-Fi and QR code options for connecting without a cable.
 - A style editor for captures: put a screenshot or recording on a gradient, wallpaper, colour or your own picture,
   with padding, shadow, rounded corners and an aspect ratio (1:1, 16:9, 4:5 ...); trim and play recordings
   with sound; save looks. Your original is kept. See [docs/styling.md](docs/styling.md)
-- A Dock icon that shows what Handset is doing: grey while waiting for a phone, amber while connecting, green
+- A Dock icon that shows what Handset is doing: grey eyes while waiting for a phone, amber while connecting, white
   while mirroring, red with a dot while recording
 - A toolbar beside the phone and a native right-click menu
 - Clipboard text is shared with the phone: copy on the phone and paste on the Mac, or copy on the Mac, click the

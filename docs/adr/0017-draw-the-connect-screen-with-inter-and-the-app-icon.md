@@ -1,6 +1,6 @@
 # 0017. Draw the connect screen with Inter and the app icon
 
-- Status: accepted
+- Status: accepted (the colours were replaced by greys and whites in [0026](0026-draw-an-original-icon-and-a-device-gray-look.md))
 - Date: 2026-10-26
 
 ## Context

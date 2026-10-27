@@ -20,7 +20,7 @@ Copy [`0000-template.md`](0000-template.md) to start a new one.
 | [0008](0008-record-through-an-ffmpeg-sidecar.md) | Record through an ffmpeg sidecar | accepted |
 | [0009](0009-native-menu-on-macos-and-self-drawn-toolbar.md) | Native menu on macOS and a self-drawn toolbar | accepted |
 | [0010](0010-package-as-an-ad-hoc-signed-app-bundle.md) | Package as an ad-hoc signed app bundle | accepted |
-| [0011](0011-use-a-scrcpy-derived-icon.md) | Use an icon derived from scrcpy's | accepted |
+| [0011](0011-use-a-scrcpy-derived-icon.md) | Use an icon derived from scrcpy's | superseded by 0026 |
 | [0012](0012-release-with-changesets.md) | Release with Changesets | accepted |
 | [0013](0013-sign-and-notarise-releases.md) | Sign with Developer ID and notarise releases | accepted |
 | [0014](0014-show-a-connect-screen-in-the-frame.md) | Show a connect screen inside the frame | accepted |
@@ -35,3 +35,4 @@ Copy [`0000-template.md`](0000-template.md) to start a new one.
 | [0023](0023-keep-a-branch-for-every-release.md) | Keep a branch for every release | accepted |
 | [0024](0024-update-in-place-only-where-nothing-else-manages-the-install.md) | Update in place only where nothing else manages the install, and only to signed releases | accepted |
 | [0025](0025-mirror-ios-devices-through-avfoundation-screen-capture.md) | Mirror iOS devices through AVFoundation screen capture, view only for now | accepted |
+| [0026](0026-draw-an-original-icon-and-a-device-gray-look.md) | Draw an original icon and a Device Gray look | accepted |
