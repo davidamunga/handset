@@ -125,6 +125,19 @@ fn out_dir(candidates: &[&str]) -> PathBuf {
     dir
 }
 
+/// Remove the outline files (see `restyle::matte_path`) of recordings that have been deleted.
+pub fn prune_mattes() {
+    let Ok(rd) = std::fs::read_dir(dir_path(&["Movies", "Videos"])) else { return };
+    for path in rd.flatten().map(|e| e.path()) {
+        if path.extension().and_then(|x| x.to_str()) == Some("matte")
+            && !path.with_extension("mp4").exists()
+            && !path.with_extension("gif").exists()
+        {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
 /// The newest screenshots and recordings (from both output folders), newest first.
 pub fn recent_captures(n: usize) -> Vec<PathBuf> {
     let mut files: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();

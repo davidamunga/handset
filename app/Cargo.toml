@@ -12,11 +12,13 @@ publish = false
 ab_glyph = "0.2"
 bytemuck = "1.25.2"
 cpal = "0.18.2"
+eframe = { version = "0.37", default-features = false, features = ["wgpu", "default_fonts"] }
 muda = "0.21.2"
 openh264 = "0.9.9"
 png = "0.18.1"
 pollster = "1.0.1"
 qrcode = { version = "0.14", default-features = false }
+rfd = "0.15"
 wgpu = "30.0.1"
 winit = "0.30.13"
 

@@ -161,6 +161,7 @@ pub struct App {
     frame_spec: Option<String>,
     /// `--record-for`: record this long from the first frame, then quit.
     pub auto_record: Option<Duration>,
+    styling: Vec<std::thread::JoinHandle<()>>,
     auto_stop_at: Option<Instant>,
     hover: Option<Button>,
     toolbar_key: Option<(u32, Option<Button>, bool)>,
@@ -199,6 +200,8 @@ struct Toast {
     ttl: Duration,
     path: Option<std::path::PathBuf>,
     url: Option<String>,
+    /// Where, as a fraction of the pill's width, the EDIT half begins (a capture that can be edited).
+    edit_from: Option<f32>,
 }
 
 const TOAST: Duration = Duration::from_millis(1800);
@@ -238,6 +241,7 @@ impl App {
             with_audio: init.with_audio,
             frame_spec: init.frame_spec,
             auto_record: None,
+            styling: Vec::new(),
             auto_stop_at: None,
             hover: None,
             toolbar_key: None,
@@ -902,6 +906,7 @@ impl App {
                         "open" => capture::open_file(&path),
                         "reveal" => capture::reveal(&path),
                         "style" => self.style_in_background(path),
+                        "edit" => self.edit_capture(&path),
                         "copy" => {
                             let ok = capture::copy_to_clipboard(&path);
                             self.show_toast(if ok { "COPIED" } else { "COPY FAILED" });
@@ -980,6 +985,7 @@ impl App {
                         ttl: TOAST_SAVED,
                         path: None,
                         url: Some(rel.url.clone()),
+                        edit_from: None,
                     });
                     self.update = Some(rel);
                     self.refresh_overlay();
@@ -1014,7 +1020,14 @@ impl App {
     }
 
     fn show_toast(&mut self, text: &str) {
-        self.toast = Some(Toast { text: text.to_string(), since: Instant::now(), ttl: TOAST, path: None, url: None });
+        self.toast = Some(Toast {
+            text: text.to_string(),
+            since: Instant::now(),
+            ttl: TOAST,
+            path: None,
+            url: None,
+            edit_from: None,
+        });
         self.refresh_overlay();
     }
 
@@ -1025,8 +1038,16 @@ impl App {
         if self.cap.clipboard {
             eprintln!("clipboard: {}", if copied { "copied" } else { "copy failed" });
         }
-        let text = format!("{what} {} - CLICK TO SHOW", if copied { "COPIED" } else { "SAVED" });
-        self.toast = Some(Toast { text, since: Instant::now(), ttl: TOAST_SAVED, path: Some(path), url: None });
+        let mut text = format!("{what} {} - SHOW", if copied { "COPIED" } else { "SAVED" });
+        // a styled copy is the result of editing; everything else can be edited
+        let edit_from = (what != "STYLED COPY").then(|| {
+            // text is not monospaced: measure where the EDIT half starts from the pill widths
+            let before = overlay::pill(&text, None, 3).width as f32;
+            text.push_str(" | EDIT");
+            before / overlay::pill(&text, None, 3).width as f32
+        });
+        self.toast =
+            Some(Toast { text, since: Instant::now(), ttl: TOAST_SAVED, path: Some(path), url: None, edit_from });
         self.refresh_overlay();
     }
 
@@ -1121,14 +1142,20 @@ impl App {
         }
     }
 
+    /// Open the style editor on a saved capture, in its own process.
+    fn edit_capture(&self, path: &std::path::Path) {
+        let exe = std::env::current_exe().unwrap_or_else(|_| "handset".into());
+        let _ = crate::tools::command(exe).arg("--edit").arg(path).spawn();
+    }
+
     /// Save a styled copy of a capture beside it, off the UI thread; the result arrives as `UserEvent::Styled`.
     fn style_in_background(&mut self, path: std::path::PathBuf) {
         let style = self.cap.style.clone();
         let proxy = self.proxy.clone();
         self.show_toast("STYLING...");
-        std::thread::spawn(move || {
+        self.styling.push(std::thread::spawn(move || {
             let _ = proxy.send_event(UserEvent::Styled(restyle::export(&path, &style)));
-        });
+        }));
     }
 
     fn start_recording(&mut self) {
@@ -1146,6 +1173,10 @@ impl App {
                     size.0,
                     size.1
                 );
+                // the phone's outline, so a styled copy can cut the phone out of the recording's backdrop
+                if let Some(rgba) = self.renderer.as_mut().and_then(|r| r.capture(size, None)) {
+                    let _ = restyle::save_matte(&rec.path, &rgba, size.0, size.1);
+                }
                 *self.audio_sink.lock().unwrap() = rec.audio_sender();
                 self.recorder = Some(rec);
                 self.next_tick = Instant::now();
@@ -1329,6 +1360,10 @@ impl ApplicationHandler<UserEvent> for App {
             self.auto_stop_at = None;
             self.auto_record = None;
             self.stop_recording();
+            // a run that ends by itself must not leave a styled copy half made
+            for job in self.styling.drain(..) {
+                let _ = job.join();
+            }
             el.exit();
             return;
         }
@@ -1563,9 +1598,19 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. }
                 if self.toast_hit() =>
             {
+                let on_edit = self.toast.as_ref().and_then(|t| t.edit_from).is_some_and(|from| {
+                    self.renderer
+                        .as_ref()
+                        .and_then(|r| r.overlay_fraction(self.cursor.0 as f32, self.cursor.1 as f32))
+                        .is_some_and(|f| f >= from)
+                });
                 if let Some(t) = self.toast.take() {
                     if let Some(path) = t.path {
-                        capture::reveal(&path);
+                        if on_edit {
+                            self.edit_capture(&path);
+                        } else {
+                            capture::reveal(&path);
+                        }
                     } else if let Some(url) = t.url {
                         crate::tools::open_url(&url);
                     }

@@ -37,8 +37,24 @@ never destroy the original.
 
 ## Consequences
 
-- A recording has an opaque background colour, so its styled copy shows the phone and that colour as a
-  rounded card, not the bare phone silhouette. Recording the phone with transparency would fix that; it is
-  not done yet.
+- A recording is flattened onto an opaque colour, so its transparency is lost. The phone's outline does not
+  change during a recording, so Handset saves it once at the start as `<name>.matte` (a greyscale PNG) beside
+  the recording. Styling uses it as the shape of the hole in the backdrop and as the shadow's silhouette, so
+  the phone sits directly on the background. A recording without a matte (made by an older version, or moved
+  without it) is styled as a rounded card on its own backdrop colour; the corner radius only applies then.
 - Styling a video re-encodes it (libx264, crf 18); audio is copied.
 - Styling needs `ffmpeg` for video and for non-PNG background images only.
+
+## The editor window
+
+`handset --edit <file>` opens an `eframe`/`egui` window (egui 0.37 uses the same wgpu 30 and winit 0.30 as the
+renderer, so nothing is duplicated). It runs as its own process, started from Recent Captures > Edit Style...,
+so it does not touch the mirroring window's event loop and works for any saved file. The preview is a
+downscaled still (a picture, or a video's first frame) styled by the same `Style::compose` as the export.
+Choosing a picture background uses a native file dialog (`rfd`). Exporting remembers the look as the
+`style` setting. egui adds compile time and some binary size; the alternative, hand-drawing sliders and a
+colour picker in the bitmap-font overlay, would have been a lot more code for a worse result.
+
+Playing a recording in the preview uses a worker thread that has ffmpeg decode small RGBA frames at their real
+pace (a single frame per seek while scrubbing, newest request wins). The backdrop is drawn once per style
+change and only the picture is blended again per frame. The preview is silent; audio is only in the export.

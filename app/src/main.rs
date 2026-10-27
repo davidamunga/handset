@@ -11,6 +11,7 @@ mod connect;
 mod control;
 mod dock;
 mod doctor;
+mod editor;
 mod frame;
 mod menu;
 mod mirror;
@@ -36,6 +37,7 @@ fn usage() -> ! {
          \x20                  [--connect <ip[:port]> | --last | --wifi] [--start-app <package>] [serial]\n\
          \x20      handset --pair <ip:port> <code>\n\
          \x20      handset --restyle <png|mp4|gif> [--style <look>]\n\
+         \x20      handset --edit [png|mp4|gif]\n\
          \x20      handset --doctor\n\
          \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--show-touches] [--style <look>] [--style-captures] [--no-update-check] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
          built-in frames: {}\n\
@@ -68,6 +70,7 @@ fn main() {
     }
     cap.auto_style = saved.get_bool("auto-style").unwrap_or(cap.auto_style);
     let mut restyle: Option<String> = None;
+    let mut edit: Option<String> = None;
     let mut mute = saved.get_bool("mute").unwrap_or(false);
     let mut record_for: Option<f32> = None;
     let mut connect: Option<String> = None;
@@ -96,6 +99,7 @@ fn main() {
                 cap.style = args.next().and_then(|v| style::Style::parse(&v)).unwrap_or_else(|| usage());
             }
             "--style-captures" => cap.auto_style = true,
+            "--edit" => edit = Some(args.next().unwrap_or_default()),
             "--restyle" => restyle = Some(args.next().unwrap_or_else(|| usage())),
             "--audio" => opts.audio = true,
             "--gain" => cap.gain_db = args.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage()),
@@ -132,6 +136,20 @@ fn main() {
         }
     }
 
+    if let Some(file) = edit {
+        // no file given: ask for one
+        let file = if file.is_empty() {
+            let picked = rfd::FileDialog::new().add_filter("Captures", &["png", "mp4", "gif"]).pick_file();
+            let Some(picked) = picked else { return };
+            picked
+        } else {
+            file.into()
+        };
+        if let Err(e) = editor::run(file, cap.style.clone()) {
+            tools::die(&e);
+        }
+        return;
+    }
     if let Some(file) = restyle {
         match restyle::export(std::path::Path::new(&file), &cap.style) {
             Ok(out) => {
@@ -146,6 +164,7 @@ fn main() {
         .as_deref()
         .map(|s| frame::load(s).unwrap_or_else(|e| tools::die(&format!("Cannot load the frame: {e}"))));
 
+    std::thread::spawn(capture::prune_mattes);
     let event_loop = EventLoop::<stream::UserEvent>::with_user_event().build().unwrap();
     menu::install(event_loop.create_proxy());
     let slot = Arc::new(Mutex::new(stream::Slot::default()));

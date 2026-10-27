@@ -34,9 +34,6 @@ fn icon(state: State) -> &'static [u8] {
 /// Show the icon for `state`. Cheap to call often: it only does anything when the state changes.
 #[cfg(target_os = "macos")]
 pub fn set(state: State) {
-    use objc2::AllocAnyThread;
-    use objc2_app_kit::{NSApplication, NSImage};
-    use objc2_foundation::NSData;
     use std::sync::Mutex;
 
     static CURRENT: Mutex<Option<State>> = Mutex::new(None);
@@ -44,20 +41,38 @@ pub fn set(state: State) {
     if *current == Some(state) {
         return;
     }
-    // AppKit objects belong to the main thread, which is where the event loop runs
-    let Some(mtm) = objc2::MainThreadMarker::new() else { return };
-    let data = NSData::with_bytes(icon(state));
-    let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) else { return };
-    // SAFETY: called on the main thread with a valid image; AppKit retains it
-    unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&image)) };
+    if !set_image(icon(state)) {
+        return;
+    }
     *current = Some(state);
     if std::env::var_os("HANDSET_DEBUG").is_some() {
         eprintln!("dock icon: {state:?}");
     }
 }
 
+/// Show this PNG as the Dock icon; false when it could not be set (not on the main thread, or not an image).
+#[cfg(target_os = "macos")]
+pub fn set_image(png: &'static [u8]) -> bool {
+    use objc2::AllocAnyThread;
+    use objc2_app_kit::{NSApplication, NSImage};
+    use objc2_foundation::NSData;
+
+    // AppKit objects belong to the main thread, which is where the event loop runs
+    let Some(mtm) = objc2::MainThreadMarker::new() else { return false };
+    let data = NSData::with_bytes(png);
+    let Some(image) = NSImage::initWithData(NSImage::alloc(), &data) else { return false };
+    // SAFETY: called on the main thread with a valid image; AppKit retains it
+    unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(Some(&image)) };
+    true
+}
+
 #[cfg(not(target_os = "macos"))]
 pub fn set(_state: State) {}
+
+#[cfg(not(target_os = "macos"))]
+pub fn set_image(_png: &'static [u8]) -> bool {
+    false
+}
 
 #[cfg(test)]
 mod tests {
