@@ -376,41 +376,61 @@ $dir = {current}
 $new = {new}
 $exe = Join-Path $dir 'handset.exe'
 $backup = Join-Path $dir '.update-backup'
+
+# CreateProcess (no shell), so a program that cannot run fails here and not silently
+function Start-Handset {{
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $exe
+  $psi.WorkingDirectory = $dir
+  $psi.UseShellExecute = $false
+{arguments}  [System.Diagnostics.Process]::Start($psi) | Out-Null
+}}
+
+function Restore-Old {{
+  Write-Output 'update: restoring the old version'
+  Copy-Item (Join-Path $backup 'handset.exe') $exe -Force
+  try {{ Start-Handset }} catch {{ Write-Output ('update: the old version did not start: ' + $_.Exception.Message) }}
+  exit 1
+}}
+
 try {{ Wait-Process -Id {pid} -Timeout 30 -ErrorAction SilentlyContinue }} catch {{ }}
 Remove-Item -Recurse -Force $backup -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $backup | Out-Null
 Copy-Item $exe (Join-Path $backup 'handset.exe') -Force
+
 $copied = $false
 for ($i = 0; $i -lt 15 -and -not $copied; $i++) {{
   try {{
     Copy-Item -Path (Join-Path $new '*') -Destination $dir -Recurse -Force
     $copied = $true
   }} catch {{
+    Write-Output ('update: could not copy the new files yet: ' + $_.Exception.Message)
     Start-Sleep -Seconds 1
   }}
 }}
-if (-not $copied) {{
-  Write-Output 'update: could not copy the new files; restoring'
-  Copy-Item (Join-Path $backup 'handset.exe') $exe -Force
-  Start-Process -FilePath $exe{relaunch_args}
-  exit 1
-}}
+if (-not $copied) {{ Restore-Old }}
+
+$started = $false
 try {{
-  Start-Process -FilePath $exe{relaunch_args}
-  Remove-Item -Recurse -Force $backup
-  Write-Output 'update: done'
+  Start-Handset
+  $started = $true
 }} catch {{
-  Write-Output 'update: the new version did not start; restoring'
-  Copy-Item (Join-Path $backup 'handset.exe') $exe -Force
-  Start-Process -FilePath $exe{relaunch_args}
-  exit 1
+  Write-Output ('update: the new version did not start: ' + $_.Exception.Message)
 }}
+if (-not $started) {{ Restore-Old }}
+
+try {{ Remove-Item -Recurse -Force $backup }} catch {{ Write-Output ('update: could not remove the backup: ' + $_.Exception.Message) }}
+Write-Output 'update: done'
 "#,
         log = ps_quote(&s.log.to_string_lossy()),
         current = ps_quote(&s.current.to_string_lossy()),
         new = ps_quote(&s.new.to_string_lossy()),
         pid = s.pid,
-        relaunch_args = if s.relaunch.is_empty() { String::new() } else { format!(" -ArgumentList {}", s.relaunch) },
+        arguments = if s.relaunch.is_empty() {
+            String::new()
+        } else {
+            format!("  $psi.Arguments = {}\n", ps_quote(&s.relaunch))
+        },
     )
 }
 
@@ -603,10 +623,14 @@ mod tests {
         assert!(s.contains(r"$dir = 'C:\Tools\Handset'"));
         let at = |needle: &str| s.find(needle).unwrap_or_else(|| panic!("missing {needle}"));
         assert!(at("$backup") < at("Copy-Item -Path (Join-Path $new '*')"), "the old program is saved before the copy");
-        assert!(s.contains("restoring"));
-        assert!(s.contains("Start-Process -FilePath $exe -ArgumentList open"), "the relaunch arguments are passed on");
+        assert!(s.contains("restoring the old version"));
+        assert!(s.contains("$psi.Arguments = 'open'"), "the relaunch arguments are passed on");
         let none = script(&Swap { relaunch: String::new(), ..swap(Os::Windows) });
-        assert!(none.contains("Start-Process -FilePath $exe\n"), "no arguments by default");
+        assert!(!none.contains("$psi.Arguments"), "no arguments by default");
+        assert!(
+            s.contains("UseShellExecute = $false"),
+            "a program that cannot run fails instead of being handed to the shell"
+        );
     }
 
     #[test]
