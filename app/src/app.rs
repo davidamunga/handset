@@ -184,6 +184,8 @@ pub struct App {
     /// Look for newer releases by itself (a saved setting), and the newer release once one is found.
     update_auto: bool,
     update: Option<update::Release>,
+    /// The version this run has already announced with a toast.
+    update_told: Option<String>,
     install: crate::install::Source,
     /// An update is being downloaded or prepared.
     updating: bool,
@@ -221,6 +223,8 @@ struct Toast {
 const TOAST: Duration = Duration::from_millis(1800);
 /// Capture toasts stay long enough to be clicked.
 const TOAST_SAVED: Duration = Duration::from_millis(4500);
+/// The update notice waits longer: it asks for a decision.
+const TOAST_UPDATE: Duration = Duration::from_secs(10);
 const TOAST_FADE: Duration = Duration::from_millis(400);
 /// Cursor position in window space (0..1) and the device pixel under it, if any.
 type Located = ((f32, f32), Option<(i32, i32)>);
@@ -270,6 +274,7 @@ impl App {
             update_auto: init.update_check,
             just_updated: init.updated_from,
             update: None,
+            update_told: None,
             install: crate::install::current(),
             updating: false,
             home_height: 0,
@@ -1163,20 +1168,27 @@ impl App {
     fn on_update(&mut self, result: Result<update::Release, String>, manual: bool) {
         match result {
             Ok(rel) => {
-                settings::save("update-checked", &update::now().to_string());
                 let saved = settings::Settings::load();
                 let skipped = saved.get("update-skip");
                 let remind = saved.get("update-remind").and_then(|t| t.parse().ok());
                 if update::is_newer(&rel.version, &update::current()) {
                     // the menu always offers the update; the toast only when it is welcome
-                    let speak =
-                        update::announce(&rel.version, &update::current(), skipped, remind, update::now(), manual);
+                    let speak = update::announce(
+                        &rel.version,
+                        &update::current(),
+                        skipped,
+                        remind,
+                        update::now(),
+                        self.update_told.as_deref(),
+                        manual,
+                    );
                     if speak {
+                        self.update_told = Some(rel.version.clone());
                         let n = crate::install::notice(self.install, &rel.version, &rel.url);
                         self.toast = Some(Toast {
                             text: n.text,
                             since: Instant::now(),
-                            ttl: TOAST_SAVED,
+                            ttl: TOAST_UPDATE,
                             path: None,
                             url: n.url,
                             edit_from: None,
@@ -1607,8 +1619,7 @@ impl ApplicationHandler<UserEvent> for App {
             Ok(mut r) => {
                 r.set_toolbar_visible(self.toolbar_start);
                 r.set_show_touches(self.touches_start);
-                let last = settings::Settings::load().get("update-checked").and_then(|t| t.parse().ok());
-                if self.update_auto && self.auto_record.is_none() && update::due(last, update::now()) {
+                if update::check_on_start(self.update_auto, self.auto_record.is_some()) {
                     self.check_for_update(false);
                 }
                 self.renderer = Some(r);

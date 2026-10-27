@@ -49,16 +49,19 @@ pub struct Notice {
 pub fn notice(source: Source, version: &str, url: &str) -> Notice {
     match source.upgrade_command() {
         Some(cmd) => Notice {
-            text: format!("UPDATE {version} - CLICK TO COPY: {}", cmd.to_uppercase()),
+            text: format!("HANDSET {version} IS OUT - CLICK TO COPY: {}", cmd.to_uppercase()),
             url: None,
             copy: Some(cmd.to_string()),
             install: false,
         },
-        None if crate::updater::os_for(source).is_some() => {
-            Notice { text: format!("UPDATE {version} - CLICK TO INSTALL"), url: None, copy: None, install: true }
-        }
+        None if crate::updater::os_for(source).is_some() => Notice {
+            text: format!("HANDSET {version} IS OUT - CLICK TO INSTALL"),
+            url: None,
+            copy: None,
+            install: true,
+        },
         None => Notice {
-            text: format!("UPDATE {version} AVAILABLE - CLICK TO OPEN"),
+            text: format!("HANDSET {version} IS OUT - CLICK TO VIEW"),
             url: Some(url.to_string()),
             copy: None,
             install: false,
@@ -150,7 +153,7 @@ mod tests {
         }
         let n = notice(Source::Other, "0.5.0", "https://example.com/r");
         assert_eq!((n.url.as_deref(), n.copy, n.install), (Some("https://example.com/r"), None, false));
-        assert!(n.text.contains("CLICK TO OPEN"));
+        assert!(n.text.contains("CLICK TO VIEW"));
         assert_eq!(notice(Source::Scoop, "1.0.0", "u").copy.as_deref(), Some("scoop update handset"));
         assert!(notice(Source::Other, "1.0.0", "u").url.is_some());
     }

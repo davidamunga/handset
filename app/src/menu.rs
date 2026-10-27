@@ -215,7 +215,8 @@ pub fn show(window: &Window, s: &State) {
         let _ = menu.append(&PredefinedMenuItem::separator());
     }
     let _ = menu.append(&MenuItem::with_id("update", "Check for Updates...", true, None));
-    let _ = menu.append(&CheckMenuItem::with_id("update-auto", "Check for Updates Daily", true, s.update_auto, None));
+    let _ =
+        menu.append(&CheckMenuItem::with_id("update-auto", "Check for Updates on Start", true, s.update_auto, None));
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&PredefinedMenuItem::about(Some("About Handset"), Some(about())));
     let _ = menu.append(&MenuItem::with_id("quit", "Quit", true, None));

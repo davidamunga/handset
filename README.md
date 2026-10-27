@@ -129,9 +129,9 @@ instead: `cargo install --path app --locked`.
   `Esc` is Back, `Home` is Home, `End` is Recents.
 - **Show Touches** (right-click menu, or `--show-touches`) draws a translucent dot where you touch the phone, fading
   when you let go. It is part of screenshots and recordings too, which makes demos easier to follow.
-- **Updates:** a few seconds after start, at most once a day, Handset asks GitHub whether a newer release exists and
+- **Updates:** on every start, Handset asks GitHub whether a newer release exists and
   shows a toast you can click to open it. **Check for Updates...** in the menu asks right away, and **Check for
-  Updates Daily** turns the automatic check off (or use `--no-update-check`, or `update-check=off` in the settings
+  Updates on Start** turns the automatic check off (or use `--no-update-check`, or `update-check=off` in the settings
   file). The request goes to `api.github.com` through `curl` and carries only a `handset/<version>` User-Agent.
   Handset knows how it was installed: with Homebrew, Scoop or winget the toast gives the command to run
   (`brew upgrade --cask handset`, `scoop update handset`, `winget upgrade davidamunga.Handset`) and a click
@@ -186,7 +186,7 @@ in `~/.config/handset/args`. Why it works this way: [ADR 0025](docs/adr/0025-mir
 | `--gain <dB>`, `--no-normalize` | Recorded audio is normalised to about -16 LUFS; adjust or turn off |
 | `--no-clipboard` | Do not copy captures to the clipboard |
 | `--no-clipboard-sync` | Do not share clipboard text with the phone (also in the right-click menu) |
-| `--no-update-check` | Do not look for a newer release this time (also **Check for Updates Daily** in the right-click menu) |
+| `--no-update-check` | Do not look for a newer release this time (also **Check for Updates on Start** in the right-click menu) |
 | `--version` | Print the version and quit |
 | `--record-for <seconds>` | Record from the first frame, then quit |
 | `--record-format mp4\|gif` | Recording format |
