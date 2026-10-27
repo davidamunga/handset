@@ -431,6 +431,15 @@ impl App {
                     connect::connect_async(proxy.clone(), c.addr.clone());
                 }
                 redraw = list != wt.nearby;
+                // nothing answered the code for a while: say what usually gets in the way
+                if wt.view == View::Qr
+                    && wt.note.is_none()
+                    && !wt.pairing
+                    && wt.qr.as_ref().is_some_and(|q| q.at.elapsed() > connect::QR_HINT_AFTER)
+                {
+                    wt.note = Some(connect::QR_HINT.into());
+                    redraw = true;
+                }
                 wt.nearby = list;
             }
             LandingEvent::Paired(Ok(ip)) => {
@@ -460,6 +469,26 @@ impl App {
                 connect::connect_async(proxy, addr);
             }
             LandingEvent::Typed(None) => redraw = false,
+            LandingEvent::Code(Some(code)) => {
+                // the phone's own pairing screen, not the one our QR code made
+                let ours = wt.qr.as_ref().map(|q| q.name.as_str());
+                match wt
+                    .nearby
+                    .iter()
+                    .find(|s| s.kind == crate::adb::ServiceKind::Pairing && Some(s.name.as_str()) != ours)
+                {
+                    Some(p) => {
+                        wt.pairing = true;
+                        wt.note = Some("Pairing...".into());
+                        connect::pair_async(proxy, p.addr.clone(), code);
+                    }
+                    None => {
+                        wt.note =
+                            Some("No phone is showing a pairing code. Open Pair device with pairing code on it.".into())
+                    }
+                }
+            }
+            LandingEvent::Code(None) => redraw = false,
             LandingEvent::Doctor(checks) => wt.doctor = Some(checks),
         }
         if redraw {
@@ -510,6 +539,7 @@ impl App {
                 connect::connect_async(proxy, addr);
             }
             Action::TypeAddress if !wt.busy => connect::ask_address_async(proxy),
+            Action::PairWithCode if !wt.busy && !wt.pairing => connect::ask_code_async(proxy),
             Action::Mirror(serial) => {
                 wt.paused = false;
                 wt.starting = Some((serial.clone(), Instant::now() + Duration::from_millis(300)));

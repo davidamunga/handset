@@ -10,6 +10,7 @@ mod capture;
 mod clipboard;
 mod connect;
 mod control;
+mod discover;
 mod dock;
 #[cfg(test)]
 mod docs_tests;

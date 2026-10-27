@@ -37,3 +37,4 @@ Copy [`0000-template.md`](0000-template.md) to start a new one.
 | [0025](0025-mirror-ios-devices-through-avfoundation-screen-capture.md) | Mirror iOS devices through AVFoundation screen capture, view only for now | accepted |
 | [0026](0026-draw-an-original-icon-and-a-device-gray-look.md) | Draw an original icon and a Device Gray look | accepted |
 | [0027](0027-build-the-website-with-vite-react-and-tailwind.md) | Build the website with Vite, React and Tailwind | accepted |
+| [0028](0028-find-phones-on-the-network-ourselves.md) | Find phones on the network ourselves, next to adb | accepted |

@@ -85,6 +85,8 @@ pub enum Action {
     /// Connect to `ip:port`.
     Connect(String),
     TypeAddress,
+    /// Pair with the code the phone shows on its "Pair device with pairing code" screen.
+    PairWithCode,
     /// Switch this USB phone to adb over Wi-Fi.
     SwitchToWifi(String),
     /// Mirror this ready phone (when mirroring was ended on purpose).
@@ -113,9 +115,16 @@ pub enum LandingEvent {
     Connected(Result<String, String>),
     /// The address typed into the prompt, or `None` if it was cancelled.
     Typed(Option<String>),
+    /// The pairing code typed into the prompt, or `None` if it was cancelled.
+    Code(Option<String>),
     /// The doctor finished.
     Doctor(Vec<crate::doctor::Check>),
 }
+
+/// How long the QR code can go unanswered before we say what usually gets in the way.
+pub const QR_HINT_AFTER: Duration = Duration::from_secs(12);
+pub const QR_HINT: &str =
+    "No phone yet. Keep the phone on Wireless debugging, on the same Wi-Fi as this computer, without a VPN.";
 
 static STOP: AtomicBool = AtomicBool::new(false);
 /// Which poll thread is current: starting a new one retires any older one that has not noticed `STOP` yet.
@@ -133,11 +142,13 @@ pub fn spawn_poll(proxy: EventLoopProxy<UserEvent>) {
             if proxy.send_event(UserEvent::Adb(result)).is_err() {
                 break;
             }
-            if MDNS.load(Ordering::SeqCst)
-                && let Ok(services) = adb::mdns_services()
-                && proxy.send_event(UserEvent::Landing(LandingEvent::Nearby(services))).is_err()
-            {
-                break;
+            if MDNS.load(Ordering::SeqCst) {
+                // adb's own lookup is often empty while the system sees the phone, so add what we browse ourselves
+                let services =
+                    crate::discover::merge(adb::mdns_services().unwrap_or_default(), crate::discover::services());
+                if proxy.send_event(UserEvent::Landing(LandingEvent::Nearby(services))).is_err() {
+                    break;
+                }
             }
             std::thread::sleep(Duration::from_millis(1200));
         }
@@ -150,6 +161,9 @@ pub fn stop_poll() {
 
 /// Turn the network lookup on or off (only the Wi-Fi and QR views need it).
 pub fn want_mdns(on: bool) {
+    if on {
+        crate::discover::start();
+    }
     MDNS.store(on, Ordering::SeqCst);
 }
 
@@ -176,6 +190,11 @@ pub fn pair_async(proxy: EventLoopProxy<UserEvent>, addr: String, password: Stri
         let ip = addr.split(':').next().unwrap_or_default().to_string();
         send(&proxy, LandingEvent::Paired(adb::pair(&addr, &password).map(|_| ip).map_err(|e| e.to_string())));
     });
+}
+
+/// Ask for the six digit pairing code with a native prompt.
+pub fn ask_code_async(proxy: EventLoopProxy<UserEvent>) {
+    std::thread::spawn(move || send(&proxy, LandingEvent::Code(ask_code())));
 }
 
 /// Ask for a phone address with a native prompt (the landing screen has no text field).
@@ -207,6 +226,27 @@ fn ask_address() -> Option<String> {
     None
 }
 
+#[cfg(target_os = "macos")]
+fn ask_code() -> Option<String> {
+    let script = "text returned of (display dialog \"Pairing code, as shown on the phone under Pair device with pairing code:\" \
+                  default answer \"\" buttons {\"Cancel\", \"Pair\"} default button \"Pair\" with title \"Handset\")";
+    let out = std::process::Command::new("osascript").args(["-e", script]).output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string()).filter(|s| !s.is_empty())
+}
+
+#[cfg(windows)]
+fn ask_code() -> Option<String> {
+    let script = "Add-Type -AssemblyName Microsoft.VisualBasic; \
+                  [Console]::OutputEncoding=[Text.Encoding]::UTF8; \
+                  [Microsoft.VisualBasic.Interaction]::InputBox('Pairing code, as shown on the phone under Pair device with pairing code:', 'Handset', '')";
+    crate::tools::powershell(script, None).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+fn ask_code() -> Option<String> {
+    None
+}
+
 /// A QR code that pairs a phone: scanning it on the phone (Wireless debugging > Pair device with QR code)
 /// makes the phone announce a pairing service called `name`, which `password` unlocks.
 pub struct Qr {
@@ -214,6 +254,8 @@ pub struct Qr {
     pub password: String,
     pub width: usize,
     pub dark: Vec<bool>,
+    /// When the code was put on screen, to say something helpful if no phone answers.
+    pub at: std::time::Instant,
 }
 
 impl Qr {
@@ -222,7 +264,7 @@ impl Qr {
         let password = random_alnum(10);
         let code = QrCode::new(payload(&name, &password).as_bytes()).map_err(|e| e.to_string())?;
         let dark = code.to_colors().into_iter().map(|c| c == Color::Dark).collect();
-        Ok(Qr { name, password, width: code.width(), dark })
+        Ok(Qr { name, password, width: code.width(), dark, at: std::time::Instant::now() })
     }
 }
 
@@ -1013,6 +1055,7 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
         }
         View::Qr => {
             stack(&mut bottom, "Back", Action::Back, &mut buttons);
+            stack(&mut bottom, "Pair with a code", Action::PairWithCode, &mut buttons);
             if let Some(qr) = m.qr {
                 let quiet = 3;
                 let modules = qr.width as u32 + 2 * quiet;
@@ -1244,6 +1287,15 @@ mod tests {
         assert!(y.y.iter().all(|&v| v == 235));
         assert!(y.u.iter().all(|&v| v == 128) && y.v.iter().all(|&v| v == 128));
         assert_eq!((y.u.len(), y.stride_uv), (4, 2));
+    }
+
+    #[test]
+    fn the_qr_view_offers_pairing_with_a_code() {
+        let qr = Qr::new().unwrap();
+        let looking = Status::Looking;
+        let (w, h) = (540, 1170);
+        let screen = render(w, h, &model(&looking, View::Qr, &[], None, Some(&qr), None));
+        assert!(screen.buttons.iter().any(|b| b.action == Action::PairWithCode));
     }
 
     #[test]
