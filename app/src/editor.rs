@@ -690,8 +690,8 @@ struct Editor {
     frame_dirty: bool,
     swatches: Vec<(Background, egui::TextureHandle)>,
     /// The presets you saved, the name being typed for the next one, and whether that field is open.
-    saved_looks: Vec<Preset>,
-    look_name: String,
+    saved_presets: Vec<Preset>,
+    preset_name: String,
     naming: bool,
     /// The picture at thumbnail size, and each preset drawn over it, keyed by the preset's style.
     thumb_src: Img,
@@ -776,8 +776,8 @@ impl Editor {
             style_dirty: true,
             frame_dirty: true,
             swatches,
-            saved_looks: presets::load(),
-            look_name: String::new(),
+            saved_presets: presets::load(),
+            preset_name: String::new(),
             naming: false,
             thumb_src: downscale(&source.first, thumb_size(source.first.w, source.first.h)),
             thumbs: std::collections::HashMap::new(),
@@ -1013,7 +1013,7 @@ impl Editor {
     }
 
     /// Switch to a saved look. The change is picked up (and made undoable) with any other change to the style.
-    fn apply_look(&mut self, style: &Style) {
+    fn apply_preset(&mut self, style: &Style) {
         self.style = style.clone();
         self.tab = tab_of(&self.style.background);
         if let Background::Color(c) = self.style.background {
@@ -1023,27 +1023,27 @@ impl Editor {
     }
 
     /// Keep the current style under `raw_name`; false when the name is empty.
-    fn save_look(&mut self, raw_name: &str) -> bool {
+    fn save_preset(&mut self, raw_name: &str) -> bool {
         let Some(name) = presets::clean_name(raw_name) else { return false };
-        presets::upsert(&mut self.saved_looks, Preset { name, style: self.style.clone() });
+        presets::upsert(&mut self.saved_presets, Preset { name, style: self.style.clone() });
         true
     }
 
-    fn forget_look(&mut self, name: &str) -> bool {
-        presets::remove(&mut self.saved_looks, name)
+    fn forget_preset(&mut self, name: &str) -> bool {
+        presets::remove(&mut self.saved_presets, name)
     }
 
     /// The presets (the built-in ones, then yours) as thumbnails of this picture, with a tile to save the current
     /// style. Returns whether the style changed.
     fn presets_card(&mut self, ui: &mut egui::Ui) -> bool {
         let all: Vec<(Preset, bool)> = self
-            .saved_looks
+            .saved_presets
             .iter()
             .map(|p| (p.clone(), true))
             .chain(
                 presets::builtin()
                     .into_iter()
-                    .filter(|b| !self.saved_looks.iter().any(|s| s.name.eq_ignore_ascii_case(&b.name)))
+                    .filter(|b| !self.saved_presets.iter().any(|s| s.name.eq_ignore_ascii_case(&b.name)))
                     .map(|p| (p, false)),
             )
             .collect();
@@ -1149,7 +1149,7 @@ impl Editor {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     let w = ui.available_width() - 130.0;
-                    let edit = egui::TextEdit::singleline(&mut self.look_name)
+                    let edit = egui::TextEdit::singleline(&mut self.preset_name)
                         .hint_text("Name this preset")
                         .desired_width(w)
                         .char_limit(32);
@@ -1158,15 +1158,15 @@ impl Editor {
                         resp.request_focus();
                     }
                     let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                    let name = presets::clean_name(&self.look_name);
+                    let name = presets::clean_name(&self.preset_name);
                     let save = ui.add_enabled(name.is_some(), egui::Button::new("Save")).clicked();
-                    if name.is_some() && (save || enter) && self.save_look(&self.look_name.clone()) {
-                        presets::save(&self.saved_looks);
-                        self.look_name.clear();
+                    if name.is_some() && (save || enter) && self.save_preset(&self.preset_name.clone()) {
+                        presets::save(&self.saved_presets);
+                        self.preset_name.clear();
                         self.naming = false;
                     }
                     if ui.link("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        self.look_name.clear();
+                        self.preset_name.clear();
                         self.naming = false;
                     }
                 });
@@ -1176,9 +1176,9 @@ impl Editor {
             self.naming = true;
         }
         if let Some(name) = delete
-            && self.forget_look(&name)
+            && self.forget_preset(&name)
         {
-            presets::save(&self.saved_looks);
+            presets::save(&self.saved_presets);
         }
         if reset {
             self.style = Style::default();
@@ -1186,7 +1186,7 @@ impl Editor {
             return true;
         }
         if let Some(style) = apply {
-            self.apply_look(&style);
+            self.apply_preset(&style);
             return true;
         }
         false
@@ -1564,7 +1564,7 @@ mod tests {
         let picture = |_: ()| Img { w: 40, h: 80, rgba: vec![200; 40 * 80 * 4] };
         let source = Source { first: picture(()), size: (40, 80), video: None, matte: None };
         let mut ed = Editor::new(&ctx, PathBuf::from("shot.png"), source, Style::default());
-        ed.saved_looks.clear();
+        ed.saved_presets.clear();
         ed
     }
 
@@ -1572,11 +1572,11 @@ mod tests {
     fn applying_a_look_switches_the_style_the_tab_and_the_custom_colour() {
         let mut ed = editor();
         let dark = Style { background: Background::Color([1, 2, 3]), padding: 22, ..Style::default() };
-        ed.apply_look(&dark);
+        ed.apply_preset(&dark);
         assert_eq!(ed.style, dark);
         assert!(ed.tab == Tab::Color);
         assert_eq!(ed.custom, [1, 2, 3]);
-        ed.apply_look(&Style { background: Background::Wallpaper(2), ..Style::default() });
+        ed.apply_preset(&Style { background: Background::Wallpaper(2), ..Style::default() });
         assert!(ed.tab == Tab::Wallpaper);
     }
 
@@ -1584,26 +1584,26 @@ mod tests {
     fn saving_a_look_keeps_the_current_style_under_a_tidy_name() {
         let mut ed = editor();
         ed.style.padding = 31;
-        assert!(ed.save_look("  Launch   post "));
-        assert_eq!(ed.saved_looks.len(), 1);
-        assert_eq!(ed.saved_looks[0].name, "Launch post");
-        assert_eq!(ed.saved_looks[0].style.padding, 31);
+        assert!(ed.save_preset("  Launch   post "));
+        assert_eq!(ed.saved_presets.len(), 1);
+        assert_eq!(ed.saved_presets[0].name, "Launch post");
+        assert_eq!(ed.saved_presets[0].style.padding, 31);
         // the same name again replaces it
         ed.style.padding = 4;
-        assert!(ed.save_look("launch post"));
-        assert_eq!(ed.saved_looks.len(), 1);
-        assert_eq!(ed.saved_looks[0].style.padding, 4);
+        assert!(ed.save_preset("launch post"));
+        assert_eq!(ed.saved_presets.len(), 1);
+        assert_eq!(ed.saved_presets[0].style.padding, 4);
     }
 
     #[test]
     fn a_blank_name_saves_nothing_and_a_look_can_be_forgotten() {
         let mut ed = editor();
-        assert!(!ed.save_look("   "));
-        assert!(ed.saved_looks.is_empty());
-        assert!(ed.save_look("Keep"));
-        assert!(!ed.forget_look("missing"));
-        assert!(ed.forget_look("KEEP"));
-        assert!(ed.saved_looks.is_empty());
+        assert!(!ed.save_preset("   "));
+        assert!(ed.saved_presets.is_empty());
+        assert!(ed.save_preset("Keep"));
+        assert!(!ed.forget_preset("missing"));
+        assert!(ed.forget_preset("KEEP"));
+        assert!(ed.saved_presets.is_empty());
     }
 
     /// A 2 s clip with sound, or `None` when ffmpeg is not installed.

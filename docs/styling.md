@@ -69,8 +69,8 @@ The **Presets** card at the top of the editor shows styles kept under names, eac
 A few come with Handset: `Clean white`, `Dark card`, `Sunset 4:5`, `Aurora 16:9` and `Dusk square`. Click one to
 apply it. Click **Save current**, type a name and press **Save** to keep the current style; saving an existing name
 replaces it. Yours have a small dot, and a right-click on one offers **Delete preset**. **Reset** goes back to the
-default style. Yours are stored in `~/.config/handset/looks`, one `name<TAB>style` per line (the file keeps its
-old name so saved presets carry over).
+default style. Yours are stored in `~/.config/handset/presets`, one `name<TAB>style` per line. Presets saved by an earlier version in
+`~/.config/handset/looks` are picked up and moved there.
 
 ### Other things
 
@@ -113,7 +113,7 @@ one.
 |---|---|
 | `<name>-styled.<ext>` | The styled copy, next to the original (`-styled-2` and so on if you make several) |
 | `<name>.matte` | Next to each recording: the outline of the framed phone, so the phone can be cut out of the recording's dark backdrop when it is styled. It is a small greyscale PNG. Handset removes the ones whose recording is gone |
-| `~/.config/handset/looks` | Your saved presets |
+| `~/.config/handset/presets` | Your saved presets |
 | `~/.config/handset/settings` | `style=` (the last look) and `auto-style=` (styled copies of every capture) |
 
 A recording made before styling existed has no `.matte`. It is styled as a rounded card on its own dark

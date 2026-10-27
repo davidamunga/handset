@@ -1,6 +1,6 @@
-//! Named looks: a style saved under a name to be picked again with one click, or given on the command line
+//! Presets: a style saved under a name to be picked again with one click, or given on the command line
 //! as `--style "Launch post"`. Handset ships a few; the ones you save are kept in
-//! `~/.config/handset/looks`, one `name<TAB>style` per line (the style in the form `Style::parse` reads).
+//! `~/.config/handset/presets`, one `name<TAB>style` per line (the style in the form `Style::parse` reads).
 
 use crate::style::Style;
 use std::path::{Path, PathBuf};
@@ -13,7 +13,7 @@ pub struct Preset {
     pub style: Style,
 }
 
-/// The looks that come with Handset.
+/// The presets that come with Handset.
 pub fn builtin() -> Vec<Preset> {
     [
         ("Clean white", "bg=color:#f5f5f7;padding=12;radius=6;shadow=40;aspect=auto"),
@@ -61,6 +61,12 @@ pub fn resolve(arg: &str, saved: &[Preset]) -> Option<Style> {
 }
 
 fn file(dir: &Path) -> PathBuf {
+    dir.join("presets")
+}
+
+/// What the file was called before presets were called presets. It is read when there is no `presets` file, and
+/// removed the next time presets are saved.
+fn legacy_file(dir: &Path) -> PathBuf {
     dir.join("looks")
 }
 
@@ -68,9 +74,10 @@ pub fn load() -> Vec<Preset> {
     load_from(&crate::settings::dir())
 }
 
-/// The saved looks. Lines that cannot be read are skipped, so one bad line does not lose the rest.
+/// The saved presets. Lines that cannot be read are skipped, so one bad line does not lose the rest.
 pub fn load_from(dir: &Path) -> Vec<Preset> {
-    let text = std::fs::read_to_string(file(dir)).unwrap_or_default();
+    let text =
+        std::fs::read_to_string(file(dir)).or_else(|_| std::fs::read_to_string(legacy_file(dir))).unwrap_or_default();
     let mut list = Vec::new();
     for line in text.lines() {
         let Some((name, spec)) = line.split_once('\t') else { continue };
@@ -88,7 +95,9 @@ pub fn save(list: &[Preset]) {
 pub fn save_to(dir: &Path, list: &[Preset]) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
     let text: String = list.iter().map(|p| format!("{}\t{}\n", p.name, p.style.to_spec())).collect();
-    std::fs::write(file(dir), text)
+    std::fs::write(file(dir), text)?;
+    let _ = std::fs::remove_file(legacy_file(dir));
+    Ok(())
 }
 
 #[cfg(test)]
@@ -146,8 +155,8 @@ mod tests {
     }
 
     #[test]
-    fn looks_survive_a_round_trip_through_the_file() {
-        let dir = temp_dir("looks-round-trip");
+    fn presets_survive_a_round_trip_through_the_file() {
+        let dir = temp_dir("presets-round-trip");
         let list = vec![
             look("Launch post", 14),
             Preset {
@@ -166,14 +175,27 @@ mod tests {
 
     #[test]
     fn a_missing_or_damaged_file_gives_what_can_be_read() {
-        let dir = temp_dir("looks-damaged");
-        assert!(load_from(&dir).is_empty(), "no file is no looks");
+        let dir = temp_dir("presets-damaged");
+        assert!(load_from(&dir).is_empty(), "no file is no presets");
         std::fs::create_dir_all(&dir).unwrap();
         let good = look("Good", 9).style.to_spec();
         std::fs::write(file(&dir), format!("no tab on this line\nBad\tbg=sparkles\n\t{good}\nGood\t{good}\n")).unwrap();
         let loaded = load_from(&dir);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].name, "Good");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn presets_saved_under_the_old_file_name_are_found_and_moved() {
+        let dir = temp_dir("presets-legacy");
+        std::fs::create_dir_all(&dir).unwrap();
+        let old = look("Old", 7);
+        std::fs::write(legacy_file(&dir), format!("{}\t{}\n", old.name, old.style.to_spec())).unwrap();
+        assert_eq!(load_from(&dir), vec![old.clone()]);
+        save_to(&dir, &[old.clone(), look("New", 8)]).unwrap();
+        assert!(!legacy_file(&dir).exists(), "the old file is removed once presets are saved");
+        assert_eq!(load_from(&dir).len(), 2);
         let _ = std::fs::remove_dir_all(dir);
     }
 
