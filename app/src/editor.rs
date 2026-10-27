@@ -37,6 +37,17 @@ const COLORS: [[u8; 3]; 16] = [
     [147, 197, 253],
 ];
 
+/// The editor's own icon, so it is not mistaken for the mirroring window in the Dock or taskbar.
+const ICON: &[u8] = include_bytes!("../packaging/icon/editor-icon-512.png");
+
+fn window_icon() -> Option<egui::IconData> {
+    let mut reader = png::Decoder::new(std::io::Cursor::new(ICON)).read_info().ok()?;
+    let mut buf = vec![0; reader.output_buffer_size()?];
+    let info = reader.next_frame(&mut buf).ok()?;
+    buf.truncate(info.buffer_size());
+    Some(egui::IconData { rgba: buf, width: info.width, height: info.height })
+}
+
 pub fn run(path: PathBuf, style: Style) -> Result<(), String> {
     let source = Source::load(&path)?;
     let name = path.file_name().map_or(String::new(), |n| n.to_string_lossy().into());
@@ -44,13 +55,17 @@ pub fn run(path: PathBuf, style: Style) -> Result<(), String> {
         viewport: egui::ViewportBuilder::default()
             .with_title(format!("Style - {name}"))
             .with_inner_size([940.0, 620.0])
-            .with_min_inner_size([800.0, 540.0]),
+            .with_min_inner_size([800.0, 540.0])
+            .with_icon(window_icon().unwrap_or_default()),
         ..Default::default()
     };
     eframe::run_native(
         "Handset Style",
         opts,
-        Box::new(move |cc| Ok(Box::new(Editor::new(&cc.egui_ctx, path, source, style)))),
+        Box::new(move |cc| {
+            crate::dock::set_image(ICON);
+            Ok(Box::new(Editor::new(&cc.egui_ctx, path, source, style)))
+        }),
     )
     .map_err(|e| e.to_string())
 }
