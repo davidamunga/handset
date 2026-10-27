@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1
+
+### Patch Changes
+
+- [#56](https://github.com/davidamunga/handset/pull/56) [`f045456`](https://github.com/davidamunga/handset/commit/f04545659cb271e33fa3d07152c636d2185183ba) Thanks [@davidamunga](https://github.com/davidamunga)! - After Handset has been updated, by any means (its own installer, Homebrew, Scoop or a download), the first start says `UPDATED TO X`. Handset now remembers the last version it ran in `last-version` in the settings file.
+
 ## 0.6.0
 
 ### Minor Changes
