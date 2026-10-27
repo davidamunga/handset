@@ -156,7 +156,7 @@ mod tests {
     /// Writes the long toast to `$HANDSET_TEST_OUT` (if set) so it can be looked at.
     #[test]
     fn long_toast_renders() {
-        let p = super::pill("SCREENSHOT COPIED - CLICK TO SHOW", None, 3);
+        let p = super::pill("RECORDING COPIED - SHOW | EDIT", None, 3);
         assert!(p.width > 100 && p.height > 20);
         assert_eq!(p.rgba.len(), (p.width * p.height * 4) as usize);
         if let Some(out) = std::env::var_os("HANDSET_TEST_OUT") {
