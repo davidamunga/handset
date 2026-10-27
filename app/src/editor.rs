@@ -403,7 +403,7 @@ fn segmented(ui: &mut egui::Ui, id: &str, labels: &[&str], selected: Option<usiz
     clicked
 }
 
-fn chip(ui: &mut egui::Ui, label: &str, size: egui::Vec2, on: bool) -> bool {
+fn chip(ui: &mut egui::Ui, label: &str, size: egui::Vec2, on: bool, off: egui::Color32) -> bool {
     let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
     let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
     let fill = if on {
@@ -411,7 +411,7 @@ fn chip(ui: &mut egui::Ui, label: &str, size: egui::Vec2, on: bool) -> bool {
     } else if resp.hovered() {
         theme::CARD_HI
     } else {
-        theme::BG
+        off
     };
     ui.painter().rect_filled(rect, 9.0, fill);
     let color = if on { theme::ACCENT } else { theme::TEXT };
@@ -508,6 +508,16 @@ enum Tab {
     Image,
 }
 
+fn tab_of(bg: &Background) -> Tab {
+    match bg {
+        Background::None => Tab::None,
+        Background::Color(_) => Tab::Color,
+        Background::Gradient(_) => Tab::Gradient,
+        Background::Wallpaper(_) => Tab::Wallpaper,
+        Background::Image(_) => Tab::Image,
+    }
+}
+
 const TABS: [(Tab, &str); 5] = [
     (Tab::None, "None"),
     (Tab::Gradient, "Gradient"),
@@ -539,16 +549,24 @@ struct Editor {
     style_dirty: bool,
     frame_dirty: bool,
     swatches: Vec<(Background, egui::TextureHandle)>,
-    export: Option<Receiver<Result<PathBuf, String>>>,
+    export: Option<Export>,
+    /// Earlier looks, for undo, and the look as of the last frame.
+    history: Vec<Style>,
+    snapshot: Style,
+    last_push: Instant,
     status: Option<Result<PathBuf, String>>,
     video: Option<VideoState>,
 }
+
+/// An export in progress: its result when it finishes, and its progress and cancel switch.
+type Export = (Receiver<Result<PathBuf, String>>, std::sync::Arc<restyle::Control>);
 
 struct VideoState {
     player: Player,
     duration: f64,
     pos: f64,
     playing: bool,
+    looping: bool,
 }
 
 impl Editor {
@@ -582,15 +600,10 @@ impl Editor {
                 duration: info.duration.max(0.1),
                 pos: 0.0,
                 playing: false,
+                looping: false,
             }
         });
-        let tab = match style.background {
-            Background::None => Tab::None,
-            Background::Color(_) => Tab::Color,
-            Background::Gradient(_) => Tab::Gradient,
-            Background::Wallpaper(_) => Tab::Wallpaper,
-            Background::Image(_) => Tab::Image,
-        };
+        let tab = tab_of(&style.background);
         let mut ed = Self {
             name: path.file_name().map_or(String::new(), |n| n.to_string_lossy().into()),
             full_size: source.size,
@@ -601,6 +614,7 @@ impl Editor {
                 Background::Color(c) => c,
                 _ => [40, 40, 60],
             },
+            snapshot: style.clone(),
             style,
             tab,
             image: None,
@@ -610,6 +624,8 @@ impl Editor {
             frame_dirty: true,
             swatches,
             export: None,
+            history: Vec::new(),
+            last_push: Instant::now(),
             status: None,
             video,
         };
@@ -671,12 +687,13 @@ impl Editor {
     fn start_export(&mut self, ctx: &egui::Context) {
         crate::settings::save("style", &self.style.to_spec());
         let (tx, rx) = channel();
-        let (path, style, ctx) = (self.path.clone(), self.style.clone(), ctx.clone());
+        let control = std::sync::Arc::new(restyle::Control::default());
+        let (path, style, ctx, job) = (self.path.clone(), self.style.clone(), ctx.clone(), control.clone());
         std::thread::spawn(move || {
-            let _ = tx.send(restyle::export(&path, &style));
+            let _ = tx.send(restyle::export_with(&path, &style, &job));
             ctx.request_repaint();
         });
-        self.export = Some(rx);
+        self.export = Some((rx, control));
         self.status = None;
     }
 
@@ -701,6 +718,10 @@ impl Editor {
         while let Ok(m) = v.player.msgs.try_recv() {
             match m {
                 Msg::Frame(t, img) => newest = Some((t, img)),
+                Msg::Ended if v.looping => {
+                    v.pos = 0.0;
+                    let _ = v.player.cmd.send(Cmd::Play(0.0));
+                }
                 Msg::Ended => {
                     v.playing = false;
                     v.pos = v.duration;
@@ -837,7 +858,7 @@ impl Editor {
                 let n = ASPECTS.len() as f32;
                 let w = ((ui.available_width() - 4.0 * (n - 1.0)) / n).floor();
                 for a in ASPECTS {
-                    if chip(ui, &a.label(), egui::vec2(w, 30.0), self.style.aspect == a) {
+                    if chip(ui, &a.label(), egui::vec2(w, 30.0), self.style.aspect == a, theme::BG) {
                         self.style.aspect = a;
                         changed = true;
                     }
@@ -862,9 +883,17 @@ impl Editor {
             self.start_export(ctx);
         }
         ui.horizontal(|ui| {
-            if busy {
-                ui.add(egui::Spinner::new().size(14.0));
-                ui.label(egui::RichText::new("Rendering a styled copy").color(theme::WEAK));
+            if let Some((_, control)) = &self.export {
+                let p = control.progress.load(std::sync::atomic::Ordering::Relaxed) as f32 / 1000.0;
+                if self.is_video() {
+                    ui.add(egui::ProgressBar::new(p).desired_width(ui.available_width() - 64.0).fill(theme::ACCENT));
+                } else {
+                    ui.add(egui::Spinner::new().size(14.0));
+                    ui.label(egui::RichText::new("Rendering").color(theme::WEAK));
+                }
+                if ui.link("Cancel").clicked() {
+                    control.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
             } else if ui.link("Reset look").clicked() {
                 self.style = Style::default();
                 self.tab = Tab::Gradient;
@@ -909,7 +938,11 @@ impl Editor {
             let clock = |s: f64| format!("{}:{:02}", s as u64 / 60, s as u64 % 60);
             let label = format!("{} / {}", clock(v.pos), clock(v.duration));
             let w = (ui.available_width() - 92.0).max(80.0);
+            let w = w - 60.0;
             seek = scrubber(ui, v.pos, v.duration, w);
+            if chip(ui, "Loop", egui::vec2(48.0, 26.0), v.looping, theme::CARD) {
+                v.looping = !v.looping;
+            }
             ui.label(egui::RichText::new(label).size(12.0).color(theme::WEAK));
         });
         ui.add_space(8.0);
@@ -927,11 +960,14 @@ impl Editor {
 impl eframe::App for Editor {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        if let Some(rx) = &self.export
-            && let Ok(result) = rx.try_recv()
-        {
-            self.status = Some(result);
-            self.export = None;
+        if let Some((rx, _)) = &self.export {
+            if let Ok(result) = rx.try_recv() {
+                // a cancelled export is not an error worth showing
+                self.status = result.map_or_else(|e| (e != "Cancelled").then_some(Err(e)), |p| Some(Ok(p)));
+                self.export = None;
+            } else {
+                ctx.request_repaint_after(Duration::from_millis(100));
+            }
         }
         self.poll_player();
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -939,6 +975,20 @@ impl eframe::App for Editor {
         }
         if self.is_video() && ctx.input(|i| i.key_pressed(egui::Key::Space)) {
             self.toggle_play();
+        }
+        if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z))
+            && let Some(prev) = self.history.pop()
+        {
+            self.style = prev.clone();
+            self.snapshot = prev;
+            self.tab = tab_of(&self.style.background);
+            self.ensure_image();
+            self.style_dirty = true;
+        }
+        // a capture dropped on the window opens in an editor of its own
+        if let Some(path) = ctx.input(|i| i.raw.dropped_files.first().map(|f| f.path().to_path_buf())) {
+            let exe = std::env::current_exe().unwrap_or_else(|_| "handset".into());
+            let _ = crate::tools::command(exe).arg("--edit").arg(path).spawn();
         }
 
         let panel = (ctx.content_rect().width() * 0.34).clamp(PANEL_MIN, PANEL_MAX);
@@ -961,6 +1011,16 @@ impl eframe::App for Editor {
                     }
                     self.style_dirty |= changed;
                 });
+                // remember the look before a change, a burst of slider moves counting as one
+                if self.style != self.snapshot {
+                    if self.last_push.elapsed() > Duration::from_millis(400) {
+                        self.history.push(self.snapshot.clone());
+                        self.history.truncate(200);
+                    }
+                    self.last_push = Instant::now();
+                    self.snapshot = self.style.clone();
+                    self.style_dirty = true;
+                }
             });
         if self.is_video() {
             egui::Panel::bottom("transport")

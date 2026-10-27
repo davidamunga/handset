@@ -7,6 +7,7 @@
 use crate::style::{Background, DARK, Img, Style};
 use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 pub fn is_video(path: &Path) -> bool {
     matches!(ext(path).as_str(), "mp4" | "gif" | "mov" | "m4v")
@@ -37,6 +38,12 @@ pub fn save_matte(video: &Path, rgba: &[u8], w: u32, h: u32) -> Result<(), Strin
     writer.finish().map_err(|e| e.to_string())
 }
 
+/// The edge pixels of a recording are blended with its dark backdrop, which shows as a faint dark rim once
+/// the phone is on a light background. Shaving the soft edge of the outline hides most of it.
+fn tighten(alpha: u8) -> u8 {
+    ((alpha as f32 / 255.0 - 0.25) / 0.5).clamp(0.0, 1.0).mul_add(255.0, 0.0).round() as u8
+}
+
 /// The matte of a recording as an image whose alpha is the outline, if there is one of the right size.
 pub fn load_matte(video: &Path, (w, h): (u32, u32)) -> Option<Img> {
     let g = read_png(&matte_path(video)).ok()?;
@@ -44,7 +51,7 @@ pub fn load_matte(video: &Path, (w, h): (u32, u32)) -> Option<Img> {
     (g.w == w && g.h == h).then(|| Img {
         w,
         h,
-        rgba: g.rgba.as_chunks::<4>().0.iter().flat_map(|p| [0, 0, 0, p[0]]).collect(),
+        rgba: g.rgba.as_chunks::<4>().0.iter().flat_map(|p| [0, 0, 0, tighten(p[0])]).collect(),
     })
 }
 
@@ -55,12 +62,24 @@ pub fn styled_path(input: &Path) -> PathBuf {
     crate::capture::unique(dir, &format!("{stem}-styled"), &ext(input))
 }
 
+/// Progress and cancellation of a running export, shared with the window that started it.
+#[derive(Default)]
+pub struct Control {
+    /// 0..=1000.
+    pub progress: std::sync::atomic::AtomicU32,
+    pub cancel: std::sync::atomic::AtomicBool,
+}
+
 /// Style a saved capture and return the path of the new file.
 pub fn export(input: &Path, style: &Style) -> Result<PathBuf, String> {
+    export_with(input, style, &Control::default())
+}
+
+pub fn export_with(input: &Path, style: &Style, control: &Control) -> Result<PathBuf, String> {
     let out = styled_path(input);
     let image = load_background(style)?;
     if is_video(input) {
-        style_video(input, &out, style, image.as_ref())?;
+        style_video(input, &out, style, image.as_ref(), control)?;
     } else if ext(input) == "png" {
         let src = read_png(input)?;
         write_png(&out, &style.compose(&src, image.as_ref()))?;
@@ -134,17 +153,6 @@ fn scratch(ext: &str) -> PathBuf {
     std::env::temp_dir().join(format!("handset-{}-{nanos}.{ext}", std::process::id()))
 }
 
-/// Width and height of the first video stream, read from ffmpeg's banner.
-pub fn probe_size(path: &Path) -> Result<(u32, u32), String> {
-    let out = crate::tools::command(crate::tools::find("ffmpeg"))
-        .args(["-hide_banner", "-i"])
-        .arg(path)
-        .output()
-        .map_err(|e| format!("cannot run ffmpeg (is it installed?): {e}"))?;
-    parse_size(&String::from_utf8_lossy(&out.stderr))
-        .ok_or_else(|| format!("cannot read the size of {}", path.display()))
-}
-
 /// What ffmpeg's banner says about a video.
 pub struct Info {
     pub size: (u32, u32),
@@ -215,8 +223,9 @@ pub fn first_frame(path: &Path) -> Result<Img, String> {
     img
 }
 
-fn style_video(input: &Path, out: &Path, style: &Style, image: Option<&Img>) -> Result<(), String> {
-    let size = probe_size(input)?;
+fn style_video(input: &Path, out: &Path, style: &Style, image: Option<&Img>, control: &Control) -> Result<(), String> {
+    let info = probe(input)?;
+    let size = info.size;
     let matte = load_matte(input, size);
     let mut layout = style.layout(size);
     if matte.is_some() {
@@ -242,22 +251,58 @@ fn style_video(input: &Path, out: &Path, style: &Style, image: Option<&Img>) -> 
         graph.push_str(",format=yuv420p[o]");
     }
     let mut cmd = crate::tools::command(crate::tools::find("ffmpeg"));
-    cmd.args(["-hide_banner", "-loglevel", "error", "-y", "-i"]).arg(input);
+    cmd.args(["-hide_banner", "-loglevel", "error", "-nostats", "-progress", "pipe:1", "-y", "-i"]).arg(input);
     cmd.args(["-loop", "1", "-i"]).arg(&bd_path);
     cmd.args(["-filter_complex", &graph, "-map", "[o]"]);
     if !gif {
         cmd.args(["-map", "0:a?", "-c:a", "copy"]);
         cmd.args(["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-movflags", "+faststart"]);
     }
-    cmd.arg(out);
-    let result = cmd.output();
+    cmd.arg(out).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let result = run_with_progress(cmd, info.duration, control);
     let _ = std::fs::remove_file(&bd_path);
-    let result = result.map_err(|e| format!("cannot run ffmpeg (is it installed?): {e}"))?;
-    if result.status.success() {
+    if result.is_err() {
+        let _ = std::fs::remove_file(out);
+    }
+    result
+}
+
+/// Run ffmpeg, publishing how far it is (from `-progress`) and stopping it when asked to.
+fn run_with_progress(mut cmd: std::process::Command, duration: f64, control: &Control) -> Result<(), String> {
+    use std::io::{BufRead, Read};
+    use std::sync::atomic::Ordering;
+    let mut child = cmd.spawn().map_err(|e| format!("cannot run ffmpeg (is it installed?): {e}"))?;
+    let mut stderr = child.stderr.take();
+    let errors = std::thread::spawn(move || {
+        let mut text = String::new();
+        if let Some(e) = stderr.as_mut() {
+            let _ = e.read_to_string(&mut text);
+        }
+        text
+    });
+    if let Some(out) = child.stdout.take() {
+        for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+            if control.cancel.load(Ordering::Relaxed) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("Cancelled".into());
+            }
+            if let Some(us) = line.strip_prefix("out_time_us=").and_then(|v| v.trim().parse::<f64>().ok())
+                && duration > 0.0
+            {
+                control.progress.store(((us / 1e6 / duration) * 1000.0).clamp(0.0, 1000.0) as u32, Ordering::Relaxed);
+            }
+        }
+    }
+    let status = child.wait().map_err(|e| e.to_string())?;
+    let stderr = errors.join().unwrap_or_default();
+    if control.cancel.load(Ordering::Relaxed) {
+        Err("Cancelled".into())
+    } else if status.success() {
+        control.progress.store(1000, Ordering::Relaxed);
         Ok(())
     } else {
-        let _ = std::fs::remove_file(out);
-        Err(format!("ffmpeg failed: {}", String::from_utf8_lossy(&result.stderr).trim()))
+        Err(format!("ffmpeg failed: {}", stderr.trim()))
     }
 }
 
@@ -274,6 +319,52 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn export_reports_progress_and_can_be_cancelled() {
+        if !ffmpeg_present() {
+            return;
+        }
+        use std::sync::atomic::Ordering;
+        let dir = temp_dir("progress");
+        let src = dir.join("clip.mp4");
+        assert!(
+            crate::tools::command(crate::tools::find("ffmpeg"))
+                .args([
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=160x240:rate=10:duration=2"
+                ])
+                .args(["-pix_fmt", "yuv420p"])
+                .arg(&src)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let done = Control::default();
+        let out = export_with(&src, &Style::default(), &done).unwrap();
+        assert!(out.exists());
+        assert_eq!(done.progress.load(Ordering::Relaxed), 1000);
+
+        let stopped = Control::default();
+        stopped.cancel.store(true, Ordering::Relaxed);
+        let err = export_with(&src, &Style::default(), &stopped).unwrap_err();
+        assert_eq!(err, "Cancelled");
+        assert!(!dir.join("clip-styled-2.mp4").exists(), "a cancelled export leaves no file behind");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn tightening_keeps_solid_and_clear_and_shaves_the_edge() {
+        assert_eq!((tighten(0), tighten(255)), (0, 255));
+        assert_eq!(tighten(40), 0);
+        assert!(tighten(128) > 100 && tighten(128) < 160);
     }
 
     #[test]
@@ -317,7 +408,14 @@ mod tests {
             return;
         }
         let dir = temp_dir("matte");
-        let src = dir.join("clip.mp4");
+        for ext in ["mp4", "gif"] {
+            matte_cuts_out(&dir, ext);
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn matte_cuts_out(dir: &Path, ext: &str) {
+        let src = dir.join(format!("clip.{ext}"));
         assert!(
             crate::tools::command(crate::tools::find("ffmpeg"))
                 .args([
@@ -358,7 +456,6 @@ mod tests {
         let outside = at(10, 120);
         assert!(outside[0] > 180 && outside[1] < 40, "outside the matte shows the background: {outside:?}");
         assert_ne!(at(150, 120), outside, "inside the matte shows the video");
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -389,7 +486,7 @@ mod tests {
             let style = Style { aspect: crate::style::Aspect::Ratio(16, 9), ..Style::default() };
             let out = export(&src, &style).unwrap();
             let want = style.layout((160, 240)).out;
-            let got = probe_size(&out).unwrap();
+            let got = probe(&out).unwrap().size;
             if ext == "mp4" {
                 assert_eq!(got, want);
             } else {
