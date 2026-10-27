@@ -23,6 +23,19 @@ fn every_gradient_and_wallpaper_is_named_in_the_guide() {
 }
 
 #[test]
+fn every_built_in_look_is_named_in_the_guide() {
+    for p in crate::presets::builtin() {
+        assert!(GUIDE.contains(&format!("`{}`", p.name)), "look {} is not in docs/styling.md", p.name);
+    }
+}
+
+#[test]
+fn the_trim_limit_in_the_guide_is_the_real_one() {
+    assert_eq!(crate::trim::MIN_LEN, 0.2);
+    assert!(GUIDE.contains("shorter than 0.2 seconds"));
+}
+
+#[test]
 fn every_aspect_ratio_is_named_in_the_guide() {
     for a in ASPECTS.iter().filter(|a| **a != Aspect::Auto) {
         assert!(GUIDE.contains(&a.label()), "aspect {} is not in docs/styling.md", a.label());
