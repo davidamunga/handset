@@ -16,8 +16,8 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant};
 
 const PREVIEW_LONG_SIDE: u32 = 720;
-const SWATCH: f32 = 34.0;
-const PANEL: f32 = 322.0;
+const SWATCH: f32 = 36.0;
+const PANEL: f32 = 336.0;
 const COLORS: [[u8; 3]; 16] = [
     [24, 24, 27],
     [255, 255, 255],
@@ -56,6 +56,9 @@ pub fn run(path: PathBuf, style: Style) -> Result<(), String> {
             .with_title(format!("Style - {name}"))
             .with_inner_size([940.0, 620.0])
             .with_min_inner_size([800.0, 540.0])
+            .with_fullsize_content_view(true)
+            .with_title_shown(false)
+            .with_titlebar_shown(false)
             .with_icon(window_icon().unwrap_or_default()),
         ..Default::default()
     };
@@ -274,6 +277,194 @@ impl Worker {
     }
 }
 
+// ---- look -----------------------------------------------------------------------------------------
+
+mod theme {
+    use eframe::egui::Color32;
+    pub const BG: Color32 = Color32::from_rgb(0x0f, 0x0f, 0x12);
+    pub const PANEL: Color32 = Color32::from_rgb(0x16, 0x16, 0x1a);
+    pub const CARD: Color32 = Color32::from_rgb(0x1d, 0x1d, 0x23);
+    pub const CARD_HI: Color32 = Color32::from_rgb(0x28, 0x28, 0x30);
+    pub const LINE: Color32 = Color32::from_rgb(0x2c, 0x2c, 0x35);
+    pub const TEXT: Color32 = Color32::from_rgb(0xee, 0xee, 0xf2);
+    pub const WEAK: Color32 = Color32::from_rgb(0x8d, 0x8d, 0x99);
+    /// Handset's green.
+    pub const ACCENT: Color32 = Color32::from_rgb(0x30, 0xdd, 0x81);
+    pub const ON_ACCENT: Color32 = Color32::from_rgb(0x04, 0x2b, 0x19);
+    pub const ACCENT_DIM: Color32 = Color32::from_rgb(0x1d, 0x4a, 0x36);
+}
+
+fn semibold() -> egui::FontFamily {
+    egui::FontFamily::Name("semibold".into())
+}
+
+fn setup_style(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "inter".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("../assets/fonts/Inter-Regular.ttf"))),
+    );
+    fonts.font_data.insert(
+        "inter-semibold".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!("../assets/fonts/Inter-SemiBold.ttf"))),
+    );
+    fonts.families.entry(egui::FontFamily::Proportional).or_default().insert(0, "inter".into());
+    fonts.families.insert(semibold(), vec!["inter-semibold".into()]);
+    ctx.set_fonts(fonts);
+
+    let mut v = egui::Visuals::dark();
+    v.panel_fill = theme::PANEL;
+    v.window_fill = theme::CARD;
+    v.extreme_bg_color = theme::BG;
+    v.faint_bg_color = theme::CARD;
+    v.override_text_color = Some(theme::TEXT);
+    v.selection.bg_fill = theme::ACCENT;
+    v.selection.stroke = egui::Stroke::new(1.0, theme::ON_ACCENT);
+    v.hyperlink_color = theme::ACCENT;
+    v.handle_shape = egui::style::HandleShape::Circle;
+    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, theme::LINE);
+    let radius = egui::CornerRadius::same(9);
+    for w in [&mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open] {
+        w.corner_radius = radius;
+        w.bg_stroke = egui::Stroke::NONE;
+    }
+    v.widgets.inactive.weak_bg_fill = theme::CARD_HI;
+    v.widgets.inactive.bg_fill = theme::CARD_HI;
+    v.widgets.hovered.weak_bg_fill = egui::Color32::from_rgb(0x33, 0x33, 0x3d);
+    v.widgets.hovered.bg_fill = egui::Color32::from_rgb(0x33, 0x33, 0x3d);
+    v.widgets.active.weak_bg_fill = egui::Color32::from_rgb(0x3d, 0x3d, 0x48);
+    v.widgets.active.bg_fill = egui::Color32::from_rgb(0x3d, 0x3d, 0x48);
+    ctx.set_visuals(v);
+
+    ctx.all_styles_mut(|s| {
+        use egui::{FontFamily::Proportional, FontId, TextStyle};
+        s.text_styles.insert(TextStyle::Body, FontId::new(13.5, Proportional));
+        s.text_styles.insert(TextStyle::Button, FontId::new(13.5, semibold()));
+        s.text_styles.insert(TextStyle::Small, FontId::new(11.5, Proportional));
+        s.text_styles.insert(TextStyle::Heading, FontId::new(16.0, semibold()));
+        s.spacing.item_spacing = egui::vec2(8.0, 8.0);
+        s.spacing.button_padding = egui::vec2(12.0, 6.0);
+        s.spacing.slider_rail_height = 4.0;
+    });
+}
+
+fn section_title(ui: &mut egui::Ui, text: &str) {
+    ui.label(egui::RichText::new(text).size(11.0).family(semibold()).color(theme::WEAK));
+    ui.add_space(2.0);
+}
+
+fn card(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
+    egui::Frame::new().fill(theme::CARD).corner_radius(12).inner_margin(egui::Margin::same(12)).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        add(ui);
+    });
+}
+
+/// A row of options in one rounded track; returns the index clicked.
+fn segmented(ui: &mut egui::Ui, id: &str, labels: &[&str], selected: Option<usize>) -> Option<usize> {
+    let font = egui::FontId::new(12.0, semibold());
+    let widths: Vec<f32> = labels
+        .iter()
+        .map(|l| ui.painter().layout_no_wrap((*l).to_string(), font.clone(), theme::TEXT).size().x + 8.0)
+        .collect();
+    let total = ui.available_width();
+    let extra = ((total - 4.0 - widths.iter().sum::<f32>()) / labels.len() as f32).max(0.0);
+    let (track, _) = ui.allocate_exact_size(egui::vec2(total, 34.0), egui::Sense::hover());
+    ui.painter().rect_filled(track, 10.0, theme::BG);
+    let mut x = track.min.x + 2.0;
+    let mut clicked = None;
+    for (i, label) in labels.iter().enumerate() {
+        let w = widths[i] + extra;
+        let seg = egui::Rect::from_min_size(egui::pos2(x, track.min.y + 2.0), egui::vec2(w, 30.0));
+        let resp = ui
+            .interact(seg, ui.make_persistent_id((id, i)), egui::Sense::click())
+            .on_hover_cursor(egui::CursorIcon::PointingHand);
+        let on = selected == Some(i);
+        if on {
+            ui.painter().rect_filled(seg, 8.0, theme::ACCENT_DIM);
+        } else if resp.hovered() {
+            ui.painter().rect_filled(seg, 8.0, theme::CARD);
+        }
+        let color = if on { theme::ACCENT } else { theme::WEAK };
+        ui.painter().text(seg.center(), egui::Align2::CENTER_CENTER, *label, font.clone(), color);
+        if resp.clicked() {
+            clicked = Some(i);
+        }
+        x += w;
+    }
+    clicked
+}
+
+fn chip(ui: &mut egui::Ui, label: &str, size: egui::Vec2, on: bool) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+    let fill = if on {
+        theme::ACCENT_DIM
+    } else if resp.hovered() {
+        theme::CARD_HI
+    } else {
+        theme::BG
+    };
+    ui.painter().rect_filled(rect, 9.0, fill);
+    let color = if on { theme::ACCENT } else { theme::TEXT };
+    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, egui::FontId::new(12.5, semibold()), color);
+    resp.clicked()
+}
+
+fn slider_row(ui: &mut egui::Ui, label: &str, value: &mut u32, max: u32, unit: &str) -> bool {
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(label).color(theme::WEAK));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.label(egui::RichText::new(format!("{value}{unit}")).family(semibold()));
+        });
+    });
+    ui.spacing_mut().slider_width = ui.available_width() - 6.0;
+    ui.add(egui::Slider::new(value, 0..=max).show_value(false).trailing_fill(true)).changed()
+}
+
+/// A slim track with a thumb; the new position when it is clicked or dragged.
+fn scrubber(ui: &mut egui::Ui, pos: f64, duration: f64, width: f32) -> Option<f64> {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 28.0), egui::Sense::click_and_drag());
+    let track = egui::Rect::from_center_size(rect.center(), egui::vec2(rect.width() - 14.0, 4.0));
+    let frac = (pos / duration).clamp(0.0, 1.0) as f32;
+    let thumb_x = track.left() + track.width() * frac;
+    let p = ui.painter();
+    p.rect_filled(track, 2.0, theme::LINE);
+    p.rect_filled(egui::Rect::from_min_max(track.min, egui::pos2(thumb_x, track.max.y)), 2.0, theme::ACCENT);
+    let r = if resp.hovered() || resp.dragged() { 8.0 } else { 6.5 };
+    p.circle_filled(egui::pos2(thumb_x, track.center().y), r, egui::Color32::WHITE);
+    if resp.hovered() {
+        ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+    }
+    if resp.dragged() || resp.clicked() {
+        let x = resp.interact_pointer_pos()?.x;
+        return Some(((x - track.left()) / track.width()).clamp(0.0, 1.0) as f64 * duration);
+    }
+    None
+}
+
+fn play_button(ui: &mut egui::Ui, playing: bool) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(36.0, 36.0), egui::Sense::click());
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+    let fill = if resp.hovered() { egui::Color32::from_rgb(0x5a, 0xe8, 0x9d) } else { theme::ACCENT };
+    let c = rect.center();
+    let p = ui.painter();
+    p.circle_filled(c, 18.0, fill);
+    if playing {
+        for dx in [-3.6, 3.6] {
+            p.rect_filled(
+                egui::Rect::from_center_size(c + egui::vec2(dx, 0.0), egui::vec2(3.4, 12.0)),
+                1.0,
+                theme::ON_ACCENT,
+            );
+        }
+    } else {
+        let tri = vec![c + egui::vec2(-3.5, -7.0), c + egui::vec2(-3.5, 7.0), c + egui::vec2(7.0, 0.0)];
+        p.add(egui::Shape::convex_polygon(tri, theme::ON_ACCENT, egui::Stroke::NONE));
+    }
+    resp.clicked()
+}
+
 // ---- the window -----------------------------------------------------------------------------------
 
 #[derive(Clone, Copy, PartialEq)]
@@ -285,8 +476,20 @@ enum Tab {
     Image,
 }
 
+const TABS: [(Tab, &str); 5] = [
+    (Tab::None, "None"),
+    (Tab::Gradient, "Gradient"),
+    (Tab::Wallpaper, "Wallpaper"),
+    (Tab::Color, "Color"),
+    (Tab::Image, "Image"),
+];
+
+/// Height of the strip along the top that holds the window buttons and drags the window.
+const TOP: f32 = 34.0;
+
 struct Editor {
     path: PathBuf,
+    name: String,
     full_size: (u32, u32),
     style: Style,
     tab: Tab,
@@ -317,6 +520,7 @@ struct VideoState {
 
 impl Editor {
     fn new(ctx: &egui::Context, path: PathBuf, source: Source, style: Style) -> Self {
+        setup_style(ctx);
         let mut swatches = Vec::new();
         let thumb = Style { padding: 0, radius: 0, shadow: 0, aspect: Aspect::Auto, ..Style::default() };
         let l = thumb.layout((SWATCH as u32 * 2, SWATCH as u32 * 2));
@@ -355,6 +559,7 @@ impl Editor {
             Background::Image(_) => Tab::Image,
         };
         let mut ed = Self {
+            name: path.file_name().map_or(String::new(), |n| n.to_string_lossy().into()),
             full_size: source.size,
             matte: source.matte.is_some(),
             src: downscale(&source.first, pv),
@@ -478,29 +683,18 @@ impl Editor {
         }
     }
 
-    fn heading(ui: &mut egui::Ui, text: &str) {
-        ui.add_space(12.0);
-        ui.label(egui::RichText::new(text).small().strong().color(ui.visuals().weak_text_color()));
-        ui.add_space(4.0);
-    }
-
     fn swatch(ui: &mut egui::Ui, selected: bool, paint: impl FnOnce(&egui::Painter, egui::Rect)) -> bool {
         let (rect, resp) = ui.allocate_exact_size(egui::vec2(SWATCH, SWATCH), egui::Sense::click());
         paint(ui.painter(), rect);
         if selected {
             ui.painter().rect_stroke(
-                rect.expand(2.0),
-                8.0,
-                egui::Stroke::new(2.0, ui.visuals().selection.bg_fill),
+                rect.expand(3.0),
+                11.0,
+                egui::Stroke::new(2.0, theme::ACCENT),
                 egui::StrokeKind::Outside,
             );
         } else if resp.hovered() {
-            ui.painter().rect_stroke(
-                rect,
-                8.0,
-                egui::Stroke::new(1.0, ui.visuals().weak_text_color()),
-                egui::StrokeKind::Inside,
-            );
+            ui.painter().rect_stroke(rect, 9.0, egui::Stroke::new(1.5, egui::Color32::WHITE), egui::StrokeKind::Inside);
         }
         resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
     }
@@ -511,11 +705,9 @@ impl Editor {
             let (bg, tex) = (self.swatches[i].0.clone(), self.swatches[i].1.clone());
             let selected = self.style.background == bg;
             if Self::swatch(ui, selected, |p, r| {
-                p.image(
-                    tex.id(),
-                    r,
-                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                    egui::Color32::WHITE,
+                p.add(
+                    egui::epaint::RectShape::filled(r, 9.0, egui::Color32::WHITE)
+                        .with_texture(tex.id(), egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0))),
                 );
             }) {
                 self.style.background = bg;
@@ -525,124 +717,117 @@ impl Editor {
         changed
     }
 
-    fn background_controls(&mut self, ui: &mut egui::Ui) -> bool {
+    fn background_card(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
-        Self::heading(ui, "BACKGROUND");
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(2.0, 4.0);
-            for (tab, label) in [
-                (Tab::None, "None"),
-                (Tab::Gradient, "Gradient"),
-                (Tab::Wallpaper, "Wallpaper"),
-                (Tab::Color, "Color"),
-                (Tab::Image, "Image"),
-            ] {
-                if ui.selectable_label(self.tab == tab, egui::RichText::new(label).size(13.0)).clicked() {
-                    self.tab = tab;
-                    if tab == Tab::None {
-                        self.style.background = Background::None;
-                        changed = true;
-                    }
-                }
-            }
-        });
-        ui.add_space(8.0);
-        let grad = GRADIENTS.len();
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
-            match self.tab {
-                Tab::None => {
-                    ui.label(
-                        egui::RichText::new("Transparent around the capture. Recordings use a dark color.").weak(),
-                    );
-                }
-                Tab::Gradient => changed |= self.texture_swatches(ui, 0..grad),
-                Tab::Wallpaper => changed |= self.texture_swatches(ui, grad..self.swatches.len()),
-                Tab::Color => {
-                    for c in COLORS {
-                        let selected = self.style.background == Background::Color(c);
-                        if Self::swatch(ui, selected, |p, r| {
-                            p.rect_filled(r, 8.0, egui::Color32::from_rgb(c[0], c[1], c[2]));
-                        }) {
-                            self.style.background = Background::Color(c);
-                            self.custom = c;
-                            changed = true;
-                        }
-                    }
-                    ui.label("Custom");
-                    if egui::color_picker::color_edit_button_srgb(ui, &mut self.custom).changed() {
-                        self.style.background = Background::Color(self.custom);
-                        changed = true;
-                    }
-                }
-                Tab::Image => {
-                    if ui.button("Choose a picture...").clicked()
-                        && let Some(file) = rfd::FileDialog::new()
-                            .add_filter("Images", &["png", "jpg", "jpeg", "webp", "heic", "bmp", "gif", "tiff"])
-                            .pick_file()
-                    {
-                        self.style.background = Background::Image(file);
-                        changed = true;
-                    }
-                    if let Background::Image(p) = &self.style.background {
-                        ui.label(
-                            egui::RichText::new(p.file_name().map_or(String::new(), |n| n.to_string_lossy().into()))
-                                .weak(),
-                        );
-                    }
-                }
-            }
-        });
-        changed
-    }
-
-    fn slider(ui: &mut egui::Ui, label: &str, value: &mut u32, max: u32, suffix: &str) -> bool {
-        let mut changed = false;
-        ui.horizontal(|ui| {
-            ui.add_sized([86.0, 20.0], egui::Label::new(label));
-            ui.spacing_mut().slider_width = 112.0;
-            changed = ui.add(egui::Slider::new(value, 0..=max).suffix(suffix)).changed();
-        });
-        changed
-    }
-
-    fn layout_controls(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut changed = false;
-        Self::heading(ui, "LAYOUT");
-        changed |= Self::slider(ui, "Padding", &mut self.style.padding, crate::style::MAX_PADDING, "%");
-        if !self.matte {
-            changed |= Self::slider(ui, "Corner radius", &mut self.style.radius, crate::style::MAX_RADIUS, "%");
-        }
-        changed |= Self::slider(ui, "Shadow", &mut self.style.shadow, 100, "");
-        Self::heading(ui, "ASPECT RATIO");
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
-            for a in ASPECTS {
-                if ui.selectable_label(self.style.aspect == a, egui::RichText::new(a.label()).size(13.0)).clicked() {
-                    self.style.aspect = a;
+        card(ui, |ui| {
+            section_title(ui, "BACKGROUND");
+            let labels: Vec<&str> = TABS.iter().map(|t| t.1).collect();
+            let current = TABS.iter().position(|t| t.0 == self.tab);
+            if let Some(i) = segmented(ui, "tabs", &labels, current) {
+                self.tab = TABS[i].0;
+                if self.tab == Tab::None {
+                    self.style.background = Background::None;
                     changed = true;
                 }
             }
+            ui.add_space(4.0);
+            let grad = GRADIENTS.len();
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(9.0, 9.0);
+                match self.tab {
+                    Tab::None => {
+                        ui.label(
+                            egui::RichText::new(
+                                "Nothing behind the capture. Recordings cannot be transparent and use a dark color.",
+                            )
+                            .color(theme::WEAK),
+                        );
+                    }
+                    Tab::Gradient => changed |= self.texture_swatches(ui, 0..grad),
+                    Tab::Wallpaper => changed |= self.texture_swatches(ui, grad..self.swatches.len()),
+                    Tab::Color => {
+                        for c in COLORS {
+                            let selected = self.style.background == Background::Color(c);
+                            if Self::swatch(ui, selected, |p, r| {
+                                p.rect_filled(r, 9.0, egui::Color32::from_rgb(c[0], c[1], c[2]));
+                            }) {
+                                self.style.background = Background::Color(c);
+                                self.custom = c;
+                                changed = true;
+                            }
+                        }
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new("Custom").color(theme::WEAK));
+                        if egui::color_picker::color_edit_button_srgb(ui, &mut self.custom).changed() {
+                            self.style.background = Background::Color(self.custom);
+                            changed = true;
+                        }
+                    }
+                    Tab::Image => {
+                        if ui.button("Choose a picture...").clicked()
+                            && let Some(file) = rfd::FileDialog::new()
+                                .add_filter("Images", &["png", "jpg", "jpeg", "webp", "heic", "bmp", "gif", "tiff"])
+                                .pick_file()
+                        {
+                            self.style.background = Background::Image(file);
+                            changed = true;
+                        }
+                        if let Background::Image(p) = &self.style.background {
+                            let name: String = p.file_name().map_or(String::new(), |n| n.to_string_lossy().into());
+                            ui.label(egui::RichText::new(name).color(theme::WEAK));
+                        }
+                    }
+                }
+            });
         });
         changed
     }
 
-    fn export_row(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let l = self.effective_style().layout(self.full_size);
-        ui.label(egui::RichText::new(format!("Output {} x {} px", l.out.0, l.out.1)).small().weak());
-        ui.add_space(6.0);
-        let busy = self.export.is_some();
-        ui.horizontal(|ui| {
-            let label = if busy { "Exporting..." } else { "Export" };
-            let button = egui::Button::new(egui::RichText::new(label).strong())
-                .fill(ui.visuals().selection.bg_fill)
-                .min_size(egui::vec2(120.0, 34.0));
-            if ui.add_enabled(!busy, button).clicked() {
-                self.start_export(ctx);
+    fn layout_card(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+        card(ui, |ui| {
+            section_title(ui, "LAYOUT");
+            changed |= slider_row(ui, "Padding", &mut self.style.padding, crate::style::MAX_PADDING, "%");
+            if !self.matte {
+                changed |= slider_row(ui, "Corner radius", &mut self.style.radius, crate::style::MAX_RADIUS, "%");
             }
+            changed |= slider_row(ui, "Shadow", &mut self.style.shadow, 100, "");
+        });
+        card(ui, |ui| {
+            section_title(ui, "ASPECT RATIO");
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                let w = (ui.available_width() - 6.0 * 3.0) / 4.0;
+                for a in ASPECTS {
+                    if chip(ui, &a.label(), egui::vec2(w.floor(), 30.0), self.style.aspect == a) {
+                        self.style.aspect = a;
+                        changed = true;
+                    }
+                }
+            });
+        });
+        changed
+    }
+
+    fn export_area(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let l = self.effective_style().layout(self.full_size);
+        let kind = if self.is_video() { "video" } else { "picture" };
+        ui.label(egui::RichText::new(format!("{} x {} px {kind}", l.out.0, l.out.1)).size(11.5).color(theme::WEAK));
+        let busy = self.export.is_some();
+        let label = if busy { "Exporting..." } else { "Export" };
+        let button =
+            egui::Button::new(egui::RichText::new(label).size(14.5).family(semibold()).color(theme::ON_ACCENT))
+                .fill(theme::ACCENT)
+                .corner_radius(11)
+                .min_size(egui::vec2(ui.available_width(), 40.0));
+        if ui.add_enabled(!busy, button).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+            self.start_export(ctx);
+        }
+        ui.horizontal(|ui| {
             if busy {
-                ui.add(egui::Spinner::new());
-            } else if ui.button("Reset").clicked() {
+                ui.add(egui::Spinner::new().size(14.0));
+                ui.label(egui::RichText::new("Rendering a styled copy").color(theme::WEAK));
+            } else if ui.link("Reset look").clicked() {
                 self.style = Style::default();
                 self.tab = Tab::Gradient;
                 self.style_dirty = true;
@@ -650,21 +835,26 @@ impl Editor {
         });
         match &self.status {
             Some(Ok(p)) => {
-                ui.add_space(6.0);
-                let name = p.file_name().map_or(String::new(), |n| n.to_string_lossy().into());
-                ui.label(egui::RichText::new(format!("Saved {name}")).color(egui::Color32::LIGHT_GREEN));
-                ui.horizontal(|ui| {
-                    if ui.link("Show in folder").clicked() {
-                        crate::capture::reveal(p);
-                    }
-                    if ui.link("Open").clicked() {
-                        crate::capture::open_file(p);
-                    }
-                });
+                let name: String = p.file_name().map_or(String::new(), |n| n.to_string_lossy().into());
+                egui::Frame::new().fill(theme::ACCENT_DIM).corner_radius(10).inner_margin(egui::Margin::same(10)).show(
+                    ui,
+                    |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.label(egui::RichText::new("Saved").family(semibold()).color(theme::ACCENT));
+                        ui.label(egui::RichText::new(name).size(12.0));
+                        ui.horizontal(|ui| {
+                            if ui.link("Show in folder").clicked() {
+                                crate::capture::reveal(p);
+                            }
+                            if ui.link("Open").clicked() {
+                                crate::capture::open_file(p);
+                            }
+                        });
+                    },
+                );
             }
             Some(Err(e)) => {
-                ui.add_space(6.0);
-                ui.colored_label(egui::Color32::LIGHT_RED, e);
+                ui.colored_label(egui::Color32::from_rgb(0xff, 0x8a, 0x80), e);
             }
             None => {}
         }
@@ -674,22 +864,17 @@ impl Editor {
         let Some(v) = self.video.as_mut() else { return };
         let mut seek = None;
         let mut toggle = false;
-        ui.add_space(6.0);
+        ui.add_space(4.0);
         ui.horizontal(|ui| {
-            let icon = if v.playing { "||" } else { ">" };
-            if ui.add(egui::Button::new(egui::RichText::new(icon).strong()).min_size(egui::vec2(34.0, 28.0))).clicked()
-            {
-                toggle = true;
-            }
-            ui.spacing_mut().slider_width = (ui.available_width() - 110.0).max(80.0);
-            let mut pos = v.pos;
-            if ui.add(egui::Slider::new(&mut pos, 0.0..=v.duration).show_value(false)).changed() {
-                seek = Some(pos);
-            }
+            ui.spacing_mut().item_spacing.x = 12.0;
+            toggle = play_button(ui, v.playing);
             let clock = |s: f64| format!("{}:{:02}", s as u64 / 60, s as u64 % 60);
-            ui.label(egui::RichText::new(format!("{} / {}", clock(v.pos), clock(v.duration))).monospace().small());
+            let label = format!("{} / {}", clock(v.pos), clock(v.duration));
+            let w = (ui.available_width() - 92.0).max(80.0);
+            seek = scrubber(ui, v.pos, v.duration, w);
+            ui.label(egui::RichText::new(label).size(12.0).color(theme::WEAK));
         });
-        ui.add_space(6.0);
+        ui.add_space(8.0);
         if let Some(t) = seek {
             v.pos = t;
             v.playing = false;
@@ -718,51 +903,74 @@ impl eframe::App for Editor {
             self.toggle_play();
         }
 
-        egui::Panel::left("controls").exact_size(PANEL).resizable(false).show(ui, |ui| {
-            egui::Panel::bottom("export").show_separator_line(false).show(ui, |ui| {
-                ui.add_space(8.0);
-                self.export_row(ui, &ctx);
-                ui.add_space(10.0);
+        egui::Panel::left("controls")
+            .exact_size(PANEL)
+            .resizable(false)
+            .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(14, 0)))
+            .show(ui, |ui| {
+                ui.add_space(TOP);
+                egui::Panel::bottom("export").show_separator_line(false).frame(egui::Frame::NONE).show(ui, |ui| {
+                    ui.add_space(8.0);
+                    self.export_area(ui, &ctx);
+                    ui.add_space(14.0);
+                });
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    let mut changed = self.background_card(ui);
+                    changed |= self.layout_card(ui);
+                    if changed && matches!(self.style.background, Background::Image(_)) {
+                        self.ensure_image();
+                    }
+                    self.style_dirty |= changed;
+                });
             });
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.add_space(4.0);
-                let mut changed = self.background_controls(ui);
-                changed |= self.layout_controls(ui);
-                if changed && matches!(self.style.background, Background::Image(_)) {
-                    self.ensure_image();
-                }
-                self.style_dirty |= changed;
-            });
-        });
         if self.is_video() {
-            egui::Panel::bottom("transport").show(ui, |ui| self.transport(ui));
+            egui::Panel::bottom("transport")
+                .show_separator_line(false)
+                .frame(egui::Frame::new().fill(theme::BG).inner_margin(egui::Margin::symmetric(20, 0)))
+                .show(ui, |ui| self.transport(ui));
         }
         if self.style_dirty || self.frame_dirty {
             self.render_preview(&ctx);
         }
-        egui::CentralPanel::default().show(ui, |ui| {
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(theme::BG)).show(ui, |ui| {
+            let area = ui.max_rect();
             let Some(t) = &self.texture else { return };
-            let avail = ui.available_size() - egui::vec2(32.0, 32.0);
+            let avail = egui::vec2(area.width() - 56.0, area.height() - TOP - 24.0);
             let size = t.size_vec2();
             let scale = (avail.x / size.x).min(avail.y / size.y).clamp(0.05, 1.5);
             let shown = size * scale;
-            let rect = egui::Rect::from_center_size(ui.max_rect().center(), shown);
+            let centre = egui::pos2(area.center().x, area.min.y + TOP + (area.height() - TOP) / 2.0);
+            let rect = egui::Rect::from_center_size(centre, shown);
             if self.style.background == Background::None && !self.is_video() {
                 checkerboard(ui.painter(), rect);
             }
-            ui.painter().image(
-                t.id(),
-                rect,
-                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                egui::Color32::WHITE,
-            );
+            ui.put(rect, egui::Image::new((t.id(), shown)).corner_radius(10.0));
+            ui.painter().rect_stroke(rect, 10.0, egui::Stroke::new(1.0, theme::LINE), egui::StrokeKind::Outside);
         });
+
+        // the title bar is hidden: draw the file name there, and let the strip drag the window
+        let screen = ctx.content_rect();
+        let strip = egui::Rect::from_min_max(
+            egui::pos2(screen.min.x + PANEL + 90.0, screen.min.y),
+            egui::pos2(screen.max.x, screen.min.y + TOP),
+        );
+        ui.painter().text(
+            egui::pos2((screen.min.x + PANEL + screen.max.x) / 2.0, screen.min.y + TOP / 2.0),
+            egui::Align2::CENTER_CENTER,
+            &self.name,
+            egui::FontId::new(12.5, egui::FontFamily::Proportional),
+            theme::WEAK,
+        );
+        let drag = ui.interact(strip, ui.make_persistent_id("title-drag"), egui::Sense::click_and_drag());
+        if drag.drag_started() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+        }
     }
 }
 
 fn checkerboard(painter: &egui::Painter, rect: egui::Rect) {
     let cell = 12.0;
-    painter.rect_filled(rect, 0.0, egui::Color32::from_gray(52));
+    painter.rect_filled(rect, 10.0, egui::Color32::from_gray(40));
     let (cols, rows) = ((rect.width() / cell).ceil() as i32, (rect.height() / cell).ceil() as i32);
     for r in 0..rows {
         for c in 0..cols {
@@ -771,7 +979,7 @@ fn checkerboard(painter: &egui::Painter, rect: egui::Rect) {
             }
             let min = rect.min + egui::vec2(c as f32 * cell, r as f32 * cell);
             let cell_rect = egui::Rect::from_min_size(min, egui::vec2(cell, cell)).intersect(rect);
-            painter.rect_filled(cell_rect, 0.0, egui::Color32::from_gray(68));
+            painter.rect_filled(cell_rect, 0.0, egui::Color32::from_gray(54));
         }
     }
 }
