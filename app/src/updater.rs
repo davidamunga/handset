@@ -693,22 +693,26 @@ mod tests {
     #[test]
     fn only_old_update_folders_of_other_runs_are_cleaned_up() {
         let tmp = temp_dir("clean");
-        let week = Duration::from_secs(7 * 24 * 60 * 60);
-        let make = |name: &str, age_days: u64| {
-            let d = tmp.join(name);
-            std::fs::create_dir_all(&d).unwrap();
-            let when = std::time::SystemTime::now() - Duration::from_secs(age_days * 24 * 60 * 60);
-            std::fs::File::open(&d).unwrap().set_modified(when).unwrap();
-            d
-        };
-        let old = make("handset-update-111", 9);
-        let _recent = make("handset-update-222", 1);
-        let _mine = make("handset-update-333", 30);
-        let _other = make("something-else", 30);
-        let _not_a_pid = make("handset-update-abc", 30);
+        for name in
+            ["handset-update-111", "handset-update-222", "handset-update-333", "something-else", "handset-update-abc"]
+        {
+            std::fs::create_dir_all(tmp.join(name)).unwrap();
+        }
         std::fs::write(tmp.join("handset-update-444"), "a file, not a folder").unwrap();
-        assert_eq!(stale_work_dirs(&tmp, 333, week), vec![old], "only an old folder of another run, named for a pid");
-        assert!(stale_work_dirs(&tmp.join("missing"), 1, week).is_empty());
+        let names = |max_age| {
+            let mut v: Vec<String> = stale_work_dirs(&tmp, 333, max_age)
+                .iter()
+                .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+                .collect();
+            v.sort();
+            v
+        };
+        // everything just made is old enough when no age is asked for: of those, only folders named for a
+        // pid and not the running copy's are listed
+        assert_eq!(names(Duration::ZERO), vec!["handset-update-111", "handset-update-222"]);
+        // ...and nothing is old enough when a day is asked for
+        assert!(names(Duration::from_secs(24 * 60 * 60)).is_empty(), "a folder made just now is not stale");
+        assert!(stale_work_dirs(&tmp.join("missing"), 1, Duration::ZERO).is_empty());
         let _ = std::fs::remove_dir_all(tmp);
     }
 
