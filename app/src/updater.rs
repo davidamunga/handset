@@ -984,15 +984,15 @@ mod tests {
             std::fs::create_dir_all(&current).unwrap();
             std::fs::create_dir_all(&new).unwrap();
             std::fs::copy(system_exe("whoami.exe"), current.join("handset.exe")).unwrap();
-            // a real program that fails at once: where.exe without arguments says "invalid syntax" and exits with 2
-            std::fs::copy(system_exe("where.exe"), new.join("handset.exe")).unwrap();
+            // a real program that fails at once: `cmd /c exit 3` exits with code 3
+            std::fs::copy(system_exe("cmd.exe"), new.join("handset.exe")).unwrap();
             let swap = Swap {
                 os: Os::Windows,
                 pid: 0,
                 current: current.clone(),
                 new,
                 log: root.join("update.log"),
-                relaunch: String::new(),
+                relaunch: "/c exit 3".into(),
             };
             assert!(!run_helper(&swap), "the helper reports the failure");
             assert_eq!(
