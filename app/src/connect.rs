@@ -245,15 +245,16 @@ fn random_alnum(n: usize) -> String {
     bytes.iter().map(|b| CHARS[*b as usize % CHARS.len()] as char).collect()
 }
 
-// Handset's colours, taken from the app icon: its green, its teal, and the pale mint of its plate.
-const BG: [u8; 3] = [8, 24, 22];
-const SURFACE: [u8; 3] = [14, 54, 50];
-const SURFACE_HOVER: [u8; 3] = [7, 112, 99];
-const GREEN: [u8; 3] = [48, 221, 129];
-const TEXT: [u8; 3] = [217, 245, 229];
-const MUTED: [u8; 3] = [128, 166, 156];
-const AMBER: [u8; 3] = [255, 190, 60];
-const RED: [u8; 3] = [255, 110, 100];
+// Handset's colours: the app icon's greys and whites, with the status colours kept for meaning only.
+const BG: [u8; 3] = [244, 245, 247];
+const SURFACE: [u8; 3] = [227, 229, 233];
+const SURFACE_HOVER: [u8; 3] = [213, 216, 221];
+const INK: [u8; 3] = [46, 48, 54];
+const TEXT: [u8; 3] = [31, 32, 36];
+const MUTED: [u8; 3] = [107, 110, 117];
+const OK: [u8; 3] = [30, 142, 90];
+const AMBER: [u8; 3] = [196, 120, 0];
+const RED: [u8; 3] = [217, 48, 37];
 
 static REGULAR: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
 static SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/Inter-SemiBold.ttf");
@@ -477,10 +478,10 @@ impl Canvas {
         let r = [rect[0] as f32, rect[1] as f32, rect[2] as f32, rect[3] as f32];
         let bw = self.d(3.0).max(1.0);
         if quiet {
-            self.round_rect(r, r[3] / 2.0, hover.then_some(SURFACE), Some((if hover { GREEN } else { MUTED }, bw)));
+            self.round_rect(r, r[3] / 2.0, hover.then_some(SURFACE), Some((if hover { INK } else { MUTED }, bw)));
         } else {
             let fill = if hover { SURFACE_HOVER } else { SURFACE };
-            self.round_rect(r, r[3] / 2.0, Some(fill), Some((GREEN, bw)));
+            self.round_rect(r, r[3] / 2.0, Some(fill), Some((INK, bw)));
         }
         let mut size = 38.0;
         while size > 20.0 && measure(Weight::Semibold, self.px(size), label) > r[2] - self.d(56.0) {
@@ -563,7 +564,7 @@ fn words(status: &Status) -> Words {
             "Install it with: brew install --cask android-platform-tools",
             None,
         ),
-        Status::Connecting(s) => w("Connecting", GREEN, true, &["Starting mirroring."], false, "", Some(s)),
+        Status::Connecting(s) => w("Connecting", INK, true, &["Starting mirroring."], false, "", Some(s)),
         Status::Disconnected => {
             w("Disconnected", MUTED, false, &["Plug a phone in, or connect another way."], false, "", None)
         }
@@ -713,7 +714,7 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
                         top + 24.0 * u - c.line(28.0) / 2.0,
                         Weight::Semibold,
                         28.0,
-                        GREEN,
+                        INK,
                         &(i + 1).to_string(),
                     );
                     c.para(
@@ -900,7 +901,7 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
                             break;
                         }
                         let colour = match ch.level {
-                            crate::doctor::Level::Ok => GREEN,
+                            crate::doctor::Level::Ok => OK,
                             crate::doctor::Level::Warn => AMBER,
                             crate::doctor::Level::Fail => RED,
                         };
