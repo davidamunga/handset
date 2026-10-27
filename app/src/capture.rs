@@ -41,6 +41,10 @@ pub struct Settings {
     pub normalize: bool,
     /// Copy each new screenshot / recording to the clipboard.
     pub clipboard: bool,
+    /// Look applied to captures (see `style.rs`); used for new captures when `auto_style` is on.
+    pub style: crate::style::Style,
+    /// Save a styled copy next to each new screenshot and recording.
+    pub auto_style: bool,
 }
 
 impl Default for Settings {
@@ -53,6 +57,8 @@ impl Default for Settings {
             gain_db: 0.0,
             normalize: true,
             clipboard: true,
+            style: crate::style::Style::default(),
+            auto_style: false,
         }
     }
 }
@@ -181,7 +187,7 @@ pub fn copy_to_clipboard(path: &std::path::Path) -> bool {
 }
 
 /// A path that does not exist yet, `<stem>[-N].<ext>`.
-fn unique(dir: PathBuf, stem: &str, ext: &str) -> PathBuf {
+pub(crate) fn unique(dir: PathBuf, stem: &str, ext: &str) -> PathBuf {
     let mut p = dir.join(format!("{stem}.{ext}"));
     let mut n = 2;
     while p.exists() {

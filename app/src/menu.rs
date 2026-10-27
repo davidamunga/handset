@@ -23,6 +23,8 @@ pub struct State {
     pub update_auto: bool,
     pub update: Option<String>,
     pub clipboard: bool,
+    /// Each new capture also gets a styled copy.
+    pub auto_style: bool,
     /// A phone is being mirrored.
     pub mirroring: bool,
     /// ...and it is connected by USB, so it can be switched to Wi-Fi.
@@ -112,6 +114,8 @@ pub fn show(window: &Window, s: &State) {
     let _ = record.append(&PredefinedMenuItem::separator());
     let _ = record.append(&CheckMenuItem::with_id("norm", "Normalize audio", s.audio, s.normalize, None));
     let _ = record.append(&CheckMenuItem::with_id("clip", "Copy captures to clipboard", true, s.clipboard, None));
+    let _ =
+        record.append(&CheckMenuItem::with_id("style", "Save a styled copy of each capture", true, s.auto_style, None));
 
     let recent = Submenu::new("Recent Captures", true);
     if s.recent.is_empty() {
@@ -122,6 +126,9 @@ pub fn show(window: &Window, s: &State) {
         let item = Submenu::new(name, true);
         let p = path.to_string_lossy();
         let _ = item.append(&MenuItem::with_id(format!("recent:open:{p}"), "Open", true, None));
+        if matches!(path.extension().and_then(|e| e.to_str()), Some("png" | "mp4" | "gif")) {
+            let _ = item.append(&MenuItem::with_id(format!("recent:style:{p}"), "Save Styled Copy", true, None));
+        }
         let _ = item.append(&MenuItem::with_id(
             format!("recent:reveal:{p}"),
             format!("Show in {FILE_MANAGER}"),

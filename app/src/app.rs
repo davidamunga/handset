@@ -10,6 +10,7 @@ use crate::menu;
 use crate::mirror::Mirror;
 use crate::overlay;
 use crate::render::Renderer;
+use crate::restyle;
 use crate::server;
 use crate::settings;
 use crate::stream::{Slot, UserEvent};
@@ -743,6 +744,7 @@ impl App {
             update_auto: self.update_auto,
             update: self.update.as_ref().map(|u| u.version.clone()),
             clipboard: self.cap.clipboard,
+            auto_style: self.cap.auto_style,
             mirroring: self.mirror.is_some(),
             usb: self.mirror.as_ref().is_some_and(|m| !connect::is_wireless(m.session.serial())),
             sync: self.sync.lock().unwrap().enabled,
@@ -826,6 +828,10 @@ impl App {
                 self.cap.clipboard = !self.cap.clipboard;
                 settings::save_bool("clipboard", self.cap.clipboard);
             }
+            "style" => {
+                self.cap.auto_style = !self.cap.auto_style;
+                settings::save_bool("auto-style", self.cap.auto_style);
+            }
             "sync" => {
                 let mut s = self.sync.lock().unwrap();
                 s.enabled = !s.enabled;
@@ -895,6 +901,7 @@ impl App {
                     match action {
                         "open" => capture::open_file(&path),
                         "reveal" => capture::reveal(&path),
+                        "style" => self.style_in_background(path),
                         "copy" => {
                             let ok = capture::copy_to_clipboard(&path);
                             self.show_toast(if ok { "COPIED" } else { "COPY FAILED" });
@@ -1102,6 +1109,9 @@ impl App {
         {
             Ok(p) => {
                 eprintln!("screenshot saved: {}", p.display());
+                if self.cap.auto_style {
+                    self.style_in_background(p.clone());
+                }
                 self.show_saved("SCREENSHOT", p);
             }
             Err(e) => {
@@ -1109,6 +1119,16 @@ impl App {
                 self.show_toast("SCREENSHOT FAILED");
             }
         }
+    }
+
+    /// Save a styled copy of a capture beside it, off the UI thread; the result arrives as `UserEvent::Styled`.
+    fn style_in_background(&mut self, path: std::path::PathBuf) {
+        let style = self.cap.style.clone();
+        let proxy = self.proxy.clone();
+        self.show_toast("STYLING...");
+        std::thread::spawn(move || {
+            let _ = proxy.send_event(UserEvent::Styled(restyle::export(&path, &style)));
+        });
     }
 
     fn start_recording(&mut self) {
@@ -1145,6 +1165,9 @@ impl App {
             *self.audio_sink.lock().unwrap() = None;
             let path = rec.finish();
             eprintln!("recording saved: {}", path.display());
+            if self.cap.auto_style {
+                self.style_in_background(path.clone());
+            }
             self.show_saved("RECORDING", path);
         }
     }
@@ -1379,6 +1402,13 @@ impl ApplicationHandler<UserEvent> for App {
                 Err(e) => {
                     eprintln!("drop failed: {e}");
                     self.show_toast(&format!("FAILED: {}", e.to_uppercase()));
+                }
+            },
+            UserEvent::Styled(result) => match result {
+                Ok(path) => self.show_saved("STYLED COPY", path),
+                Err(e) => {
+                    eprintln!("styling failed: {e}");
+                    self.show_toast("STYLING FAILED");
                 }
             },
             UserEvent::Adb(result) => self.on_adb(result),

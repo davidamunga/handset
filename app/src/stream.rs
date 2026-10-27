@@ -27,6 +27,8 @@ pub enum UserEvent {
     Update(Result<crate::update::Release, String>, bool),
     /// A dropped file was installed or copied, or why it was not.
     Transfer(Result<String, String>),
+    /// A capture was styled in the background: the new file, or why it failed.
+    Styled(Result<std::path::PathBuf, String>),
 }
 
 #[derive(Default)]

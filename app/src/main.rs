@@ -17,9 +17,11 @@ mod mirror;
 mod overlay;
 mod recent;
 mod render;
+mod restyle;
 mod server;
 mod settings;
 mod stream;
+mod style;
 mod toolbar;
 mod tools;
 mod transfer;
@@ -33,8 +35,9 @@ fn usage() -> ! {
         "usage: handset [--frame <name|path|none>] [--max-size <px>]\n\
          \x20                  [--connect <ip[:port]> | --last | --wifi] [--start-app <package>] [serial]\n\
          \x20      handset --pair <ip:port> <code>\n\
+         \x20      handset --restyle <png|mp4|gif> [--style <look>]\n\
          \x20      handset --doctor\n\
-         \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--show-touches] [--no-update-check] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
+         \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--show-touches] [--style <look>] [--style-captures] [--no-update-check] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
          built-in frames: {}\n\
          right-click the phone for the menu; keys: Cmd/Ctrl+S screenshot, Cmd/Ctrl+E record, Cmd/Ctrl+R rotate",
         frame::builtin_names().collect::<Vec<_>>().join(", ")
@@ -60,6 +63,11 @@ fn main() {
     }
     cap.normalize = saved.get_bool("normalize").unwrap_or(cap.normalize);
     cap.clipboard = saved.get_bool("clipboard").unwrap_or(cap.clipboard);
+    if let Some(s) = saved.get("style").and_then(style::Style::parse) {
+        cap.style = s;
+    }
+    cap.auto_style = saved.get_bool("auto-style").unwrap_or(cap.auto_style);
+    let mut restyle: Option<String> = None;
     let mut mute = saved.get_bool("mute").unwrap_or(false);
     let mut record_for: Option<f32> = None;
     let mut connect: Option<String> = None;
@@ -84,6 +92,11 @@ fn main() {
             }
             "--record-size" => cap.rec_size = args.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage()),
             "--record-bg" => cap.rec_bg = args.next().and_then(|v| capture::parse_color(&v)).unwrap_or_else(|| usage()),
+            "--style" => {
+                cap.style = args.next().and_then(|v| style::Style::parse(&v)).unwrap_or_else(|| usage());
+            }
+            "--style-captures" => cap.auto_style = true,
+            "--restyle" => restyle = Some(args.next().unwrap_or_else(|| usage())),
             "--audio" => opts.audio = true,
             "--gain" => cap.gain_db = args.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage()),
             "--no-normalize" => cap.normalize = false,
@@ -116,6 +129,16 @@ fn main() {
             "-h" | "--help" => usage(),
             s if s.starts_with('-') => usage(),
             s => serial = Some(s.to_string()),
+        }
+    }
+
+    if let Some(file) = restyle {
+        match restyle::export(std::path::Path::new(&file), &cap.style) {
+            Ok(out) => {
+                println!("{}", out.display());
+                return;
+            }
+            Err(e) => tools::die(&e),
         }
     }
 
