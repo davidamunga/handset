@@ -1,8 +1,8 @@
-//! Updating Handset in place, for a downloaded app (macOS) or an unzipped release (Windows) and nothing else
-//! (see `install.rs`; ADR 0024).
+//! Updating Handset in place, for a downloaded app (macOS), an unzipped release (Windows) or an unpacked tarball
+//! (Linux) and nothing else (see `install.rs`; ADRs 0024 and 0033).
 //!
 //! The steps, each of which can fail without touching the installed app:
-//! 1. download `SHA256SUMS`, its signature and the zip into a temporary folder;
+//! 1. download `SHA256SUMS`, its signature and the zip (or tarball) into a temporary folder;
 //! 2. check the signature against the keys built into the app, and the zip's SHA-256 against the signed list;
 //! 3. unpack, and check that what was unpacked is the version that was announced and starts;
 //! 4. write a small helper script. When Handset quits, the helper replaces the app and starts the new one, and
@@ -24,13 +24,17 @@ const RELEASE_BASE: &str = "https://github.com/davidamunga/handset/releases/down
 pub enum Os {
     Mac,
     Windows,
+    Linux,
 }
 
 impl Os {
+    /// The release file to download: a zip, or on Linux the tarball for this machine (`uname -m`, which is
+    /// what Rust calls `x86_64` and `aarch64` too).
     pub fn zip_name(self, version: &str) -> String {
         match self {
             Self::Mac => format!("Handset-{version}-macos.zip"),
             Self::Windows => format!("Handset-{version}-windows.zip"),
+            Self::Linux => format!("Handset-{version}-linux-{}.tar.gz", std::env::consts::ARCH),
         }
     }
 
@@ -38,6 +42,7 @@ impl Os {
         match self {
             Self::Mac => "SHA256SUMS",
             Self::Windows => "SHA256SUMS-windows",
+            Self::Linux => "SHA256SUMS-linux",
         }
     }
 }
@@ -47,6 +52,7 @@ pub fn os_for(source: Source) -> Option<Os> {
     match source {
         Source::MacApp => Some(Os::Mac),
         Source::WindowsZip => Some(Os::Windows),
+        Source::LinuxTarball => Some(Os::Linux),
         _ => None,
     }
 }
@@ -197,7 +203,7 @@ pub fn verify_download(dir: &Path, plan: &Plan, keys: &[VerifyingKey]) -> Result
 // ---- unpack -----------------------------------------------------------------------------------------
 
 /// Unpack `zip` into `dest` and return the new app: the `.app` bundle (macOS) or the folder that holds
-/// `handset.exe` (Windows).
+/// `handset.exe` (Windows) or `handset` (Linux).
 pub fn extract(zip: &Path, dest: &Path, os: Os) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dest).map_err(|e| e.to_string())?;
     let mut cmd = match os {
@@ -210,6 +216,11 @@ pub fn extract(zip: &Path, dest: &Path, os: Os) -> Result<PathBuf, String> {
         Os::Windows => {
             let mut c = crate::tools::command("tar");
             c.arg("-xf").arg(zip).arg("-C").arg(dest);
+            c
+        }
+        Os::Linux => {
+            let mut c = Command::new("tar");
+            c.arg("-xzf").arg(zip).arg("-C").arg(dest);
             c
         }
     };
@@ -228,23 +239,25 @@ fn locate(dest: &Path, os: Os) -> Result<PathBuf, String> {
             .into_iter()
             .find(|p| p.extension().is_some_and(|e| e == "app") && p.is_dir())
             .ok_or_else(|| "the download holds no app".to_string()),
-        Os::Windows => {
-            if dest.join("handset.exe").is_file() {
+        Os::Windows | Os::Linux => {
+            let name = program_name(os);
+            if dest.join(name).is_file() {
                 return Ok(dest.to_path_buf());
             }
-            entries
-                .into_iter()
-                .find(|p| p.join("handset.exe").is_file())
-                .ok_or_else(|| "the download holds no handset.exe".to_string())
+            entries.into_iter().find(|p| p.join(name).is_file()).ok_or_else(|| format!("the download holds no {name}"))
         }
     }
+}
+
+fn program_name(os: Os) -> &'static str {
+    if os == Os::Windows { "handset.exe" } else { "handset" }
 }
 
 /// The program inside an unpacked app.
 fn program(app: &Path, os: Os) -> PathBuf {
     match os {
         Os::Mac => app.join("Contents/MacOS/handset"),
-        Os::Windows => app.join("handset.exe"),
+        Os::Windows | Os::Linux => app.join(program_name(os)),
     }
 }
 
@@ -304,13 +317,14 @@ pub struct Swap {
     pub os: Os,
     /// The process to wait for.
     pub pid: u32,
-    /// The installed app (macOS: the `.app` bundle) or its folder (Windows).
+    /// The installed app (macOS: the `.app` bundle), its folder (Windows) or the program itself (Linux).
     pub current: PathBuf,
     /// The unpacked new app, or its folder.
     pub new: PathBuf,
     /// Where the helper writes what it did.
     pub log: PathBuf,
-    /// The command that starts the new app: `open` on macOS; tests use `true` and `false`.
+    /// The command that starts the new app: `open` on macOS, nothing (the program itself) on Linux; tests use
+    /// `true` and `false`.
     pub relaunch: String,
 }
 
@@ -330,6 +344,7 @@ pub fn script(swap: &Swap) -> String {
     match swap.os {
         Os::Mac => mac_script(swap),
         Os::Windows => windows_script(swap),
+        Os::Linux => linux_script(swap),
     }
 }
 
@@ -361,6 +376,57 @@ if {relaunch} "$app"; then
 else
   echo "update: the new app did not start; restoring"
   rm -rf "$app"; mv "$old" "$app"; {relaunch} "$app"; exit 1
+fi
+"#,
+        log = sh_quote(&s.log.to_string_lossy()),
+        pid = s.pid,
+        current = sh_quote(&s.current.to_string_lossy()),
+        new = sh_quote(&s.new.to_string_lossy()),
+        relaunch = s.relaunch,
+    )
+}
+
+/// Only the program is swapped, because an unpacked tarball may have been copied into a shared folder such as
+/// `~/.local/bin`; the tarball's other files are refreshed only where they already sit next to it.
+fn linux_script(s: &Swap) -> String {
+    format!(
+        r#"#!/bin/sh
+# Handset update helper: waits for Handset to quit, swaps the program, starts the new one.
+exec >>{log} 2>&1
+echo "update: waiting for $(date)"
+pid={pid}
+app={current}
+new={new}
+dir=$(dirname "$app")
+tmp="$app.update-new"
+old="$app.update-old"
+# a program that cannot run (a missing library, a newer glibc) exits at once; Handset itself keeps running
+start() {{
+  {relaunch} "$1" </dev/null >/dev/null 2>&1 &
+  p=$!
+  sleep 1
+  if kill -0 "$p" 2>/dev/null; then return 0; fi
+  wait "$p"
+}}
+n=0
+while kill -0 "$pid" 2>/dev/null && [ "$n" -lt 150 ]; do sleep 0.2; n=$((n + 1)); done
+rm -f "$tmp" "$old"
+# copy next to the installed program, so that putting it in place is a rename on one file system
+if ! cp "$new/handset" "$tmp" || ! chmod 755 "$tmp"; then echo "update: could not copy the new program"; rm -f "$tmp"; exit 1; fi
+if ! mv "$app" "$old"; then echo "update: could not move the old program aside"; rm -f "$tmp"; exit 1; fi
+if ! mv "$tmp" "$app"; then
+  echo "update: could not put the new program in place; restoring"
+  mv "$old" "$app"; start "$app"; exit 1
+fi
+if start "$app"; then
+  rm -f "$old"
+  for f in handset.desktop handset.png LICENSE NOTICE; do
+    if [ -f "$dir/$f" ] && [ -f "$new/$f" ]; then cp "$new/$f" "$dir/$f"; fi
+  done
+  echo "update: done"
+else
+  echo "update: the new program did not start; restoring"
+  rm -f "$app"; mv "$old" "$app"; start "$app"; exit 1
 fi
 "#,
         log = sh_quote(&s.log.to_string_lossy()),
@@ -445,13 +511,13 @@ Write-Output 'update: done'
 pub fn spawn_helper(swap: &Swap, dir: &Path) -> Result<(), String> {
     let text = script(swap);
     match swap.os {
-        Os::Mac => spawn_mac(&text, dir),
+        Os::Mac | Os::Linux => spawn_sh(&text, dir),
         Os::Windows => spawn_windows(&text, dir),
     }
 }
 
 #[cfg(unix)]
-fn spawn_mac(text: &str, dir: &Path) -> Result<(), String> {
+fn spawn_sh(text: &str, dir: &Path) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
     use std::os::unix::process::CommandExt;
     let path = dir.join("update.sh");
@@ -469,8 +535,8 @@ fn spawn_mac(text: &str, dir: &Path) -> Result<(), String> {
 }
 
 #[cfg(not(unix))]
-fn spawn_mac(_text: &str, _dir: &Path) -> Result<(), String> {
-    Err("not a macOS update".into())
+fn spawn_sh(_text: &str, _dir: &Path) -> Result<(), String> {
+    Err("not a macOS or Linux update".into())
 }
 
 #[cfg(windows)]
@@ -496,11 +562,12 @@ fn spawn_windows(_text: &str, _dir: &Path) -> Result<(), String> {
     Err("not a Windows update".into())
 }
 
-/// The installed app that would be replaced: the `.app` bundle holding `exe` (macOS), or the folder holding it
-/// (Windows).
+/// The installed app that would be replaced: the `.app` bundle holding `exe` (macOS), the folder holding it
+/// (Windows), or `exe` itself (Linux).
 pub fn install_root(exe: &Path, os: Os) -> Option<PathBuf> {
     match os {
         Os::Windows => exe.parent().map(Path::to_path_buf),
+        Os::Linux => exe.parent().map(|_| exe.to_path_buf()),
         Os::Mac => exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app")).map(Path::to_path_buf),
     }
 }
@@ -559,7 +626,10 @@ pub fn prepare(
     }
     let plan = Plan::new(version, os);
     std::fs::create_dir_all(work).map_err(other)?;
-    fetch(&plan.sums_url(), &work.join(os.sums_name()), &|_| {}).map_err(other)?;
+    if let Err(e) = fetch(&plan.sums_url(), &work.join(os.sums_name()), &|_| {}) {
+        // releases before Linux was one have no Linux list at all: send those to the download page
+        return Err(if os == Os::Linux { Failure::Unsigned } else { other(e) });
+    }
     if fetch(&plan.sig_url(), &work.join(format!("{}.sig", os.sums_name())), &|_| {}).is_err() {
         // no signature file at all: the release was made without the signing key
         return Err(Failure::Unsigned);
@@ -572,7 +642,7 @@ pub fn prepare(
     progress(1.0);
     let relaunch = match os {
         Os::Mac => "open".to_string(),
-        Os::Windows => String::new(),
+        Os::Windows | Os::Linux => String::new(),
     };
     Ok(Swap { os, pid: std::process::id(), current, new, log: work.join("update.log"), relaunch })
 }
@@ -590,13 +660,29 @@ mod tests {
         let win = Plan { version: "0.5.0".into(), os: Os::Windows, base: "https://x".into() };
         assert_eq!(win.zip_url(), "https://x/Handset-0.5.0-windows.zip");
         assert_eq!(win.sig_url(), "https://x/SHA256SUMS-windows.sig");
+        let linux = Plan { version: "0.5.0".into(), os: Os::Linux, base: "https://x".into() };
+        let arch = std::env::consts::ARCH;
+        assert_eq!(linux.zip_url(), format!("https://x/Handset-0.5.0-linux-{arch}.tar.gz"));
+        assert_eq!(linux.sums_url(), "https://x/SHA256SUMS-linux");
+        assert_eq!(linux.sig_url(), "https://x/SHA256SUMS-linux.sig");
     }
 
     #[test]
-    fn only_a_downloaded_app_or_an_unzipped_release_updates_itself() {
+    fn only_a_downloaded_app_an_unzipped_release_or_an_unpacked_tarball_updates_itself() {
+        use crate::install::{ArchPackage, AurHelper};
         assert_eq!(os_for(Source::MacApp), Some(Os::Mac));
         assert_eq!(os_for(Source::WindowsZip), Some(Os::Windows));
-        for s in [Source::Homebrew, Source::Scoop, Source::Winget, Source::Other] {
+        assert_eq!(os_for(Source::LinuxTarball), Some(Os::Linux));
+        for s in [
+            Source::Homebrew,
+            Source::Scoop,
+            Source::Winget,
+            Source::Arch(ArchPackage::HandsetBin, Some(AurHelper::Yay)),
+            Source::Arch(ArchPackage::Handset, None),
+            Source::Cargo,
+            Source::Nix,
+            Source::Other,
+        ] {
             assert_eq!(os_for(s), None, "{s:?}");
         }
     }
@@ -621,7 +707,11 @@ mod tests {
         Swap {
             os,
             pid: 4242,
-            current: PathBuf::from(if os == Os::Mac { "/Applications/Handset.app" } else { r"C:\Tools\Handset" }),
+            current: PathBuf::from(match os {
+                Os::Mac => "/Applications/Handset.app",
+                Os::Windows => r"C:\Tools\Handset",
+                Os::Linux => "/home/me/.local/bin/handset",
+            }),
             new: PathBuf::from("/tmp/new"),
             log: PathBuf::from("/tmp/update.log"),
             relaunch: "open".into(),
@@ -643,6 +733,25 @@ mod tests {
         );
         assert!(s.contains("mv \"$old\" \"$app\""), "it can put the old app back");
         assert!(s.contains("com.apple.quarantine"));
+    }
+
+    #[test]
+    fn the_linux_helper_swaps_only_the_program_and_can_roll_back() {
+        let s = script(&Swap { relaunch: String::new(), ..swap(Os::Linux) });
+        assert!(s.starts_with("#!/bin/sh"));
+        assert!(
+            s.contains("pid=4242") && s.contains("app='/home/me/.local/bin/handset'") && s.contains("new='/tmp/new'")
+        );
+        assert!(s.contains("kill -0 \"$pid\""), "it waits for Handset to quit");
+        let at = |needle: &str| s.find(needle).unwrap_or_else(|| panic!("missing {needle}"));
+        assert!(
+            at("cp \"$new/handset\" \"$tmp\"") < at("mv \"$app\" \"$old\"")
+                && at("mv \"$app\" \"$old\"") < at("mv \"$tmp\" \"$app\""),
+            "copy, move aside, put in place"
+        );
+        assert!(s.contains("mv \"$old\" \"$app\""), "it can put the old program back");
+        assert!(s.contains("  \"$1\" </dev/null"), "with no relaunch command the program starts itself");
+        assert!(!s.contains("rm -rf"), "nothing but the program's own files is removed");
     }
 
     #[test]
@@ -670,10 +779,18 @@ mod tests {
         );
         assert_eq!(install_root(Path::new("/usr/local/bin/handset"), Os::Mac), None);
         assert_eq!(
+            install_root(Path::new("/home/me/.local/bin/handset"), Os::Linux),
+            Some(PathBuf::from("/home/me/.local/bin/handset"))
+        );
+        assert_eq!(
             install_root(Path::new("/Tools/Handset-0.4.0/handset.exe"), Os::Windows),
             Some(PathBuf::from("/Tools/Handset-0.4.0"))
         );
     }
+
+    /// Held by every test that sets `HANDSET_UPDATE_BASE`, which the whole test process shares.
+    #[cfg(unix)]
+    static BASE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn temp_dir(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("handset-test-{name}-{}", std::process::id()));
@@ -794,8 +911,7 @@ mod tests {
             keys: &[VerifyingKey],
             progress: &dyn Fn(f32),
         ) -> Result<Swap, Failure> {
-            static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-            let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _guard = BASE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             // SAFETY: the lock above serialises every test that touches this variable
             unsafe { std::env::set_var("HANDSET_UPDATE_BASE", format!("file://{}", release.display())) };
             let exe = install.join("Handset.app/Contents/MacOS/handset");
@@ -956,8 +1072,7 @@ mod tests {
             std::fs::create_dir_all(&install).unwrap();
             make_app(&install, "0.0.1", "old");
             let exe = install.join("Handset.app/Contents/MacOS/handset");
-            static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-            let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let _g = BASE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             unsafe { std::env::set_var("HANDSET_UPDATE_BASE", format!("file://{}", PathBuf::from(release).display())) };
             let swap = prepare(&version, Source::MacApp, &exe, &work, &verify::trusted_keys(), true, &|_| {})
                 .expect("prepared");
@@ -967,6 +1082,172 @@ mod tests {
             run_helper(&swap);
             let out = Command::new(&exe).arg("--version").output().unwrap();
             assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), format!("handset {version}"));
+            let _ = std::fs::remove_dir_all(root);
+        }
+    }
+
+    // ---- the Linux path is plain sh and tar, so it runs for real on macOS too ------------------------------
+
+    #[cfg(unix)]
+    mod linux {
+        use super::*;
+        use ed25519_dalek::{Signer, SigningKey};
+        use std::os::unix::fs::PermissionsExt;
+
+        const VERSION: &str = "9.9.9";
+
+        /// A stand-in program that prints its version; its text says which one it is.
+        fn make_program(path: &Path, version: &str) {
+            std::fs::write(path, format!("#!/bin/sh\n[ \"$1\" = --version ] && echo \"handset {version}\"\n")).unwrap();
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        /// A local release folder holding the tarball (laid out as `scripts/package-linux.sh` makes it),
+        /// `SHA256SUMS-linux` and, when `key` is given, its signature.
+        fn make_release(dir: &Path, version: &str, key: Option<&SigningKey>) {
+            let name = format!("Handset-{VERSION}-linux-{}", std::env::consts::ARCH);
+            let stage = dir.join("stage");
+            std::fs::create_dir_all(stage.join(&name)).unwrap();
+            make_program(&stage.join(&name).join("handset"), version);
+            std::fs::write(stage.join(&name).join("handset.desktop"), "[Desktop Entry]\nName=Handset new\n").unwrap();
+            std::fs::write(stage.join(&name).join("LICENSE"), "licence").unwrap();
+            let tarball = Os::Linux.zip_name(VERSION);
+            let made = Command::new("tar")
+                .arg("-czf")
+                .arg(dir.join(&tarball))
+                .arg("-C")
+                .arg(&stage)
+                .arg(&name)
+                .status()
+                .unwrap();
+            assert!(made.success());
+            std::fs::remove_dir_all(&stage).unwrap();
+            let sums = format!("{}  {tarball}\n", verify::sha256_file(&dir.join(&tarball)).unwrap());
+            std::fs::write(dir.join("SHA256SUMS-linux"), &sums).unwrap();
+            if let Some(k) = key {
+                std::fs::write(dir.join("SHA256SUMS-linux.sig"), k.sign(sums.as_bytes()).to_bytes()).unwrap();
+            }
+        }
+
+        fn prepare_from(release: &Path, exe: &Path, work: &Path, keys: &[VerifyingKey]) -> Result<Swap, Failure> {
+            let _guard = BASE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            // SAFETY: the lock above serialises every test that touches this variable
+            unsafe { std::env::set_var("HANDSET_UPDATE_BASE", format!("file://{}", release.display())) };
+            let result = prepare(VERSION, Source::LinuxTarball, exe, work, keys, false, &|_| {});
+            unsafe { std::env::remove_var("HANDSET_UPDATE_BASE") };
+            result
+        }
+
+        fn run_helper(swap: &Swap) {
+            let mut done = swap.clone();
+            done.pid = 999_999;
+            let script = swap.log.parent().unwrap().join("update.sh");
+            std::fs::write(&script, super::super::script(&done)).unwrap();
+            let _ = Command::new("/bin/sh").arg(&script).status();
+        }
+
+        #[test]
+        fn a_signed_tarball_is_checked_unpacked_and_only_the_program_swapped_in() {
+            let root = temp_dir("linux-e2e");
+            let (release, bin, work) = (root.join("release"), root.join("local-bin"), root.join("work"));
+            std::fs::create_dir_all(&bin).unwrap();
+            let exe = bin.join("handset");
+            make_program(&exe, "1.0.0");
+            // someone else's program in the same folder, and the desktop entry kept next to Handset
+            std::fs::write(bin.join("other-tool"), "mine").unwrap();
+            std::fs::write(bin.join("handset.desktop"), "old entry").unwrap();
+            let k = SigningKey::from_bytes(&[21; 32]);
+            make_release(&release, VERSION, Some(&k));
+
+            let mut swap = prepare_from(&release, &exe, &work, &[k.verifying_key()]).expect("the update is prepared");
+            assert_eq!(swap.current, exe);
+            assert!(swap.new.join("handset").is_file());
+            assert!(std::fs::read_to_string(&exe).unwrap().contains("1.0.0"), "nothing is replaced yet");
+
+            swap.relaunch = "true".into();
+            run_helper(&swap);
+            assert!(std::fs::read_to_string(&exe).unwrap().contains(VERSION), "the new program is in place");
+            assert!(std::fs::metadata(&exe).unwrap().permissions().mode() & 0o111 != 0, "and can run");
+            assert_eq!(
+                std::fs::read_to_string(bin.join("handset.desktop")).unwrap(),
+                "[Desktop Entry]\nName=Handset new\n"
+            );
+            assert_eq!(std::fs::read_to_string(bin.join("other-tool")).unwrap(), "mine", "other files are left alone");
+            assert!(!bin.join("LICENSE").exists(), "files that were not there are not added");
+            assert!(
+                !bin.join("handset.update-old").exists() && !bin.join("handset.update-new").exists(),
+                "no leftovers"
+            );
+            let _ = std::fs::remove_dir_all(root);
+        }
+
+        #[test]
+        fn a_new_program_that_does_not_start_is_replaced_by_the_old_one_again() {
+            let root = temp_dir("linux-rollback");
+            let (bin, new) = (root.join("bin"), root.join("new"));
+            std::fs::create_dir_all(&bin).unwrap();
+            std::fs::create_dir_all(&new).unwrap();
+            make_program(&bin.join("handset"), "1.0.0");
+            make_program(&new.join("handset"), VERSION);
+            let swap = Swap {
+                os: Os::Linux,
+                pid: 999_999,
+                current: bin.join("handset"),
+                new,
+                log: root.join("update.log"),
+                relaunch: "false".into(),
+            };
+            run_helper(&swap);
+            assert!(std::fs::read_to_string(bin.join("handset")).unwrap().contains("1.0.0"), "the old program is back");
+            assert!(!bin.join("handset.update-old").exists());
+            let log = std::fs::read_to_string(root.join("update.log")).unwrap_or_default();
+            assert!(log.contains("restoring"), "the helper says what it did: {log}");
+            let _ = std::fs::remove_dir_all(root);
+        }
+
+        #[test]
+        fn an_unsigned_tarball_or_a_release_without_one_is_not_installed() {
+            let root = temp_dir("linux-unsigned");
+            let (release, bin) = (root.join("release"), root.join("bin"));
+            std::fs::create_dir_all(&bin).unwrap();
+            let exe = bin.join("handset");
+            make_program(&exe, "1.0.0");
+            let k = SigningKey::from_bytes(&[22; 32]);
+            make_release(&release, VERSION, None);
+            let e = prepare_from(&release, &exe, &root.join("w1"), &[k.verifying_key()]).unwrap_err();
+            assert_eq!(e, Failure::Unsigned);
+            // an older release, from before Linux had a tarball: no list at all
+            let e = prepare_from(&root.join("empty"), &exe, &root.join("w2"), &[k.verifying_key()]).unwrap_err();
+            assert_eq!(e, Failure::Unsigned);
+            let _ = std::fs::remove_dir_all(root);
+        }
+
+        #[test]
+        fn a_tampered_or_mislabelled_tarball_is_refused() {
+            let root = temp_dir("linux-bad");
+            let (release, bin) = (root.join("release"), root.join("bin"));
+            std::fs::create_dir_all(&bin).unwrap();
+            let exe = bin.join("handset");
+            make_program(&exe, "1.0.0");
+            let k = SigningKey::from_bytes(&[23; 32]);
+            // signed and intact, but the program inside is 1.0.0
+            make_release(&release, "1.0.0", Some(&k));
+            let e = prepare_from(&release, &exe, &root.join("w1"), &[k.verifying_key()]).unwrap_err();
+            assert!(matches!(&e, Failure::Other(m) if m.contains("not handset 9.9.9")), "{e}");
+            std::fs::write(release.join(Os::Linux.zip_name(VERSION)), b"something else").unwrap();
+            let e = prepare_from(&release, &exe, &root.join("w2"), &[k.verifying_key()]).unwrap_err();
+            assert!(matches!(&e, Failure::Other(m) if m.contains("does not match the signed list")), "{e}");
+            assert!(std::fs::read_to_string(&exe).unwrap().contains("1.0.0"), "the installed program is untouched");
+            let _ = std::fs::remove_dir_all(root);
+        }
+
+        #[test]
+        fn a_folder_that_cannot_be_written_stops_before_downloading_anything() {
+            let root = temp_dir("linux-readonly");
+            let exe = root.join("missing/handset");
+            let e = prepare(VERSION, Source::LinuxTarball, &exe, &root.join("work"), &[], false, &|_| {}).unwrap_err();
+            assert!(matches!(&e, Failure::NotWritable(d) if d.ends_with("missing")), "{e:?}");
+            assert!(!root.join("work").exists(), "nothing was downloaded");
             let _ = std::fs::remove_dir_all(root);
         }
     }

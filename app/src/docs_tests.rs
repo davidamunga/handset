@@ -106,7 +106,8 @@ fn the_guide_is_linked_from_the_readme_and_points_at_the_adr() {
 #[test]
 fn the_update_guide_gives_the_real_commands_for_each_package_manager() {
     use crate::install::Source;
-    for s in [Source::Homebrew, Source::Scoop, Source::Winget] {
+    use crate::install::{ArchPackage, AurHelper};
+    for s in [Source::Homebrew, Source::Scoop, Source::Winget, Source::Cargo] {
         let cmd = s.upgrade_command().unwrap();
         assert!(UPDATES.contains(&format!("copies `{cmd}`")), "docs/updates.md does not give {cmd}");
         assert!(
@@ -114,6 +115,11 @@ fn the_update_guide_gives_the_real_commands_for_each_package_manager() {
             "the toast for {cmd} is not shown"
         );
         assert!(README.contains(cmd), "the README does not give {cmd}");
+    }
+    for s in [Source::Arch(ArchPackage::HandsetBin, Some(AurHelper::Yay)), Source::Arch(ArchPackage::HandsetBin, None)]
+    {
+        let cmd = s.upgrade_command().unwrap();
+        assert!(UPDATES.contains(&format!("copies `{cmd}`")), "docs/updates.md does not give {cmd}");
     }
 }
 

@@ -283,7 +283,10 @@ Handset knows how it was installed: with Homebrew, Scoop or winget the banner gi
 copies it, so the package manager stays in charge. A downloaded app (macOS) or unzipped release (Windows) can
 install the update itself: it checks the release's signature and checksum, replaces the app and restarts, and puts the
 old one back if anything fails. The menu also offers **What's New**, **Skip** (that version stays quiet) and **Remind
-Me in 3 Days**. There is no in-place update on Linux: run `cargo install` again with `--force`.
+Me in 3 Days**. On Linux an Arch package copies `yay -S`, `paru -S` or the AUR's `makepkg` steps, `cargo install`
+copies `cargo install --git https://github.com/davidamunga/handset --locked handset --force`, the Nix package is
+told to update through Nix, and an unpacked release tarball (next to its `handset.desktop`, or in `~/.local/bin`)
+installs the update itself like the macOS app.
 
 How it works: [docs/updates.md](docs/updates.md).
 
