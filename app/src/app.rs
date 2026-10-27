@@ -200,6 +200,8 @@ struct Toast {
     ttl: Duration,
     path: Option<std::path::PathBuf>,
     url: Option<String>,
+    /// Where, as a fraction of the pill's width, the EDIT half begins (a capture that can be edited).
+    edit_from: Option<f32>,
 }
 
 const TOAST: Duration = Duration::from_millis(1800);
@@ -904,12 +906,7 @@ impl App {
                         "open" => capture::open_file(&path),
                         "reveal" => capture::reveal(&path),
                         "style" => self.style_in_background(path),
-                        "edit" => {
-                            let _ = crate::tools::command(std::env::current_exe().unwrap_or_else(|_| "handset".into()))
-                                .arg("--edit")
-                                .arg(&path)
-                                .spawn();
-                        }
+                        "edit" => self.edit_capture(&path),
                         "copy" => {
                             let ok = capture::copy_to_clipboard(&path);
                             self.show_toast(if ok { "COPIED" } else { "COPY FAILED" });
@@ -988,6 +985,7 @@ impl App {
                         ttl: TOAST_SAVED,
                         path: None,
                         url: Some(rel.url.clone()),
+                        edit_from: None,
                     });
                     self.update = Some(rel);
                     self.refresh_overlay();
@@ -1022,7 +1020,14 @@ impl App {
     }
 
     fn show_toast(&mut self, text: &str) {
-        self.toast = Some(Toast { text: text.to_string(), since: Instant::now(), ttl: TOAST, path: None, url: None });
+        self.toast = Some(Toast {
+            text: text.to_string(),
+            since: Instant::now(),
+            ttl: TOAST,
+            path: None,
+            url: None,
+            edit_from: None,
+        });
         self.refresh_overlay();
     }
 
@@ -1033,8 +1038,16 @@ impl App {
         if self.cap.clipboard {
             eprintln!("clipboard: {}", if copied { "copied" } else { "copy failed" });
         }
-        let text = format!("{what} {} - CLICK TO SHOW", if copied { "COPIED" } else { "SAVED" });
-        self.toast = Some(Toast { text, since: Instant::now(), ttl: TOAST_SAVED, path: Some(path), url: None });
+        let mut text = format!("{what} {} - SHOW", if copied { "COPIED" } else { "SAVED" });
+        // a styled copy is the result of editing; everything else can be edited
+        let edit_from = (what != "STYLED COPY").then(|| {
+            // text is not monospaced: measure where the EDIT half starts from the pill widths
+            let before = overlay::pill(&text, None, 3).width as f32;
+            text.push_str(" | EDIT");
+            before / overlay::pill(&text, None, 3).width as f32
+        });
+        self.toast =
+            Some(Toast { text, since: Instant::now(), ttl: TOAST_SAVED, path: Some(path), url: None, edit_from });
         self.refresh_overlay();
     }
 
@@ -1127,6 +1140,12 @@ impl App {
                 self.show_toast("SCREENSHOT FAILED");
             }
         }
+    }
+
+    /// Open the style editor on a saved capture, in its own process.
+    fn edit_capture(&self, path: &std::path::Path) {
+        let exe = std::env::current_exe().unwrap_or_else(|_| "handset".into());
+        let _ = crate::tools::command(exe).arg("--edit").arg(path).spawn();
     }
 
     /// Save a styled copy of a capture beside it, off the UI thread; the result arrives as `UserEvent::Styled`.
@@ -1575,9 +1594,19 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. }
                 if self.toast_hit() =>
             {
+                let on_edit = self.toast.as_ref().and_then(|t| t.edit_from).is_some_and(|from| {
+                    self.renderer
+                        .as_ref()
+                        .and_then(|r| r.overlay_fraction(self.cursor.0 as f32, self.cursor.1 as f32))
+                        .is_some_and(|f| f >= from)
+                });
                 if let Some(t) = self.toast.take() {
                     if let Some(path) = t.path {
-                        capture::reveal(&path);
+                        if on_edit {
+                            self.edit_capture(&path);
+                        } else {
+                            capture::reveal(&path);
+                        }
                     } else if let Some(url) = t.url {
                         crate::tools::open_url(&url);
                     }

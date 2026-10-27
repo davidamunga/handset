@@ -431,6 +431,14 @@ impl Renderer {
         x >= r[0] * ww && x < (r[0] + r[2]) * ww && y >= r[1] * wh && y < (r[1] + r[3]) * wh
     }
 
+    /// How far across the overlay pill (0..1) this window-pixel point is, if it is on it.
+    pub fn overlay_fraction(&self, x: f32, y: f32) -> Option<f32> {
+        let o = self.overlay.as_ref()?;
+        let (ww, wh) = (self.config.width as f32, self.config.height as f32);
+        let r = Self::overlay_rect(self.video_rect, o, ww, wh);
+        (self.overlay_contains(x, y)).then(|| (x / ww - r[0]) / r[2])
+    }
+
     pub fn set_overlay_opacity(&mut self, opacity: f32) {
         if let Some(o) = self.overlay.as_mut() {
             o.opacity = opacity;
