@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'release/**']
   pull_request:
 
 permissions:
@@ -44,3 +44,10 @@ jobs:
           workspaces: app
       - run: cargo test
       - run: cargo build --release
+
+  release-scripts:
+    name: release scripts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - run: scripts/test-release-branches.sh

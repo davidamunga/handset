@@ -32,3 +32,4 @@ Copy [`0000-template.md`](0000-template.md) to start a new one.
 | [0020](0020-publish-an-unsigned-windows-zip-with-each-release.md) | Publish an unsigned Windows zip with each release | accepted |
 | [0021](0021-draw-generic-device-frames-ourselves.md) | Draw generic device frames ourselves | accepted |
 | [0022](0022-style-captures-with-a-shared-compositor.md) | Style captures with a shared compositor | accepted |
+| [0023](0023-keep-a-branch-for-every-release.md) | Keep a branch for every release | accepted |

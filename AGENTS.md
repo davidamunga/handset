@@ -30,7 +30,7 @@ small native Rust app that implements the desktop side of the scrcpy protocol an
 | `app/assets/` | Embedded scrcpy server, the built-in phone frames and the Inter fonts |
 | `frames/` | Script that generates the frame PNGs |
 | `app/packaging/` | App icon: SVG sources, `AppIcon.icns` and a README PNG (rebuild with `scripts/make-icon.sh`) |
-| `scripts/` | Packaging, icon, version-sync and hook scripts |
+| `scripts/` | Packaging, icon, version-sync, release-branch (`release-branches.sh`, tested by `test-release-branches.sh`) and hook scripts |
 | `.changeset/`, `package.json` | Changesets config and the version it bumps (release tooling only, see `docs/runbooks/release.md`) |
 | `docs/adr/`, `docs/runbooks/` | Architecture decisions and repeatable procedures |
 

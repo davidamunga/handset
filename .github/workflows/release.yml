@@ -2,9 +2,11 @@ name: release
 
 # Publishes a release. It only runs when you start it by hand: Actions > release > Run workflow, or
 # `gh workflow run release.yml`. It releases the version in package.json on main (the one a merged
-# "Version packages" pull request set), after checking that it has not been released yet and that
-# CHANGELOG.md has a section for it. It builds the files (see build-release-files.yml), tags vX.Y.Z,
-# creates the GitHub release and bumps the Homebrew cask.
+# "Version packages" pull request set), or, for a patch to an older line, on the branch release/<version>
+# of that very version, after checking that it has not been released yet and that CHANGELOG.md has a
+# section for it. It builds the files (see build-release-files.yml), tags vX.Y.Z, keeps the branch
+# release/X.Y.Z at the tagged commit, creates the GitHub release and, from main only, bumps the Homebrew
+# cask and the Scoop manifest.
 # To rehearse without publishing anything, run `release-dry-run` instead. See docs/runbooks/release.md.
 
 on:
@@ -31,7 +33,7 @@ jobs:
         run: |
           version="$(node -p "require('./package.json').version")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          [ "$GITHUB_REF" = "refs/heads/main" ] || { echo "::error::Run the release from main"; exit 1; }
+          scripts/release-branches.sh check-ref "$GITHUB_REF" "$version" || { echo "::error::Run the release from main, or from release/$version"; exit 1; }
           if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
             echo "::error::v$version is already released. Merge a version pull request first."; exit 1
           fi
@@ -64,12 +66,25 @@ jobs:
         run: |
           awk -v v="$VERSION" '$0 == "## " v { found = 1; next } /^## / { found = 0 } found' CHANGELOG.md > notes.md
           printf '\n**Windows:** `Handset-%s-windows.zip` is not code-signed yet. SmartScreen warns on first run (More info, Run anyway), and a PC with Smart App Control on blocks unsigned apps entirely. Install `adb` (and `ffmpeg` for recording) and put them on `PATH`, or next to `handset.exe`.\n' "$VERSION" >> notes.md
+          # only a release from main is "latest": a patch to an older line must not take that place
+          latest=--latest=false
+          [ "$GITHUB_REF" = "refs/heads/main" ] && latest=--latest
           gh release create "v$VERSION" release-files/* \
-            --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md --latest
+            --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md "$latest"
+      - name: Keep a branch for this release
+        run: |
+          # release/X.Y.Z is the line that produced vX.Y.Z. A patch released from its own branch has it already.
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/release/$VERSION" >/dev/null 2>&1; then
+            echo "release/$VERSION already exists"
+          else
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/release/$VERSION" -f sha="$GITHUB_SHA" >/dev/null
+            echo "created release/$VERSION at $GITHUB_SHA"
+          fi
 
   scoop:
     name: update the Scoop manifest
     needs: [prepare, build, publish]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -93,7 +108,7 @@ jobs:
           mv bucket/handset.json.new bucket/handset.json
           if git diff --quiet; then echo "manifest already at ${VERSION}"; exit 0; fi
           # main only takes changes through a pull request, which the workflow's token may open
-          BRANCH="release/scoop-${VERSION}"
+          BRANCH="chore/scoop-${VERSION}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
@@ -106,6 +121,7 @@ jobs:
   homebrew:
     name: update the Homebrew cask
     needs: [prepare, build, publish]
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     env:
       TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
