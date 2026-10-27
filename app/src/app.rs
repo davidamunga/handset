@@ -171,11 +171,18 @@ pub struct App {
     hover: Option<Button>,
     /// The window is fully covered or minimised: nothing is drawn until it shows again.
     occluded: bool,
-    toolbar_key: Option<(u32, Option<Button>, bool, bool)>,
+    toolbar_key: Option<(u32, Option<Button>, bool, bool, bool)>,
     toast: Option<Toast>,
     /// What the renderer's overlay currently shows (text, dot colour).
     overlay_key: Option<(String, Option<[u8; 3]>)>,
     overlay_opacity: f32,
+    /// The overlay's text as laid out (wrapped), whether it has a dot, and its font size: what a click hit.
+    overlay_layout: Option<(String, bool, u32)>,
+    /// The version the update banner is shown for, until it is dismissed or acted on.
+    banner: Option<String>,
+    /// What the banner currently shows (text, width) and where its close cross begins, in its pixels.
+    banner_key: Option<(String, u32)>,
+    banner_close_x: u32,
     /// How long the screen has been black, and the message about it while it is.
     black: crate::black::BlackWatch,
     hint: Option<String>,
@@ -214,19 +221,13 @@ struct Toast {
     ttl: Duration,
     path: Option<std::path::PathBuf>,
     url: Option<String>,
-    /// Where, as a fraction of the pill's width, the EDIT half begins (a capture that can be edited).
-    edit_from: Option<f32>,
-    /// Text a click puts on the clipboard (the command that updates a package-manager install).
-    copy: Option<String>,
-    /// A click installs the waiting update.
-    install: bool,
+    /// The character where the EDIT part of the text begins (a capture that can be edited).
+    edit_at: Option<usize>,
 }
 
 const TOAST: Duration = Duration::from_millis(1800);
 /// Capture toasts stay long enough to be clicked.
 const TOAST_SAVED: Duration = Duration::from_millis(4500);
-/// The update notice waits longer: it asks for a decision.
-const TOAST_UPDATE: Duration = Duration::from_secs(10);
 const TOAST_FADE: Duration = Duration::from_millis(400);
 /// Cursor position in window space (0..1) and the device pixel under it, if any.
 type Located = ((f32, f32), Option<(i32, i32)>);
@@ -269,6 +270,10 @@ impl App {
             toast: None,
             overlay_key: None,
             overlay_opacity: 1.0,
+            overlay_layout: None,
+            banner: None,
+            banner_key: None,
+            banner_close_x: 0,
             black: Default::default(),
             hint: None,
             notifications_open: false,
@@ -806,11 +811,11 @@ impl App {
             return;
         }
         let wh = w.inner_size().height;
-        let key = (wh, self.hover, self.recorder.is_some(), ios);
+        let key = (wh, self.hover, self.recorder.is_some(), ios, self.update.is_some());
         if self.toolbar_key != Some(key) {
-            let order = toolbar::order(ios);
+            let order = toolbar::order(ios, self.update.is_some());
             r.set_toolbar_image(
-                Some(&toolbar::raster(wh as f32, order, self.hover, self.recorder.is_some())),
+                Some(&toolbar::raster(wh as f32, &order, self.hover, self.recorder.is_some())),
                 order.len(),
             );
             self.toolbar_key = Some(key);
@@ -841,8 +846,8 @@ impl App {
             return None;
         }
         let s = w.inner_size();
-        let order = toolbar::order(self.is_ios());
-        toolbar::button_at(s.width as f32, s.height as f32, self.cursor.0 as f32, self.cursor.1 as f32, order)
+        let order = toolbar::order(self.is_ios(), self.update.is_some());
+        toolbar::button_at(s.width as f32, s.height as f32, self.cursor.0 as f32, self.cursor.1 as f32, &order)
     }
 
     fn on_button(&mut self, el: &ActiveEventLoop, b: Button) {
@@ -880,6 +885,7 @@ impl App {
             Button::Screenshot => self.on_menu(el, "shot"),
             Button::Record => self.on_menu(el, "rec"),
             Button::Rotate => self.on_menu(el, "rotate"),
+            Button::Update => self.act_on_update(),
             Button::More => self.show_menu(),
             Button::Quit => el.exit(),
             Button::NextFrame => {
@@ -1048,11 +1054,15 @@ impl App {
                     settings::save("update-skip", &u.version);
                     self.show_toast(&format!("SKIPPING {}", u.version));
                 }
+                self.refresh_toolbar();
+                self.refresh_banner();
             }
             "update-later" => {
                 settings::save("update-remind", &(update::now() + update::SNOOZE).to_string());
                 self.update = None;
                 self.show_toast("WILL REMIND YOU IN 3 DAYS");
+                self.refresh_toolbar();
+                self.refresh_banner();
             }
             "update-auto" => {
                 self.update_auto = !self.update_auto;
@@ -1187,20 +1197,11 @@ impl App {
                     );
                     if speak {
                         self.update_told = Some(rel.version.clone());
-                        let n = crate::install::notice(self.install, &rel.version, &rel.url);
-                        self.toast = Some(Toast {
-                            text: n.text,
-                            since: Instant::now(),
-                            ttl: TOAST_UPDATE,
-                            path: None,
-                            url: n.url,
-                            edit_from: None,
-                            copy: n.copy,
-                            install: n.install,
-                        });
+                        self.banner = Some(rel.version.clone());
                     }
                     self.update = Some(rel);
-                    self.refresh_overlay();
+                    self.refresh_toolbar();
+                    self.refresh_banner();
                 } else if manual {
                     self.show_toast(&format!("UP TO DATE ({})", update::current()));
                 }
@@ -1216,6 +1217,60 @@ impl App {
 
     /// Download, check and unpack the waiting update in the background; when it is ready the app quits and a
     /// helper swaps it in and starts it (see `updater.rs`).
+    /// Show the update banner while an announced update waits, as wide as the phone's screen.
+    fn refresh_banner(&mut self) {
+        let want = match (&self.banner, &self.update) {
+            (Some(v), Some(rel)) if *v == rel.version && !self.updating => {
+                // what is new on one line, what a click does on the next
+                Some(crate::install::notice(self.install, &rel.version, &rel.url).text.replacen(" - ", "\n", 1))
+            }
+            _ => None,
+        };
+        let (Some(r), Some(w)) = (self.renderer.as_mut(), self.window.as_ref()) else { return };
+        let key = want.map(|text| (text, r.overlay_max_width()));
+        if self.banner_key != key {
+            match &key {
+                Some((text, width)) => {
+                    let s = ((w.scale_factor() * 1.5).round() as u32).max(1);
+                    let (pill, close_x) = overlay::banner(text, s, *width);
+                    r.set_banner(Some(&pill));
+                    self.banner_close_x = close_x;
+                }
+                None => r.set_banner(None),
+            }
+            self.banner_key = key;
+            w.request_redraw();
+        }
+    }
+
+    /// Where on the update banner the pointer is, in the banner's pixels.
+    fn banner_at(&self) -> Option<(f32, f32)> {
+        self.renderer.as_ref()?.banner_point(self.cursor.0 as f32, self.cursor.1 as f32)
+    }
+
+    /// The banner's close cross: hide it and stay quiet for a few days; the toolbar button still offers the update.
+    fn dismiss_banner(&mut self) {
+        settings::save("update-remind", &(update::now() + update::SNOOZE).to_string());
+        self.banner = None;
+        self.refresh_banner();
+        self.show_toast("UPDATE STAYS IN THE TOOLBAR");
+    }
+
+    /// The toolbar's update button: what the update notice offers for this install (install in place, copy the
+    /// package manager's command, or open the release page).
+    fn act_on_update(&mut self) {
+        let Some(rel) = &self.update else { return };
+        let n = crate::install::notice(self.install, &rel.version, &rel.url);
+        if n.install {
+            self.start_update();
+        } else if let Some(cmd) = n.copy {
+            crate::clipboard::write_text(&cmd);
+            self.show_toast(&format!("COPIED: {}", cmd.to_uppercase()));
+        } else if let Some(url) = n.url {
+            crate::tools::open_url(&url);
+        }
+    }
+
     fn start_update(&mut self) {
         let Some(rel) = self.update.clone() else { return };
         if self.updating {
@@ -1230,6 +1285,7 @@ impl App {
             return;
         }
         self.updating = true;
+        self.refresh_banner();
         self.show_toast("DOWNLOADING UPDATE...");
         let (proxy, source) = (self.proxy.clone(), self.install);
         std::thread::spawn(move || {
@@ -1315,9 +1371,7 @@ impl App {
             ttl: TOAST,
             path: None,
             url: None,
-            edit_from: None,
-            copy: None,
-            install: false,
+            edit_at: None,
         });
         self.refresh_overlay();
     }
@@ -1331,28 +1385,19 @@ impl App {
         }
         let mut text = format!("{what} {} - SHOW", if copied { "COPIED" } else { "SAVED" });
         // a styled copy is the result of editing; everything else can be edited
-        let edit_from = (what != "STYLED COPY").then(|| {
-            // text is not monospaced: measure where the EDIT half starts from the pill widths
-            let before = overlay::pill(&text, None, 3).width as f32;
+        let edit_at = (what != "STYLED COPY").then(|| {
+            let at = text.chars().count() + 1;
             text.push_str(" | EDIT");
-            before / overlay::pill(&text, None, 3).width as f32
+            at
         });
-        self.toast = Some(Toast {
-            text,
-            since: Instant::now(),
-            ttl: TOAST_SAVED,
-            path: Some(path),
-            url: None,
-            edit_from,
-            copy: None,
-            install: false,
-        });
+        self.toast =
+            Some(Toast { text, since: Instant::now(), ttl: TOAST_SAVED, path: Some(path), url: None, edit_at });
         self.refresh_overlay();
     }
 
     /// Is the cursor on a clickable capture toast?
     fn toast_hit(&self) -> bool {
-        self.toast.as_ref().is_some_and(|t| t.path.is_some() || t.url.is_some() || t.copy.is_some() || t.install)
+        self.toast.as_ref().is_some_and(|t| t.path.is_some() || t.url.is_some())
             && self.renderer.as_ref().is_some_and(|r| r.overlay_contains(self.cursor.0 as f32, self.cursor.1 as f32))
     }
 
@@ -1369,7 +1414,11 @@ impl App {
             Some((t.text.clone(), None, opacity))
         } else if let Some(b) = self.hover {
             // what the toolbar button under the pointer does
-            Some((b.label().to_string(), None, 1.0))
+            let label = match (&self.update, b) {
+                (Some(rel), Button::Update) => format!("UPDATE TO {}", rel.version),
+                _ => b.label().to_string(),
+            };
+            Some((label, None, 1.0))
         } else if self.recorder.is_none()
             && let Some(h) = &self.hint
         {
@@ -1396,16 +1445,12 @@ impl App {
                 let key = Some((text, dot));
                 let mut dirty = false;
                 if self.overlay_key != key {
-                    let mut s = ((w.scale_factor() * 1.5).round() as u32).max(1);
+                    let s = ((w.scale_factor() * 1.5).round() as u32).max(1);
                     let (text, dot) = key.clone().unwrap();
-                    // shrink long messages to fit the window
-                    let max_w = (w.inner_size().width as f32 * 0.92) as u32;
-                    let mut pill = overlay::pill(&text, dot, s);
-                    while pill.width > max_w && s > 1 {
-                        s -= 1;
-                        pill = overlay::pill(&text, dot, s);
-                    }
-                    r.set_overlay(Some(&pill));
+                    // the pill sits on the phone's screen: wrap long messages to fit it, and shrink only if they must
+                    let (laid, s) = overlay::fit(&text, dot.is_some(), s, r.overlay_max_width());
+                    r.set_overlay(Some(&overlay::pill(&laid, dot, s)));
+                    self.overlay_layout = Some((laid, dot.is_some(), s));
                     self.overlay_key = key;
                     dirty = true;
                 }
@@ -1840,6 +1885,7 @@ impl ApplicationHandler<UserEvent> for App {
             // a covered window cannot be drawn to; leave the newest frame in the slot for when it shows
             WindowEvent::RedrawRequested if self.occluded => {}
             WindowEvent::RedrawRequested => {
+                self.refresh_banner();
                 self.upload_latest();
                 if let Some(r) = self.renderer.as_mut() {
                     r.render();
@@ -1927,13 +1973,26 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. }
+                if self.banner_at().is_some() =>
+            {
+                if self.banner_at().is_some_and(|(x, _)| x >= self.banner_close_x as f32) {
+                    self.dismiss_banner();
+                } else {
+                    self.act_on_update();
+                }
+            }
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. }
                 if self.toast_hit() =>
             {
-                let on_edit = self.toast.as_ref().and_then(|t| t.edit_from).is_some_and(|from| {
-                    self.renderer
+                let on_edit = self.toast.as_ref().and_then(|t| t.edit_at).is_some_and(|at| {
+                    let hit = self
+                        .renderer
                         .as_ref()
-                        .and_then(|r| r.overlay_fraction(self.cursor.0 as f32, self.cursor.1 as f32))
-                        .is_some_and(|f| f >= from)
+                        .and_then(|r| r.overlay_point(self.cursor.0 as f32, self.cursor.1 as f32));
+                    match (hit, &self.overlay_layout) {
+                        (Some((x, y)), Some((laid, dot, s))) => overlay::char_at(laid, *dot, *s, x, y) >= at,
+                        _ => false,
+                    }
                 });
                 if let Some(t) = self.toast.take() {
                     if let Some(path) = t.path {
@@ -1944,11 +2003,6 @@ impl ApplicationHandler<UserEvent> for App {
                         }
                     } else if let Some(url) = t.url {
                         crate::tools::open_url(&url);
-                    } else if let Some(cmd) = t.copy {
-                        crate::clipboard::write_text(&cmd);
-                        self.show_toast(&format!("COPIED: {}", cmd.to_uppercase()));
-                    } else if t.install {
-                        self.start_update();
                     }
                 }
                 self.refresh_overlay();

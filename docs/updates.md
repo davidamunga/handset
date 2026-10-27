@@ -5,16 +5,21 @@ package manager should be the one to update what it installed.
 
 ## What you see
 
-On every start, Handset asks GitHub for the latest release. If it is newer than
-the version you run, a toast tells you:
+On every start, Handset asks GitHub for the latest release. If it is newer than the version you run, a blue
+banner across the bottom of the phone says so, and a green update button appears in the toolbar, above the menu
+button. The banner stays until you click it or its **X**; the toolbar button stays as long as there is an update.
+Clicking either does the same thing:
 
-| You installed with | The toast says | A click |
+| You installed with | The banner says | A click |
 |---|---|---|
-| Homebrew | `UPDATE 0.6.0 - CLICK TO COPY: BREW UPGRADE --CASK HANDSET` | copies `brew upgrade --cask handset` |
-| Scoop | `UPDATE 0.6.0 - CLICK TO COPY: SCOOP UPDATE HANDSET` | copies `scoop update handset` |
-| winget | `UPDATE 0.6.0 - CLICK TO COPY: WINGET UPGRADE DAVIDAMUNGA.HANDSET` | copies `winget upgrade davidamunga.Handset` |
-| A downloaded `Handset.app` (macOS) or an unzipped release (Windows) | `UPDATE 0.6.0 - CLICK TO INSTALL` | installs the update (below) |
-| Anything else (`cargo install`, a build of your own) | `UPDATE 0.6.0 AVAILABLE - CLICK TO OPEN` | opens the download page |
+| Homebrew | `HANDSET 0.6.0 IS OUT` / `CLICK TO COPY: BREW UPGRADE --CASK HANDSET` | copies `brew upgrade --cask handset` |
+| Scoop | `HANDSET 0.6.0 IS OUT` / `CLICK TO COPY: SCOOP UPDATE HANDSET` | copies `scoop update handset` |
+| winget | `HANDSET 0.6.0 IS OUT` / `CLICK TO COPY: WINGET UPGRADE DAVIDAMUNGA.HANDSET` | copies `winget upgrade davidamunga.Handset` |
+| A downloaded `Handset.app` (macOS) or an unzipped release (Windows) | `HANDSET 0.6.0 IS OUT` / `CLICK TO INSTALL` | installs the update (below) |
+| Anything else (`cargo install`, a build of your own) | `HANDSET 0.6.0 IS OUT` / `CLICK TO VIEW` | opens the download page |
+
+The banner's **X** works like **Remind me in 3 days**: the banner stays away for three days, but the toolbar
+button is still there if you change your mind.
 
 Handset tells these apart from where it is running (a Homebrew install is the app in `/Applications` that
 Homebrew has a Caskroom record for).
@@ -24,7 +29,7 @@ installs) or **Copy "..." to Update to X** (package managers) or **Download Hand
 **What's New in X...**, **Skip X** and **Remind Me in 3 Days**.
 
 - **Skip** keeps that version quiet from then on; a newer version is announced again.
-- **Remind me in 3 days** keeps the toast quiet for three days.
+- **Remind me in 3 days** keeps the banner and the toolbar button away for three days.
 - **Check for Updates...** always answers, even for a skipped version.
 - **Check for Updates on Start** (or `--no-update-check`, or `update-check=off` in the settings file) turns the automatic
   check off.

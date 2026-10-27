@@ -69,6 +69,8 @@ pub struct Renderer {
     bezel: Option<BezelGpu>,
     /// Window-only overlay (REC indicator, toasts). Never drawn into captures.
     overlay: Option<OverlayGpu>,
+    /// Window-only bar across the bottom of the screen (an update waiting). Never drawn into captures.
+    banner: Option<OverlayGpu>,
     /// The toolbar beside the phone (window only).
     toolbar: Option<OverlayGpu>,
     /// Touch indicators (window and captures), when switched on: one layer per dot that can show at once.
@@ -241,6 +243,7 @@ impl Renderer {
             video: None,
             bezel: None,
             overlay: None,
+            banner: None,
             dot_layers: Vec::new(),
             dots: Vec::new(),
             show_touches: false,
@@ -422,26 +425,57 @@ impl Renderer {
         if self.toolbar_on { crate::toolbar::SIDE_FRAC } else { 0.0 }
     }
 
-    /// Overlay pill position in window space: bottom centre of the video.
-    fn overlay_rect(video_rect: [f32; 4], o: &OverlayGpu, ww: f32, wh: f32) -> [f32; 4] {
+    /// Overlay pill position in window space: bottom centre of the video, above the banner when one is shown.
+    fn overlay_rect(&self, video_rect: [f32; 4], o: &OverlayGpu, ww: f32, wh: f32) -> [f32; 4] {
         let (pw, ph) = (o.width as f32 / ww, o.height as f32 / wh);
-        [video_rect[0] + (video_rect[2] - pw) / 2.0, video_rect[1] + video_rect[3] * 0.93 - ph, pw, ph]
+        let mut bottom = video_rect[1] + video_rect[3] * 0.93;
+        if let Some(b) = &self.banner {
+            bottom = bottom.min(Self::banner_rect(video_rect, b, ww, wh)[1] - video_rect[3] * 0.015);
+        }
+        [video_rect[0] + (video_rect[2] - pw) / 2.0, bottom - ph, pw, ph]
+    }
+
+    /// Banner position in window space: centred near the bottom of the video.
+    fn banner_rect(video_rect: [f32; 4], o: &OverlayGpu, ww: f32, wh: f32) -> [f32; 4] {
+        let (pw, ph) = (o.width as f32 / ww, o.height as f32 / wh);
+        [video_rect[0] + (video_rect[2] - pw) / 2.0, video_rect[1] + video_rect[3] * 0.975 - ph, pw, ph]
+    }
+
+    /// Replace (or clear) the banner.
+    pub fn set_banner(&mut self, pill: Option<&crate::overlay::Pill>) {
+        self.banner = pill.map(|p| self.build_overlay(p, 1.0));
+    }
+
+    /// Where on the banner this window-pixel point is, in the banner's own pixels, if it is on it.
+    pub fn banner_point(&self, x: f32, y: f32) -> Option<(f32, f32)> {
+        let b = self.banner.as_ref()?;
+        let (ww, wh) = (self.config.width as f32, self.config.height as f32);
+        let r = Self::banner_rect(self.video_rect, b, ww, wh);
+        let (u, v) = ((x / ww - r[0]) / r[2], (y / wh - r[1]) / r[3]);
+        ((0.0..1.0).contains(&u) && (0.0..1.0).contains(&v)).then_some((u * b.width as f32, v * b.height as f32))
     }
 
     /// Is this window-pixel point on the overlay pill (toast / REC)?
     pub fn overlay_contains(&self, x: f32, y: f32) -> bool {
         let Some(o) = &self.overlay else { return false };
         let (ww, wh) = (self.config.width as f32, self.config.height as f32);
-        let r = Self::overlay_rect(self.video_rect, o, ww, wh);
+        let r = self.overlay_rect(self.video_rect, o, ww, wh);
         x >= r[0] * ww && x < (r[0] + r[2]) * ww && y >= r[1] * wh && y < (r[1] + r[3]) * wh
     }
 
-    /// How far across the overlay pill (0..1) this window-pixel point is, if it is on it.
-    pub fn overlay_fraction(&self, x: f32, y: f32) -> Option<f32> {
+    /// Where on the overlay pill this window-pixel point is, in the pill's own pixels, if it is on it.
+    pub fn overlay_point(&self, x: f32, y: f32) -> Option<(f32, f32)> {
         let o = self.overlay.as_ref()?;
         let (ww, wh) = (self.config.width as f32, self.config.height as f32);
-        let r = Self::overlay_rect(self.video_rect, o, ww, wh);
-        (self.overlay_contains(x, y)).then(|| (x / ww - r[0]) / r[2])
+        let r = self.overlay_rect(self.video_rect, o, ww, wh);
+        (self.overlay_contains(x, y))
+            .then(|| ((x / ww - r[0]) / r[2] * o.width as f32, (y / wh - r[1]) / r[3] * o.height as f32))
+    }
+
+    /// The widest an overlay pill may be, in window pixels: it sits on the phone's screen, which is narrower than
+    /// the window by the bezel and the toolbar strip.
+    pub fn overlay_max_width(&self) -> u32 {
+        (self.video_rect[2] * self.config.width as f32 * 0.92) as u32
     }
 
     pub fn set_overlay_opacity(&mut self, opacity: f32) {
@@ -587,8 +621,11 @@ impl Renderer {
                 let [x, y, w, h] = crate::toolbar::rect(ww, wh, self.toolbar_buttons);
                 write(&t.layer.ubuf, [x / ww, y / wh, w / ww, h / wh], 0.0, 1.0);
             }
+            if let Some(b) = &self.banner {
+                write(&b.layer.ubuf, Self::banner_rect(video_rect, b, ww, wh), 0.0, 1.0);
+            }
             if let Some(o) = &self.overlay {
-                write(&o.layer.ubuf, Self::overlay_rect(video_rect, o, ww, wh), 0.0, o.opacity);
+                write(&o.layer.ubuf, self.overlay_rect(video_rect, o, ww, wh), 0.0, o.opacity);
             }
         }
     }
@@ -639,6 +676,11 @@ impl Renderer {
                 if let Some(t) = &self.toolbar {
                     pass.set_pipeline(&self.p_bezel);
                     pass.set_bind_group(0, &t.layer.bind, &[]);
+                    pass.draw(0..6, 0..1);
+                }
+                if let Some(b) = &self.banner {
+                    pass.set_pipeline(&self.p_bezel);
+                    pass.set_bind_group(0, &b.layer.bind, &[]);
                     pass.draw(0..6, 0..1);
                 }
                 if let Some(o) = self.overlay.as_ref().filter(|o| o.opacity > 0.0) {
