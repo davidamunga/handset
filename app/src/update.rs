@@ -78,6 +78,25 @@ pub fn due(last_checked: Option<u64>, now: u64) -> bool {
     last_checked.is_none_or(|t| now.saturating_sub(t) >= EVERY)
 }
 
+/// How long "Remind me later" waits.
+pub const SNOOZE: u64 = 3 * 24 * 60 * 60;
+
+/// Should the person hear about `latest`? A manual check always says so when there is something newer. An
+/// automatic one stays quiet about a version they chose to skip, and while a "remind me later" is running.
+pub fn announce(
+    latest: &str,
+    current: &str,
+    skipped: Option<&str>,
+    remind_after: Option<u64>,
+    now: u64,
+    manual: bool,
+) -> bool {
+    if !is_newer(latest, current) {
+        return false;
+    }
+    manual || (skipped != Some(latest) && remind_after.is_none_or(|t| now >= t))
+}
+
 pub fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
@@ -105,6 +124,29 @@ mod tests {
         assert_eq!(r.url, "https://github.com/davidamunga/handset/releases/tag/v0.3.0");
         assert!(parse_release(r#"{"message":"Not Found"}"#).is_err());
         assert!(parse_release(r#"{"tag_name":"nightly"}"#).is_err());
+    }
+
+    #[test]
+    fn a_newer_version_is_announced_unless_skipped_or_snoozed() {
+        let go = |skipped, remind, manual| announce("0.5.0", "0.4.0", skipped, remind, 1_000, manual);
+        assert!(go(None, None, false));
+        assert!(!go(Some("0.5.0"), None, false), "a skipped version stays quiet");
+        assert!(go(Some("0.4.9"), None, false), "skipping an older version does not hide a newer one");
+        assert!(!go(None, Some(2_000), false), "a reminder still running stays quiet");
+        assert!(go(None, Some(1_000), false), "and speaks up when its time comes");
+        assert!(go(None, Some(900), false));
+    }
+
+    #[test]
+    fn asking_yourself_always_answers() {
+        assert!(announce("0.5.0", "0.4.0", Some("0.5.0"), Some(9_999), 1_000, true));
+        assert!(!announce("0.4.0", "0.4.0", None, None, 1_000, true), "nothing newer is never announced");
+        assert!(!announce("0.3.0", "0.4.0", None, None, 1_000, true));
+    }
+
+    #[test]
+    fn snoozing_waits_three_days() {
+        assert_eq!(SNOOZE, 259_200);
     }
 
     #[test]

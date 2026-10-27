@@ -16,6 +16,7 @@ mod docs_tests;
 mod doctor;
 mod editor;
 mod frame;
+mod install;
 mod menu;
 mod mirror;
 mod overlay;

@@ -353,6 +353,11 @@ fn write_mac(text: &str) {
 #[cfg(not(any(target_os = "macos", windows)))]
 fn write_mac(_text: &str) {}
 
+/// Put `text` on the Mac's (or PC's) clipboard.
+pub fn write_text(text: &str) {
+    write_mac(text);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

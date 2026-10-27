@@ -22,6 +22,8 @@ pub struct State {
     /// Look for newer releases by itself, and the newer version once one was found.
     pub update_auto: bool,
     pub update: Option<String>,
+    /// The command that updates a package-manager install, when this is one.
+    pub update_command: Option<&'static str>,
     pub clipboard: bool,
     /// Each new capture also gets a styled copy.
     pub auto_style: bool,
@@ -182,7 +184,15 @@ pub fn show(window: &Window, s: &State) {
     let _ = menu.append(&MenuItem::with_id("zoom:reset", format!("Default Size    {MOD}0"), true, None));
     let _ = menu.append(&PredefinedMenuItem::separator());
     if let Some(v) = &s.update {
-        let _ = menu.append(&MenuItem::with_id("update-open", format!("Download Handset {v}..."), true, None));
+        let open = match s.update_command {
+            Some(cmd) => format!("Copy \"{cmd}\" to Update to {v}"),
+            None => format!("Download Handset {v}..."),
+        };
+        let _ = menu.append(&MenuItem::with_id("update-open", open, true, None));
+        let _ = menu.append(&MenuItem::with_id("update-notes", format!("What's New in {v}..."), true, None));
+        let _ = menu.append(&MenuItem::with_id("update-skip", format!("Skip {v}"), true, None));
+        let _ = menu.append(&MenuItem::with_id("update-later", "Remind Me in 3 Days", true, None));
+        let _ = menu.append(&PredefinedMenuItem::separator());
     }
     let _ = menu.append(&MenuItem::with_id("update", "Check for Updates...", true, None));
     let _ = menu.append(&CheckMenuItem::with_id("update-auto", "Check for Updates Daily", true, s.update_auto, None));

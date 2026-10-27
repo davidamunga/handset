@@ -179,6 +179,7 @@ pub struct App {
     /// Look for newer releases by itself (a saved setting), and the newer release once one is found.
     update_auto: bool,
     update: Option<update::Release>,
+    install: crate::install::Source,
     /// Window height at start (physical pixels), what Default Size returns to.
     home_height: u32,
     mirror: Option<Mirror>,
@@ -202,6 +203,8 @@ struct Toast {
     url: Option<String>,
     /// Where, as a fraction of the pill's width, the EDIT half begins (a capture that can be edited).
     edit_from: Option<f32>,
+    /// Text a click puts on the clipboard (the command that updates a package-manager install).
+    copy: Option<String>,
 }
 
 const TOAST: Duration = Duration::from_millis(1800);
@@ -255,6 +258,7 @@ impl App {
             touches_start: init.touches,
             update_auto: init.update_check,
             update: None,
+            install: crate::install::current(),
             home_height: 0,
             mirror: init.mirror,
             waiting: init.wait.map(|w| Waiting::new(w.serial, w.wifi, Status::Looking)),
@@ -747,6 +751,7 @@ impl App {
             touches: self.renderer.as_ref().is_some_and(|r| r.show_touches()),
             update_auto: self.update_auto,
             update: self.update.as_ref().map(|u| u.version.clone()),
+            update_command: self.install.upgrade_command(),
             clipboard: self.cap.clipboard,
             auto_style: self.cap.auto_style,
             mirroring: self.mirror.is_some(),
@@ -858,7 +863,25 @@ impl App {
                 }
             }
             "update" => self.check_for_update(true),
-            "update-open" => crate::tools::open_url(self.update.as_ref().map_or(update::RELEASES, |u| u.url.as_str())),
+            "update-open" => match self.install.upgrade_command() {
+                Some(cmd) => {
+                    crate::clipboard::write_text(cmd);
+                    self.show_toast(&format!("COPIED: {}", cmd.to_uppercase()));
+                }
+                None => crate::tools::open_url(self.update.as_ref().map_or(update::RELEASES, |u| u.url.as_str())),
+            },
+            "update-notes" => crate::tools::open_url(self.update.as_ref().map_or(update::RELEASES, |u| u.url.as_str())),
+            "update-skip" => {
+                if let Some(u) = self.update.take() {
+                    settings::save("update-skip", &u.version);
+                    self.show_toast(&format!("SKIPPING {}", u.version));
+                }
+            }
+            "update-later" => {
+                settings::save("update-remind", &(update::now() + update::SNOOZE).to_string());
+                self.update = None;
+                self.show_toast("WILL REMIND YOU IN 3 DAYS");
+            }
             "update-auto" => {
                 self.update_auto = !self.update_auto;
                 settings::save_bool("update-check", self.update_auto);
@@ -977,16 +1000,25 @@ impl App {
         match result {
             Ok(rel) => {
                 settings::save("update-checked", &update::now().to_string());
+                let saved = settings::Settings::load();
+                let skipped = saved.get("update-skip");
+                let remind = saved.get("update-remind").and_then(|t| t.parse().ok());
                 if update::is_newer(&rel.version, &update::current()) {
-                    let text = format!("UPDATE {} AVAILABLE - CLICK TO OPEN", rel.version);
-                    self.toast = Some(Toast {
-                        text,
-                        since: Instant::now(),
-                        ttl: TOAST_SAVED,
-                        path: None,
-                        url: Some(rel.url.clone()),
-                        edit_from: None,
-                    });
+                    // the menu always offers the update; the toast only when it is welcome
+                    let speak =
+                        update::announce(&rel.version, &update::current(), skipped, remind, update::now(), manual);
+                    if speak {
+                        let n = crate::install::notice(self.install, &rel.version, &rel.url);
+                        self.toast = Some(Toast {
+                            text: n.text,
+                            since: Instant::now(),
+                            ttl: TOAST_SAVED,
+                            path: None,
+                            url: n.url,
+                            edit_from: None,
+                            copy: n.copy,
+                        });
+                    }
                     self.update = Some(rel);
                     self.refresh_overlay();
                 } else if manual {
@@ -1027,6 +1059,7 @@ impl App {
             path: None,
             url: None,
             edit_from: None,
+            copy: None,
         });
         self.refresh_overlay();
     }
@@ -1046,14 +1079,21 @@ impl App {
             text.push_str(" | EDIT");
             before / overlay::pill(&text, None, 3).width as f32
         });
-        self.toast =
-            Some(Toast { text, since: Instant::now(), ttl: TOAST_SAVED, path: Some(path), url: None, edit_from });
+        self.toast = Some(Toast {
+            text,
+            since: Instant::now(),
+            ttl: TOAST_SAVED,
+            path: Some(path),
+            url: None,
+            edit_from,
+            copy: None,
+        });
         self.refresh_overlay();
     }
 
     /// Is the cursor on a clickable capture toast?
     fn toast_hit(&self) -> bool {
-        self.toast.as_ref().is_some_and(|t| t.path.is_some() || t.url.is_some())
+        self.toast.as_ref().is_some_and(|t| t.path.is_some() || t.url.is_some() || t.copy.is_some())
             && self.renderer.as_ref().is_some_and(|r| r.overlay_contains(self.cursor.0 as f32, self.cursor.1 as f32))
     }
 
@@ -1615,6 +1655,9 @@ impl ApplicationHandler<UserEvent> for App {
                         }
                     } else if let Some(url) = t.url {
                         crate::tools::open_url(&url);
+                    } else if let Some(cmd) = t.copy {
+                        crate::clipboard::write_text(&cmd);
+                        self.show_toast(&format!("COPIED: {}", cmd.to_uppercase()));
                     }
                 }
                 self.refresh_overlay();

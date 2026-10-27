@@ -128,7 +128,10 @@ instead: `cargo install --path app --locked`.
   shows a toast you can click to open it. **Check for Updates...** in the menu asks right away, and **Check for
   Updates Daily** turns the automatic check off (or use `--no-update-check`, or `update-check=off` in the settings
   file). The request goes to `api.github.com` through `curl` and carries only a `handset/<version>` User-Agent.
-  Homebrew and Scoop installs can ignore it and use `brew upgrade` or `scoop update`.
+  Handset knows how it was installed: with Homebrew, Scoop or winget the toast gives the command to run
+  (`brew upgrade --cask handset`, `scoop update handset`, `winget upgrade davidamunga.Handset`) and a click
+  copies it, so the package manager stays in charge. The menu also offers **What's New**, **Skip** (that version
+  stays quiet) and **Remind Me in 3 Days**.
 - **Style a capture:** click **EDIT** on the toast after a capture is saved (or **Recent Captures > Edit Style...**)
   to open the editor, or turn on **Recording > Save a styled copy of each capture**. The guide is in
   [docs/styling.md](docs/styling.md).
