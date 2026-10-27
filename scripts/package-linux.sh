@@ -42,6 +42,12 @@ if command -v appimagetool >/dev/null 2>&1; then
 fi
 
 rm -rf "$stage"
-(cd "$out" && files=(*.tar.gz *.AppImage) && for f in "${files[@]}"; do [ -f "$f" ] && sha256sum -- "$f"; done > SHA256SUMS)
+(
+  cd "$out"
+  for f in *.tar.gz *.AppImage; do
+    # an unmatched pattern stays literal: skip it (no AppImage without appimagetool)
+    if [ -f "$f" ]; then sha256sum -- "$f"; fi
+  done > SHA256SUMS
+)
 echo "built:"
 ls -l "$out"
