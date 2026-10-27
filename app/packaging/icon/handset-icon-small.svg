@@ -1,6 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <g transform="translate(77.913 77.913) scale(18.0870)">
-    <rect x="1" y="1" width="46" height="46" rx="12" fill="#D9F5E5"/>
-    <rect x="4" y="9" width="31" height="23" rx="3" fill="#077063"/><rect x="4" y="30" width="31" height="3" rx="1.2" fill="#E4E4E4"/><g transform="translate(19.5 20) scale(0.62) translate(-24 -23.5)"><path d="M 15.1998,21 11.5,15.5 M 32.8,21 36.5,15.5" fill="none" stroke="#30dd81" stroke-width="3.8" stroke-linecap="round"/><path d="m 24.002386,17.000034 c -8.355868,0 -15.2214979,6.346843 -15.9999669,14.460906 C 7.9289259,33.000882 9.5544999,33 9.5544999,33 H 38.406003 c 0,0 1.672201,-3.35e-4 1.591142,-1.617185 C 39.182807,23.305596 32.331836,17.000034 24.002386,17.000034 Z" fill="#30dd81"/><circle cx="16" cy="26" r="2.5" fill="#fff"/><circle cx="32" cy="26" r="2.5" fill="#fff"/></g><rect x="26" y="14" width="21" height="33" rx="6" fill="#D9F5E5"/><rect x="27.6" y="15.6" width="17.8" height="29.8" rx="4.6" fill="#054D44"/><rect x="29.6" y="18.6" width="13.8" height="23.8" rx="3.2" fill="#30dd81"/><circle cx="34" cy="29" r="1.8" fill="#fff"/><circle cx="39" cy="29" r="1.8" fill="#fff"/>
+  <g transform="translate(100 100) scale(3.7454)">
+    <rect width="220" height="220" rx="49" fill="#E7E8EB"/>
+    <g transform="rotate(-12 86 108)"><rect x="46" y="44" width="80" height="128" rx="20" fill="#3DDC84"/></g>
+    <g transform="rotate(10 120 98)"><rect x="80" y="34" width="80" height="128" rx="20" fill="#0A84FF"/></g>
+    <rect x="81" y="53" width="98" height="146" rx="25" fill="#E7E8EB"/>
+    <rect x="88" y="60" width="84" height="132" rx="16" fill="#1F2024"/>
+    <rect x="95" y="67" width="70" height="118" rx="10" fill="#464950"/>
+    <circle cx="120" cy="130" r="8" fill="#FFFFFF"/><circle cx="140" cy="130" r="8" fill="#FFFFFF"/>
   </g>
 </svg>

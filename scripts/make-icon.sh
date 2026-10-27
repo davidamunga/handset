@@ -24,12 +24,12 @@ render 512 "$src/handset-icon.svg" "$src/handset-icon-512.png"
 # the style editor has its own icon, so its window is not mistaken for the mirroring one
 render 512 "$src/editor-icon.svg" "$src/editor-icon-512.png"
 
-# The Dock icon changes with what Handset is doing: the robot's antennae take the status colour, and a red
+# The Dock icon changes with what Handset is doing: the front phone's eyes take the status colour, and a red
 # dot marks a recording. "live" is the icon as it is.
-state() { # <name> <antenna colour> [extra svg]
+state() { # <name> <eye colour> [extra svg]
   local svg
   svg="$(mktemp).svg"
-  sed "s/stroke=\"#30dd81\"/stroke=\"$2\"/" "$src/handset-icon.svg" > "$svg"
+  sed "s/r=\"5\" fill=\"#FFFFFF\"/r=\"5\" fill=\"$2\"/g" "$src/handset-icon.svg" > "$svg"
   if [ -n "${3:-}" ]; then
     python3 - "$svg" "$3" <<'PY'
 import sys
@@ -42,9 +42,9 @@ PY
   render 512 "$svg" "$src/state-$1.png"
   rm -f "$svg"
 }
-state idle "#9AA0A6"
+state idle "#8D9097"
 state connecting "#FFB300"
-state live "#30dd81"
-state recording "#FF5449" '<circle cx="9" cy="9" r="4.4" fill="#FF5449" stroke="#ffffff" stroke-width="1.3"/>'
+state live "#FFFFFF"
+state recording "#FF5449" '<circle cx="36" cy="36" r="17" fill="#FF5449" stroke="#ffffff" stroke-width="5"/>'
 
 echo "wrote app/packaging/AppIcon.icns, handset-icon-512.png and the state-*.png Dock icons"

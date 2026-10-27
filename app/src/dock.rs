@@ -1,5 +1,5 @@
-//! The app icon (the Dock icon on macOS, the window and taskbar icon elsewhere) follows what Handset is doing: the robot's antennae are grey while it waits for a phone,
-//! amber while connecting, green while mirroring and red, with a red dot, while recording. The icons are
+//! The app icon (the Dock icon on macOS, the window and taskbar icon elsewhere) follows what Handset is doing: the front phone's eyes are grey while it waits for a phone,
+//! amber while connecting, white while mirroring and red, with a red dot, while recording. The icons are
 //! made from the app icon by `scripts/make-icon.sh`.
 
 #[derive(Clone, Copy, PartialEq, Debug)]

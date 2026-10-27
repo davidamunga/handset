@@ -1,18 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <g transform="translate(77.913 77.913) scale(18.0870)">
-    <rect x="1" y="1" width="46" height="46" rx="12" fill="#FF6B4A"/>
-    <g transform="rotate(-7 24 24)">
-      <rect x="9.4" y="9.4" width="30" height="30" rx="5" fill="#A8301C"/>
-      <rect x="7" y="7" width="30" height="30" rx="5" fill="#FFE9D6"/>
-      <circle cx="13" cy="32.2" r="1.9" fill="#30DD81"/>
-      <circle cx="18.6" cy="32.2" r="1.9" fill="#FFB703"/>
-      <circle cx="24.2" cy="32.2" r="1.9" fill="#7B5CFF"/>
-      <rect x="17.6" y="10.4" width="13" height="19" rx="4" fill="#8A2616"/>
-      <rect x="16" y="8.8" width="13" height="19" rx="4" fill="#D9F5E5"/>
-      <rect x="17.2" y="10" width="10.6" height="16.6" rx="2.9" fill="#054D44"/>
-      <rect x="18.6" y="12" width="7.8" height="12.6" rx="2" fill="#30DD81"/>
-      <circle cx="21" cy="17.6" r="0.85" fill="#fff"/>
-      <circle cx="24" cy="17.6" r="0.85" fill="#fff"/>
-    </g>
+  <g transform="translate(100 100) scale(3.7454)">
+    <rect width="220" height="220" rx="49" fill="#2A2C30"/>
+    <g transform="rotate(-12 86 108)"><rect x="46" y="44" width="80" height="128" rx="20" fill="#3DDC84"/><rect x="53" y="51" width="66" height="114" rx="14" fill="#27B566"/></g>
+    <g transform="rotate(10 120 98)"><rect x="80" y="34" width="80" height="128" rx="20" fill="#0A84FF"/><rect x="87" y="41" width="66" height="114" rx="14" fill="#0063D1"/></g>
+    <rect x="81" y="53" width="98" height="146" rx="25" fill="#2A2C30"/>
+    <rect x="88" y="60" width="84" height="132" rx="16" fill="#F4F5F7"/>
+    <rect x="95" y="67" width="70" height="118" rx="10" fill="#6A6D74"/>
+    <circle cx="120" cy="130" r="5" fill="#FFFFFF"/><circle cx="140" cy="130" r="5" fill="#FFFFFF"/>
   </g>
 </svg>
