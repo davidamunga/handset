@@ -442,6 +442,7 @@ fn slider_row(ui: &mut egui::Ui, label: &str, value: &mut u32, max: u32, unit: &
     let mut changed = false;
     ui.horizontal(|ui| {
         ui.allocate_ui_with_layout(egui::vec2(98.0, 24.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.set_min_width(98.0);
             ui.label(egui::RichText::new(label).color(theme::WEAK));
         });
         ui.spacing_mut().slider_width = (ui.available_width() - 52.0).max(40.0);
