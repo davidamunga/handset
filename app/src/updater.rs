@@ -978,13 +978,14 @@ mod tests {
         }
 
         #[test]
-        fn a_new_program_that_does_not_start_is_replaced_by_the_old_one_again() {
+        fn a_new_program_that_exits_with_an_error_is_replaced_by_the_old_one_again() {
             let root = temp_dir("win-rollback");
             let (current, new) = (root.join("Handset"), root.join("new"));
             std::fs::create_dir_all(&current).unwrap();
             std::fs::create_dir_all(&new).unwrap();
             std::fs::copy(system_exe("whoami.exe"), current.join("handset.exe")).unwrap();
-            std::fs::write(new.join("handset.exe"), "this is not a program").unwrap();
+            // a real program that fails at once: where.exe without arguments says "invalid syntax" and exits with 2
+            std::fs::copy(system_exe("where.exe"), new.join("handset.exe")).unwrap();
             let swap = Swap {
                 os: Os::Windows,
                 pid: 0,
