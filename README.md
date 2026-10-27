@@ -93,12 +93,12 @@ with Smart App Control turned on blocks it. Install `adb` (`winget install Googl
 
 ### Linux (experimental)
 
-It builds and passes its tests on Ubuntu 24.04 in CI, but nobody has run the window on a Linux desktop yet, so
+It builds and passes its tests on Ubuntu 22.04 in CI, but nobody has run the window on a Linux desktop yet, so
 expect problems with the transparent, borderless frame on some compositors. Install the build dependencies
 (Debian and Ubuntu names) and build:
 
 ```sh
-sudo apt install build-essential pkg-config cmake nasm libgtk-3-dev libasound2-dev
+sudo apt install build-essential pkg-config cmake nasm libasound2-dev
 cd app && cargo build --release    # app/target/release/handset
 ```
 
@@ -110,16 +110,29 @@ right-click menu yet; the toolbar and the keyboard shortcuts work. Your user nee
 `~/Pictures/handset` and `~/Videos/handset`. `handset --doctor` lists any of the optional helpers that are
 missing and says what to install.
 
+Which systems:
+
+- **Ubuntu 22.04 and newer, Debian 12 and newer, Fedora, and other glibc systems at least that new:** the CI tarball
+  needs glibc 2.35 (`scripts/package-linux.sh` refuses to build one that needs more) and ALSA (`libasound2`). On
+  older systems (Ubuntu 20.04, Debian 11) build from source.
+- **Alpine (musl):** build from source with a dynamic link, because Handset loads the window and GPU libraries at
+  run time and a static musl binary cannot: `apk add build-base cmake nasm pkgconf alsa-lib-dev rustup`, then
+  `RUSTFLAGS='-C target-feature=-crt-static' cargo build --release` in `app`. No prebuilt file for musl.
+- **NixOS:** see `app/packaging/nix/package.nix` (needs a nixpkgs with Rust 1.91 or newer).
+- **Flatpak and Snap are not supported yet**: both sandboxes make `adb` over USB and mDNS harder, and they
+  cannot be built or tested here (see `docs/adr/0032-support-older-glibc-musl-and-nix-and-leave-out-flatpak-and-snap.md`).
+- File dialogs go through the desktop portal (`xdg-desktop-portal` with a backend for your desktop), not GTK.
+
 On Arch and its derivatives (Omarchy, EndeavourOS, Manjaro) install the build packages with
-`sudo pacman -S --needed base-devel cmake nasm gtk3 alsa-lib android-tools`; `app/packaging/linux/PKGBUILD` builds
+`sudo pacman -S --needed base-devel cmake nasm alsa-lib android-tools`; `app/packaging/linux/PKGBUILD` builds
 a package from a release tag (`makepkg -si`; not on the AUR yet). On a tiling compositor such as Hyprland, float the
 window or it is tiled to fit: `windowrule = float, class:handset` (the class is `handset` on Wayland and X11).
 A stock Omarchy has no `zenity`, so the address and pairing-code prompts do nothing until you `pacman -S zenity`.
 
 `scripts/package-linux.sh` builds `dist/linux/Handset-<version>-linux-<arch>.tar.gz` (the binary, a
 `handset.desktop` entry, the icon and the licences) and, when `appimagetool` is installed, an AppImage; CI
-attaches the tarball to each run. Neither is part of a release yet, and neither bundles GTK or ALSA, so those
-must be installed. There is no in-place update on Linux.
+attaches the tarball to each run. Neither is part of a release yet, and neither bundles ALSA, so it must be
+installed. There is no in-place update on Linux.
 
 ### Windows
 

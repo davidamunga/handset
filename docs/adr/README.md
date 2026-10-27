@@ -38,5 +38,7 @@ Copy [`0000-template.md`](0000-template.md) to start a new one.
 | [0026](0026-draw-an-original-icon-and-a-device-gray-look.md) | Draw an original icon and a Device Gray look | accepted |
 | [0027](0027-build-the-website-with-vite-react-and-tailwind.md) | Build the website with Vite, React and Tailwind | accepted |
 | [0028](0028-find-phones-on-the-network-ourselves.md) | Find phones on the network ourselves, next to adb | accepted |
-| [0029](0029-support-linux-by-compiling-first-and-using-desktop-helpers.md) | Support Linux by building it in CI first, and use the desktop's own helpers | accepted |
-| [0030](0030-package-linux-as-a-tarball-before-a-release-file.md) | Package Linux as a tarball in CI before it becomes a release file | accepted |
+| [0029](0029-check-for-updates-on-every-start.md) | Check for updates on every start | accepted |
+| [0030](0030-support-linux-by-compiling-first-and-using-desktop-helpers.md) | Support Linux by building it in CI first, and use the desktop's own helpers | accepted |
+| [0031](0031-package-linux-as-a-tarball-before-a-release-file.md) | Package Linux as a tarball in CI before it becomes a release file | accepted |
+| [0032](0032-support-older-glibc-musl-and-nix-and-leave-out-flatpak-and-snap.md) | Support older glibc, musl and Nix; leave out Flatpak and Snap for now | accepted |

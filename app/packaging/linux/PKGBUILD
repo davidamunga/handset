@@ -9,7 +9,7 @@ pkgdesc='Mirror and control an Android phone inside a realistic device frame'
 arch=('x86_64' 'aarch64')
 url='https://github.com/davidamunga/handset'
 license=('Apache-2.0')
-depends=('gtk3' 'alsa-lib' 'android-tools')
+depends=('alsa-lib' 'android-tools')
 makedepends=('cargo' 'cmake' 'nasm')
 optdepends=(
   'ffmpeg: recording and styled exports'

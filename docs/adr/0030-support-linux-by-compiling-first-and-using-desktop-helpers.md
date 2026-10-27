@@ -1,4 +1,4 @@
-# 0029. Support Linux by building it in CI first, and use the desktop's own helpers
+# 0030. Support Linux by building it in CI first, and use the desktop's own helpers
 
 - Status: accepted
 - Date: 2026-10-27
@@ -17,8 +17,8 @@ xdo although the menu is only built for macOS and Windows. Nobody has a Linux de
 - Fill the stubs the way the macOS and Windows code does, by running the system's own programs, so there is no new
   dependency or system library: `xdg-open` to open things, `wl-copy`/`wl-paste`, `xclip` or `xsel` for the
   clipboard, `zenity` or `kdialog` for prompts. A missing helper means the feature quietly does nothing.
-- Make `muda` a macOS and Windows dependency only. Linux then needs GTK (for `rfd`'s file dialogs) and ALSA
-  (for `cpal`), and nothing else at build time.
+- Make `muda` a macOS and Windows dependency only. Linux then needs ALSA (for `cpal`) and nothing else at build
+  time (this first said GTK too; ADR 0032 found that `rfd`'s file dialogs use the desktop portal instead).
 - Call it experimental in the README until it has run on a real desktop. No Linux release file, update path or
   right-click menu yet.
 
