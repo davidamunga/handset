@@ -1,0 +1,110 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/bricolage-grotesque';
+
+/* Device Gray: the greys of the app, tinted a touch toward blue. Green and blue are the two echo phones in the
+   logo (Android and iOS) and the only colours on the page. */
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Bricolage Grotesque Variable', 'Inter Variable', ui-sans-serif, sans-serif;
+
+  --color-paper: oklch(0.96 0.004 255);
+  --color-paper-2: oklch(0.925 0.006 255);
+  --color-line: oklch(0.87 0.007 255);
+  --color-ink: oklch(0.18 0.008 265);
+  --color-ink-2: oklch(0.42 0.012 265);
+  --color-stage: oklch(0.15 0.006 265);
+  --color-stage-2: oklch(0.21 0.007 265);
+  --color-stage-line: oklch(0.31 0.008 265);
+  --color-stage-text: oklch(0.78 0.008 265);
+  --color-android: oklch(0.8 0.19 152);
+  --color-android-deep: oklch(0.68 0.17 152);
+  --color-ios: oklch(0.62 0.21 255);
+  --color-ios-deep: oklch(0.5 0.2 258);
+
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-android);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-ios);
+  outline-offset: 3px;
+  border-radius: 0.5rem;
+}
+
+/* One staggered entrance for the hero; the echo phones slide out from behind the screenshot. */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes echo-out-left {
+  from {
+    opacity: 0;
+    transform: translateX(7rem) rotate(0deg);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(-12deg);
+  }
+}
+@keyframes echo-out-right {
+  from {
+    opacity: 0;
+    transform: translateX(-7rem) rotate(0deg);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(10deg);
+  }
+}
+.rise {
+  animation: rise 0.8s var(--ease-out-quart) both;
+  animation-delay: calc(var(--i, 0) * 90ms);
+}
+.echo-left {
+  animation: echo-out-left 1.1s var(--ease-out-quart) 0.25s both;
+}
+.echo-right {
+  animation: echo-out-right 1.1s var(--ease-out-quart) 0.35s both;
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .rise,
+  .echo-left,
+  .echo-right {
+    animation: none;
+  }
+  .echo-left {
+    transform: rotate(-12deg);
+  }
+  .echo-right {
+    transform: rotate(10deg);
+  }
+}

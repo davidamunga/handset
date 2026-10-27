@@ -32,6 +32,7 @@ small native Rust app that implements the desktop side of the scrcpy protocol an
 | `app/src/verify.rs` | Release signature and checksum checks (Ed25519 over `SHA256SUMS`), and `--verify-release` |
 | `app/src/menu.rs`, `tools.rs` | Native macOS menu; tool lookup, error dialogs, default arguments |
 | `app/assets/` | Embedded scrcpy server, the built-in phone frames and the Inter fonts |
+| `site/` | The website (Vite, React, Tailwind): its own package, never shipped in a release; see `site/README.md` |
 | `frames/` | Script that generates the frame PNGs |
 | `app/packaging/` | App icon: SVG sources, `AppIcon.icns` and a README PNG (rebuild with `scripts/make-icon.sh`) |
 | `scripts/` | Packaging, icon, version-sync, release-branch (`release-branches.sh`, tested by `test-release-branches.sh`), update-key (`update-key.sh`, tested by `test-update-key.sh`) and hook scripts |
