@@ -245,20 +245,25 @@ fn random_alnum(n: usize) -> String {
     bytes.iter().map(|b| CHARS[*b as usize % CHARS.len()] as char).collect()
 }
 
-// Handset's colours: the app icon's greys and whites, with the status colours kept for meaning only.
-const BG: [u8; 3] = [221, 224, 229];
-const SURFACE: [u8; 3] = [255, 255, 255];
-const SURFACE_HOVER: [u8; 3] = [238, 239, 242];
-const INK: [u8; 3] = [46, 48, 54];
-const TEXT: [u8; 3] = [31, 32, 36];
-const MUTED: [u8; 3] = [88, 91, 98];
-const OK: [u8; 3] = [30, 142, 90];
-const AMBER: [u8; 3] = [160, 96, 0];
-const RED: [u8; 3] = [190, 35, 25];
+// Handset's colours: black, like a phone screen, with white text and the Handset mark. Status colours are for
+// meaning only.
+const BG: [u8; 3] = [0, 0, 0];
+const SURFACE: [u8; 3] = [26, 26, 29];
+const SURFACE_HOVER: [u8; 3] = [44, 44, 49];
+const INK: [u8; 3] = [231, 232, 235];
+const TEXT: [u8; 3] = [255, 255, 255];
+// the front phone's screen in the logo, which the looking eyes are painted on
+const SCREEN: [u8; 3] = [42, 44, 48];
+const PRIMARY: [u8; 3] = [244, 245, 247];
+const PRIMARY_TEXT: [u8; 3] = [10, 10, 12];
+const MUTED: [u8; 3] = [200, 202, 208];
+const OK: [u8; 3] = [76, 208, 138];
+const AMBER: [u8; 3] = [255, 183, 77];
+const RED: [u8; 3] = [255, 122, 112];
 
 static REGULAR: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
 static SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/Inter-SemiBold.ttf");
-static LOGO_PNG: &[u8] = include_bytes!("../packaging/icon/handset-icon-512.png");
+static LOGO_PNG: &[u8] = include_bytes!("../packaging/icon/handset-mark-512.png");
 
 /// How a run of text looks: weight, size in design units, colour.
 #[derive(Clone, Copy)]
@@ -415,6 +420,13 @@ impl Canvas {
         self.text(cx - (x0 + x1) / 2.0, baseline - scaled.ascent(), weight, size, c, text);
     }
 
+    /// The vertical middle of a capital letter in a line of text drawn with its top at `y`, for lining things up
+    /// with the text (the line box is taller than the letters and sits them high).
+    fn cap_middle(&self, y: f32, size: f32) -> f32 {
+        let px = self.px(size);
+        y + font(Weight::Semibold).as_scaled(PxScale::from(px)).ascent() - 0.364 * px
+    }
+
     /// Line height for `size`.
     fn line(&self, size: f32) -> f32 {
         self.px(size) * 1.38
@@ -497,25 +509,139 @@ impl Canvas {
         }
     }
 
-    /// A pill button with a centred label that shrinks until it fits.
-    fn button(&mut self, rect: [u32; 4], label: &str, hover: bool, quiet: bool) {
-        let r = [rect[0] as f32, rect[1] as f32, rect[2] as f32, rect[3] as f32];
-        let bw = self.d(3.0).max(1.0);
-        if quiet {
-            self.round_rect(r, r[3] / 2.0, hover.then_some(SURFACE), Some((if hover { INK } else { MUTED }, bw)));
-        } else {
-            let fill = if hover { SURFACE_HOVER } else { SURFACE };
-            self.round_rect(r, r[3] / 2.0, Some(fill), Some((INK, bw)));
+    /// A stroke from `a` to `b`, `t` thick, with round ends.
+    fn stroke(&mut self, a: (f32, f32), b: (f32, f32), t: f32, c: [u8; 3]) {
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let len2 = (dx * dx + dy * dy).max(1e-6);
+        let pad = t / 2.0 + 1.0;
+        for py in (a.1.min(b.1) - pad).floor() as i64..=(a.1.max(b.1) + pad).ceil() as i64 {
+            for px in (a.0.min(b.0) - pad).floor() as i64..=(a.0.max(b.0) + pad).ceil() as i64 {
+                let (qx, qy) = (px as f32 + 0.5 - a.0, py as f32 + 0.5 - a.1);
+                let k = ((qx * dx + qy * dy) / len2).clamp(0.0, 1.0);
+                let d = ((qx - k * dx).powi(2) + (qy - k * dy).powi(2)).sqrt();
+                self.blend(px, py, c, t / 2.0 - d + 0.5);
+            }
         }
-        let mut size = 38.0;
-        while size > 20.0 && measure(Weight::Semibold, self.px(size), label) > r[2] - self.d(56.0) {
+    }
+
+    /// An arc of a circle around (`cx`, `cy`), between two angles (radians, y down), with round ends.
+    fn arc(&mut self, cx: f32, cy: f32, r: f32, t: f32, (a0, a1): (f32, f32), c: [u8; 3]) {
+        let pad = r + t;
+        for py in (cy - pad).floor() as i64..=(cy + pad).ceil() as i64 {
+            for px in (cx - pad).floor() as i64..=(cx + pad).ceil() as i64 {
+                let (qx, qy) = (px as f32 + 0.5 - cx, py as f32 + 0.5 - cy);
+                let ang = qy.atan2(qx);
+                if ang >= a0 && ang <= a1 {
+                    self.blend(px, py, c, t / 2.0 - ((qx * qx + qy * qy).sqrt() - r).abs() + 0.5);
+                }
+            }
+        }
+        for a in [a0, a1] {
+            self.disc(cx + r * a.cos(), cy + r * a.sin(), t / 2.0, c);
+        }
+    }
+
+    /// The logo's two eyes glance about (and blink) instead of staying still, to show Handset is looking. They
+    /// are painted over the logo's own eyes. `mark` is the logo's width in design units, `top_left` where it is.
+    fn looking_eyes(&mut self, top_left: (f32, f32), mark: f32, tick: u32) {
+        // the logo is drawn from a 200 unit square whose origin is (10, 13) in the 220 unit icon drawing
+        let k = self.d(mark) / 200.0;
+        let at = |x: f32, y: f32| (top_left.0 + (x - 10.0) * k, top_left.1 + (y - 13.0) * k);
+        let glance = [0.0, -7.0, 0.0, 7.0][(tick / 2 % 4) as usize];
+        let blink = tick % 16 == 15;
+        for ex in [120.0, 140.0] {
+            let (cx, cy) = at(ex, 130.0);
+            self.disc(cx, cy, 6.6 * k, SCREEN);
+            let (nx, _) = at(ex + glance, 130.0);
+            if blink {
+                self.stroke((nx - 4.0 * k, cy), (nx + 4.0 * k, cy), 3.0 * k, TEXT);
+            } else {
+                self.disc(nx, cy, 5.0 * k, TEXT);
+            }
+        }
+    }
+
+    /// A small drawn symbol in a square of side `s` whose top-left is (`x`, `y`).
+    fn glyph(&mut self, g: Glyph, x: f32, y: f32, s: f32, c: [u8; 3]) {
+        let t = s * 0.13;
+        match g {
+            Glyph::Wifi => {
+                let (cx, cy) = (x + s / 2.0, y + s * 0.82);
+                let up = (-std::f32::consts::PI * 0.80, -std::f32::consts::PI * 0.20);
+                for r in [0.32, 0.62, 0.92] {
+                    self.arc(cx, cy, r * s, t, up, c);
+                }
+                self.disc(cx, cy, t * 0.9, c);
+            }
+            Glyph::Qr => {
+                let m = s * 0.44;
+                for (i, (dx, dy)) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)].into_iter().enumerate() {
+                    let r = [x + dx * (s - m), y + dy * (s - m), m, m];
+                    let _ = i;
+                    self.round_rect(r, m * 0.28, None, Some((c, t)));
+                }
+                self.disc(x + s - m / 2.0, y + s - m / 2.0, t * 0.9, c);
+            }
+            Glyph::Tick => {
+                self.stroke((x + s * 0.12, y + s * 0.54), (x + s * 0.40, y + s * 0.80), t * 1.2, c);
+                self.stroke((x + s * 0.40, y + s * 0.80), (x + s * 0.90, y + s * 0.22), t * 1.2, c);
+            }
+            Glyph::Back => {
+                self.stroke((x + s * 0.62, y + s * 0.16), (x + s * 0.28, y + s * 0.5), t * 1.2, c);
+                self.stroke((x + s * 0.28, y + s * 0.5), (x + s * 0.62, y + s * 0.84), t * 1.2, c);
+            }
+            Glyph::Phone => {
+                let w = s * 0.56;
+                self.round_rect([x + (s - w) / 2.0, y, w, s], w * 0.28, None, Some((c, t)));
+                self.disc(x + s / 2.0, y + s * 0.8, t * 0.8, c);
+            }
+        }
+    }
+
+    /// A button: a rounded rectangle with a small symbol and a label, centred together; the label shrinks until
+    /// it fits. Primary is the one thing to do, secondary the other ways, quiet a way out.
+    fn button(&mut self, rect: [u32; 4], label: &str, hover: bool, kind: Kind, glyph: Option<Glyph>) {
+        let r = [rect[0] as f32, rect[1] as f32, rect[2] as f32, rect[3] as f32];
+        let (fill, text) = match (kind, hover) {
+            (Kind::Primary, false) => (Some(PRIMARY), PRIMARY_TEXT),
+            (Kind::Primary, true) => (Some([255, 255, 255]), PRIMARY_TEXT),
+            (Kind::Secondary, false) => (Some(SURFACE), TEXT),
+            (Kind::Secondary, true) => (Some(SURFACE_HOVER), TEXT),
+            (Kind::Quiet, false) => (None, MUTED),
+            (Kind::Quiet, true) => (Some(SURFACE), TEXT),
+        };
+        self.round_rect(r, r[3] * 0.3, fill, None);
+        let icon = r[3] * 0.38;
+        let gap = if glyph.is_some() { self.d(18.0) } else { 0.0 };
+        let icon_w = if glyph.is_some() { icon } else { 0.0 };
+        let mut size = 36.0;
+        while size > 20.0 && measure(Weight::Semibold, self.px(size), label) + icon_w + gap > r[2] - self.d(48.0) {
             size -= 2.0;
         }
-        let px = self.px(size);
-        let top = r[1] + (r[3] - self.line(size) / 1.0) / 2.0 + self.d(size * 0.04);
-        let _ = px;
-        self.text_centered(r[0] + r[2] / 2.0, top, Weight::Semibold, size, TEXT, label);
+        let tw = measure(Weight::Semibold, self.px(size), label);
+        let x0 = r[0] + (r[2] - (icon_w + gap + tw)) / 2.0;
+        let cy = r[1] + r[3] / 2.0;
+        if let Some(g) = glyph {
+            self.glyph(g, x0, cy - icon / 2.0, icon, text);
+        }
+        self.text_ink_centered(x0 + icon_w + gap + tw / 2.0, cy, Weight::Semibold, size, text, label);
     }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Kind {
+    Primary,
+    Secondary,
+    Quiet,
+}
+
+#[derive(Clone, Copy)]
+enum Glyph {
+    Wifi,
+    Qr,
+    Tick,
+    Back,
+    Phone,
 }
 
 struct Words {
@@ -643,7 +769,7 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
     let u = c.u;
     let margin = 56.0 * u;
     let content_w = w as f32 - 2.0 * margin;
-    let (btn_h, gap) = (100.0 * u, 24.0 * u);
+    let (btn_h, gap) = (92.0 * u, 16.0 * u);
     let mut buttons: Vec<Button> = Vec::new();
     let dots = ".".repeat((m.tick % 4) as usize);
 
@@ -651,11 +777,14 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
     let mut y;
     if m.view == View::Home {
         // the logo mark with the name beside it, centred
-        let (mark, gap_x, name_size) = (104.0, 22.0 * u, 60.0);
+        let (mark, gap_x, name_size) = (124.0, 20.0 * u, 62.0);
         let name_w = measure(Weight::Semibold, c.px(name_size), "Handset");
         let x0 = (w as f32 - (c.d(mark) + gap_x + name_w)) / 2.0;
         let top = 70.0 * u;
         c.logo(x0, top, mark);
+        if matches!(m.status, Status::Looking) && m.view == View::Home {
+            c.looking_eyes((x0, top), mark, m.tick);
+        }
         c.text_ink_centered(
             x0 + c.d(mark) + gap_x + name_w / 2.0,
             top + c.d(mark) / 2.0,
@@ -730,9 +859,10 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
             let dot = if lit { words.colour } else { [words.colour[0] / 3, words.colour[1] / 3, words.colour[2] / 3] };
             let text_x = margin + 38.0 * u;
             let status = if words.animate { format!("{}{dots}", words.status) } else { words.status.clone() };
-            c.disc(margin + 11.0 * u, y + c.line(36.0) / 2.0, 10.0 * u, dot);
+            c.disc(margin + 11.0 * u, c.cap_middle(y, 36.0), 10.0 * u, dot);
             y = c.para(text_x, y, content_w - 38.0 * u, Style(Weight::Semibold, 36.0, words.colour), &status)
                 + 26.0 * u;
+            let mut prev_disc: Option<f32> = None;
             // with iOS on offer the steps need to say which phone they are for
             let both = m.ios && matches!(m.status, Status::Looking | Status::Disconnected);
             if both && words.numbered {
@@ -745,6 +875,16 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
                     let tx = margin + 66.0 * u;
                     let lines = wrap(Weight::Regular, c.px(32.0), content_w - 66.0 * u, item).len().max(1) as f32;
                     let row = (lines * c.line(32.0)).max(48.0 * u);
+                    // a thin line joins the steps, so they read as a sequence
+                    if let Some(from) = prev_disc {
+                        c.stroke(
+                            (margin + 24.0 * u, from + 48.0 * u + 6.0 * u),
+                            (margin + 24.0 * u, top - 6.0 * u),
+                            3.0 * u,
+                            SURFACE,
+                        );
+                    }
+                    prev_disc = Some(top);
                     c.disc(margin + 24.0 * u, top + 24.0 * u, 24.0 * u, SURFACE);
                     c.text_ink_centered(
                         margin + 24.0 * u,
@@ -756,7 +896,7 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
                     );
                     c.para(
                         tx,
-                        top + 24.0 * u - c.line(32.0) / 2.0,
+                        top + 24.0 * u - c.cap_middle(0.0, 32.0),
                         content_w - 66.0 * u,
                         Style(Weight::Regular, 32.0, TEXT),
                         item,
@@ -960,8 +1100,20 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
 
     // read top to bottom, and indexed that way for hover
     buttons.sort_by_key(|b| b.rect[1]);
+    let android = buttons.iter().any(|b| matches!(b.action, Action::Mirror(_)));
     for (i, b) in buttons.iter().enumerate() {
-        c.button(b.rect, &b.label, m.hover == Some(i), matches!(b.action, Action::Back));
+        let (kind, glyph) = match &b.action {
+            Action::Mirror(_) => (Kind::Primary, Some(Glyph::Phone)),
+            Action::MirrorIos(_) if !android => (Kind::Primary, Some(Glyph::Phone)),
+            Action::MirrorIos(_) => (Kind::Secondary, Some(Glyph::Phone)),
+            Action::RunChecks => (Kind::Primary, None),
+            Action::Back => (Kind::Quiet, Some(Glyph::Back)),
+            Action::Open(View::Wifi) => (Kind::Secondary, Some(Glyph::Wifi)),
+            Action::Open(View::Qr) => (Kind::Secondary, Some(Glyph::Qr)),
+            Action::Open(View::Doctor) => (Kind::Secondary, Some(Glyph::Tick)),
+            _ => (Kind::Secondary, None),
+        };
+        c.button(b.rect, &b.label, m.hover == Some(i), kind, glyph);
     }
     Screen { rgb: c.px, buttons }
 }
@@ -1276,6 +1428,10 @@ mod tests {
                 iphone: Some(("uid-1", "iPhone")),
                 ..model(&looking, View::Home, &[], None, None, None)
             },
+            // the looking scene at several steps of its animation
+            Model { tick: 1, ..model(&looking, View::Home, &[], None, None, None) },
+            Model { tick: 2, ..model(&looking, View::Home, &[], None, None, None) },
+            Model { tick: 7, ..model(&looking, View::Home, &[], None, None, None) },
         ];
         for (n, m) in screens.iter().enumerate() {
             let (w, h) = (702, 1560); // the aspect of the frame's screen

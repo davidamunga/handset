@@ -18,7 +18,10 @@ style editor also carried a green theme taken from the robot, and the editor was
   variant that keeps the editor window apart from the mirroring window. `scripts/make-icon.sh` builds them.
 - The Dock and window icon still shows state, now through the front phone's eyes: grey while idle, amber
   while connecting, white while live, red with a dot while recording.
-- The connect screen is grey and white. Status colours (amber, red, and a darker green for passed checks)
+- The connect screen is black, like a phone screen, with white text and the colour mark without its tile
+  (`handset-mark.svg`). Buttons have three kinds: a near-white primary for the one thing to do, dark grey secondary
+  buttons for the other ways, and a quiet one for going back, each with a small drawn symbol. While Handset is
+  looking for a phone the logo's eyes glance about. Status colours (amber, red, and green for passed checks)
   remain, for meaning only.
 - The style editor uses Device Gray, a grey palette with one accent (near white on dark, graphite on
   light), and follows the operating system's light or dark setting through egui's system theme. The

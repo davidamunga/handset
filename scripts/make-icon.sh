@@ -21,6 +21,8 @@ done
 
 iconutil -c icns "$set_dir" -o "$root/app/packaging/AppIcon.icns"
 render 512 "$src/handset-icon.svg" "$src/handset-icon-512.png"
+# the mark without its tile, for the connect screen, drawn on black
+render 512 "$src/handset-mark.svg" "$src/handset-mark-512.png"
 # the style editor has its own icon, so its window is not mistaken for the mirroring one
 render 512 "$src/editor-icon.svg" "$src/editor-icon-512.png"
 

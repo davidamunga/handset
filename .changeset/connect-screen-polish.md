@@ -2,4 +2,4 @@
 "handset": patch
 ---
 
-The connect screen now has a grey background with white buttons, shows the Handset mark with its name at the top, and centres the step numbers in their circles.
+The connect screen is now black with white text, shows the Handset mark and name at the top, and has clearer buttons: one bright button for the main action, quieter ones for the other ways to connect, each with a small symbol. The mark's eyes glance about while Handset looks for a phone, and the step numbers are centred in their circles.
