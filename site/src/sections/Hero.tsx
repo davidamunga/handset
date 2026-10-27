@@ -23,7 +23,7 @@ export function Hero() {
           <span className="h-1.5 w-14 rounded-full bg-ios" />
         </div>
         <p className="rise mt-7 max-w-[34rem] text-xl leading-snug text-ink-2" style={{ ['--i' as string]: 2 }}>
-          Handset mirrors and controls your Android phone from a Mac or a Windows PC, inside a real device frame. Capture
+          Handset mirrors and controls your Android phone from a Mac, a Windows PC or Linux, inside a real device frame. Capture
           it, style it, share it.
         </p>
         <div className="rise mt-9 flex flex-wrap items-center gap-3" style={{ ['--i' as string]: 3 }}>
@@ -41,7 +41,7 @@ export function Hero() {
           </a>
         </div>
         <p className="rise mt-5 text-sm text-ink-2" style={{ ['--i' as string]: 4 }}>
-          Free and open source, Apache-2.0. macOS 12 or later, and Windows 10 or 11.
+          Free and open source, Apache-2.0. macOS 12 or later, Windows 10 or 11, and Linux (experimental).
         </p>
       </div>
 
@@ -69,5 +69,6 @@ function primaryDownload(release: Release | null, platform: Platform): { label: 
   const fall = release?.page ?? RELEASES
   if (platform === 'windows') return { label: 'Download for Windows', url: release?.windows?.url ?? fall }
   if (platform === 'mac') return { label: 'Download for macOS', url: release?.mac?.url ?? fall }
+  if (platform === 'linux') return { label: 'Get it for Linux', url: '#download' }
   return { label: 'Download', url: '#download' }
 }

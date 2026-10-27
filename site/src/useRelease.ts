@@ -31,12 +31,14 @@ export function useRelease(): Release | null {
   return release
 }
 
-export type Platform = 'mac' | 'windows' | 'other'
+export type Platform = 'mac' | 'windows' | 'linux' | 'other'
 
 export function detectPlatform(): Platform {
   if (typeof navigator === 'undefined') return 'other'
   const s = `${navigator.userAgent} ${navigator.platform ?? ''}`
   if (/Mac/i.test(s) && !/iPhone|iPad/i.test(s)) return 'mac'
   if (/Win/i.test(s)) return 'windows'
+  // Android phones say Linux too, and Handset does not run on them
+  if (/Linux|X11/i.test(s) && !/Android/i.test(s)) return 'linux'
   return 'other'
 }

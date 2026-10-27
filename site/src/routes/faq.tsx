@@ -6,7 +6,7 @@ export const Route = createFileRoute('/faq')({
   head: () => ({
     meta: [
       { title: 'FAQ | Handset' },
-      { name: 'description', content: 'Fixes for the usual problems: Wi-Fi pairing that fails, a phone that does not show up, and a restart of adb.' },
+      { name: 'description', content: 'Fixes for the usual problems: Wi-Fi pairing that fails, a phone that does not show up, a restart of adb, and Linux.' },
     ],
   }),
   component: Faq,
@@ -47,6 +47,30 @@ function Faq() {
         <li>
           <strong>Try the QR code.</strong> On the Handset start screen, choose the QR code and scan it from{' '}
           <strong>Pair device with QR code</strong> on the phone. You type nothing, so there is no code to get wrong.
+        </li>
+      </ul>
+
+      <h2>Does Handset run on Linux?</h2>
+      <p>
+        Yes, but it is experimental. It builds and passes its tests on Ubuntu 22.04, Alpine and with Nix, and the same code runs on
+        Debian 12 and newer, Fedora and Arch. It has not been run on a real Linux desktop yet, so the transparent phone-shaped window
+        may misbehave on some desktops. There is no download yet: you build it from source, as the{' '}
+        <a href={`${REPO}#linux-experimental`}>Linux guide</a> explains.
+      </p>
+      <ul>
+        <li>
+          <strong>Phone not found over USB.</strong> Linux needs a rule that lets your user use the phone. Install{' '}
+          <code>android-udev-rules</code>, or your distribution&apos;s <code>android-tools</code> package, then unplug the phone and
+          plug it in again.
+        </li>
+        <li>
+          <strong>Copy and the address prompt do nothing.</strong> Handset uses small helper programs: a clipboard tool (
+          <code>wl-clipboard</code> on Wayland, <code>xclip</code> on X11) and <code>zenity</code> or <code>kdialog</code> for the
+          prompts. <code>handset --doctor</code> lists any that are missing.
+        </li>
+        <li>
+          <strong>The phone is tiled or squashed.</strong> On a tiling desktop such as Hyprland, make the window float. In Hyprland
+          that is <code>windowrule = float, class:handset</code>.
         </li>
       </ul>
 

@@ -1,11 +1,12 @@
 import { CopyBlock } from '../components/CopyBlock'
-import { BREW, RELEASES, REPO, SCOOP } from '../links'
+import { BREW, LINUX_BUILD, LINUX_GUIDE, RELEASES, REPO, SCOOP } from '../links'
 import { useReleaseInfo } from '../release'
 import type { Download } from '../useRelease'
 
 export function DownloadSection() {
   const { release, platform } = useReleaseInfo()
-  const order: ('mac' | 'windows')[] = platform === 'windows' ? ['windows', 'mac'] : ['mac', 'windows']
+  const order: ('mac' | 'windows' | 'linux')[] =
+    platform === 'windows' ? ['windows', 'mac', 'linux'] : platform === 'linux' ? ['linux', 'mac', 'windows'] : ['mac', 'windows', 'linux']
   return (
     <section id="download" className="scroll-mt-0 bg-stage text-paper">
       <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 md:py-24">
@@ -26,9 +27,20 @@ export function DownloadSection() {
           </p>
         </div>
 
-        <div className="mt-10 grid gap-5 md:grid-cols-2">
+        <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           {order.map((os) =>
-            os === 'mac' ? (
+            os === 'linux' ? (
+              <Card
+                key="linux"
+                title="Linux"
+                note="Experimental, and built from source for now: there is no download yet. Ubuntu 22.04 or Debian 12 and newer, Fedora, Arch, Alpine and NixOS build. It has not run on a real Linux desktop yet."
+                fallback={LINUX_GUIDE}
+                cta="Read the Linux guide"
+                command={LINUX_BUILD}
+                commandLabel="Build on Debian or Ubuntu"
+                featured={platform === 'linux'}
+              />
+            ) : os === 'mac' ? (
               <Card
                 key="mac"
                 title="macOS"
@@ -59,7 +71,7 @@ export function DownloadSection() {
         <p className="mt-8 max-w-3xl text-[0.95rem] text-stage-text">
           Handset needs <code className="rounded bg-stage-2 px-1.5 py-0.5 text-paper">adb</code> to talk to an Android phone, and{' '}
           <code className="rounded bg-stage-2 px-1.5 py-0.5 text-paper">ffmpeg</code> for recordings. Homebrew and Scoop install what they need. With a
-          plain download, the{' '}
+          plain download or a Linux build, the{' '}
           <a className="underline underline-offset-4 hover:text-paper" href={`${REPO}#install`}>
             install notes
           </a>{' '}

@@ -55,7 +55,7 @@ function Terms() {
       <h2>Downloads</h2>
       <p>
         Releases are published on <a href={`${REPO}/releases`}>GitHub</a>, with a checksum and a signature for each file. The macOS
-        app is signed and notarised. The Windows build is not code-signed yet, so Windows may warn you the first time you open it.
+        app is signed and notarised. The Windows build is not code-signed yet, so Windows may warn you the first time you open it. Linux has no release file yet: you build it from source.
         Download Handset from the project&apos;s GitHub page, the Homebrew tap or the Scoop bucket named on this site, and check
         the checksum if you want to be sure.
       </p>
@@ -78,7 +78,7 @@ function Terms() {
       <h2>Trademarks</h2>
       <p>
         Android is a trademark of Google LLC. iPhone, iPad and macOS are trademarks of Apple Inc. Windows is a trademark of
-        Microsoft Corporation. scrcpy and Genymobile belong to their owners. These names are used only to say what Handset works
+        Microsoft Corporation. Linux is the registered trademark of Linus Torvalds. scrcpy and Genymobile belong to their owners. These names are used only to say what Handset works
         with. Handset is an independent project and is not affiliated with, endorsed by or sponsored by any of them. The Handset
         name and logo may not be used to suggest that your own product comes from, or is approved by, the author.
       </p>

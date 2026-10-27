@@ -29,7 +29,7 @@ function Privacy() {
 
       <h2>The Handset app</h2>
       <p>
-        Handset runs on your Mac or Windows PC. It talks to your phone through <strong>adb</strong>, over a USB cable or your local
+        Handset runs on your Mac, Windows PC or Linux computer. It talks to your phone through <strong>adb</strong>, over a USB cable or your local
         network, and shows the phone&apos;s screen and sound in a window. Nothing on the screen, no sound, no clipboard text and no
         keystroke is sent to the author or to anyone else. It all stays between your phone and your computer.
       </p>
