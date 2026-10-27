@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0
+
+### Minor Changes
+
+- [#74](https://github.com/davidamunga/handset/pull/74) [`d3ad3b6`](https://github.com/davidamunga/handset/commit/d3ad3b6e6b610c87c3779cfd7c4676a05728950e) Thanks [@davidamunga](https://github.com/davidamunga)! - Handset now looks for a newer release every time it starts, and the update notice is shorter: it names the new version and says what a click does.
+
+### Patch Changes
+
+- [#73](https://github.com/davidamunga/handset/pull/73) [`8b7f313`](https://github.com/davidamunga/handset/commit/8b7f313793ed0a426f532103b292ce4263356989) Thanks [@davidamunga](https://github.com/davidamunga)! - Handset now builds on Linux (Ubuntu 24.04 is checked in CI). Links and captures open with `xdg-open`, "copy capture" and the phone clipboard sync use `wl-copy`/`xclip`/`xsel`, and the address prompt uses `zenity` or `kdialog`. It is experimental: it has not been run on a real Linux desktop yet, and there is no release file.
+
+- [#76](https://github.com/davidamunga/handset/pull/76) [`55a5ff8`](https://github.com/davidamunga/handset/commit/55a5ff8a811dc7fa26df4bc9603d52e472e50216) Thanks [@davidamunga](https://github.com/davidamunga)! - Linux: `handset --doctor` now lists missing helper programs (`xdg-open`, a clipboard tool, `zenity` or `kdialog`) and explains a phone that is blocked by missing udev rules. The window has a class and icon so desktops match it to its entry, and `scripts/package-linux.sh` builds a tarball (and an AppImage when `appimagetool` is installed).
+
+- [#79](https://github.com/davidamunga/handset/pull/79) [`2819265`](https://github.com/davidamunga/handset/commit/2819265a46c37ed03ba7819a446c48b00d057185) Thanks [@davidamunga](https://github.com/davidamunga)! - Linux: the tarball is now built on Ubuntu 22.04, so it runs on Ubuntu 22.04 and newer and Debian 12 and newer (the packaging script refuses a build that needs a newer glibc). GTK is not needed to build or run. Alpine builds from source with a dynamic musl link, and there is a Nix package for NixOS.
+
+- [#78](https://github.com/davidamunga/handset/pull/78) [`19d350e`](https://github.com/davidamunga/handset/commit/19d350ec2873e1ea1c739016ce943c33f2df6c00) Thanks [@davidamunga](https://github.com/davidamunga)! - Wi-Fi pairing now restarts adb once and tries again when it fails, which fixes the common case of a stuck adb server. Pairing codes typed with a space or dash are accepted, and the website has a new FAQ page with fixes for pairing and connection problems.
+
 ## 0.7.2
 
 ### Patch Changes
