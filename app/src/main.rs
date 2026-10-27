@@ -11,6 +11,8 @@ mod clipboard;
 mod connect;
 mod control;
 mod dock;
+#[cfg(test)]
+mod docs_tests;
 mod doctor;
 mod editor;
 mod frame;

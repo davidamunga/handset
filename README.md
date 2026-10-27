@@ -33,13 +33,16 @@ and Wi-Fi and QR code options for connecting without a cable.
   switchable while running
 - Touch, scroll, keyboard and text input; landscape rotation
 - Framed screenshots (transparent PNG) and recordings (MP4 with audio, or GIF) via ffmpeg
+- A style editor for captures: put a screenshot or recording on a gradient, wallpaper, colour or your own picture,
+  with padding, shadow, rounded corners and an aspect ratio (1:1, 16:9, 4:5 ...); trim and play recordings
+  with sound; save looks. Your original is kept. See [docs/styling.md](docs/styling.md)
 - A Dock icon that shows what Handset is doing: grey while waiting for a phone, amber while connecting, green
   while mirroring, red with a dot while recording
 - A toolbar beside the phone and a native right-click menu
 - Clipboard text is shared with the phone: copy on the phone and paste on the Mac, or copy on the Mac, click the
   Handset window and paste on the phone
 - A clickable "saved" toast, a recent captures menu and automatic clipboard copy
-- A small binary (about 5 MB) with the scrcpy server embedded
+- A single binary (under 20 MB, including the style editor) with the scrcpy server embedded
 
 ## Install
 
@@ -126,6 +129,9 @@ instead: `cargo install --path app --locked`.
   Updates Daily** turns the automatic check off (or use `--no-update-check`, or `update-check=off` in the settings
   file). The request goes to `api.github.com` through `curl` and carries only a `handset/<version>` User-Agent.
   Homebrew and Scoop installs can ignore it and use `brew upgrade` or `scoop update`.
+- **Style a capture:** click **EDIT** on the toast after a capture is saved (or **Recent Captures > Edit Style...**)
+  to open the editor, or turn on **Recording > Save a styled copy of each capture**. The guide is in
+  [docs/styling.md](docs/styling.md).
 - **Drop a file** on the window: an `.apk` is installed, anything else is copied to the phone's Downloads folder.
 - **Move** the window by dragging the bezel. **Resize** by dragging a corner of the phone (it keeps the frame's proportions), with Cmd or Ctrl and scroll, or `+`, `-` and `0` (default size), also in the menu.
 - Screenshots are saved to `~/Pictures/handset`, recordings to `~/Movies/handset`, and both are copied to
@@ -148,6 +154,10 @@ instead: `cargo install --path app --locked`.
 | `--record-format mp4\|gif` | Recording format |
 | `--record-size <px>` | Longest side of recordings (default 1280) |
 | `--record-bg #rrggbb` | Recording background colour |
+| `--style <look>` | The look used to style captures: a saved look's name (for example `"Aurora 16:9"`) or a style such as `"bg=gradient:dusk;padding=12;aspect=1:1"` (see [docs/styling.md](docs/styling.md)) |
+| `--style-captures` | Save a styled copy beside each new screenshot and recording (also in the Recording menu) |
+| `--restyle <file>` | Style a saved PNG, MP4 or GIF with `--style` (or your last look), print the new path and quit |
+| `--edit [file]` | Open the style editor on a capture (a file dialog opens if you give none) |
 | `--connect <ip[:port]>` | Connect to a phone over Wi-Fi (`adb connect`, default port 5555) and mirror it |
 | `--last` | Reconnect to the phone you last used over Wi-Fi (Handset remembers the last few in `~/.config/handset/recent`) |
 | `--pair <ip:port> <code>` | Pair with a phone using its Wireless debugging pairing code, then exit |
@@ -182,7 +192,7 @@ With no arguments, `~/.config/handset/args` is used if it exists. `HANDSET_DEBUG
 `ADB` and `FFMPEG` override where the tools are found.
 
 Choices made in the menus (frame, toolbar, touches, capture format, audio normalisation, clipboard copy and
-sync, mute) are remembered in `~/.config/handset/settings`, a plain `key=value` file you can edit. Command-line
+sync, mute, styled copies of captures) are remembered in `~/.config/handset/settings`, a plain `key=value` file you can edit. Command-line
 options win for the run they are given and are never saved.
 
 ## How it works
