@@ -91,6 +91,8 @@ pub enum Action {
     Mirror(String),
     /// Run the checks again.
     RunChecks,
+    /// Mirror the iOS device with this capture id (view only).
+    MirrorIos(String),
 }
 
 pub struct Button {
@@ -599,6 +601,10 @@ pub struct Model<'a> {
     pub note: Option<&'a str>,
     /// The doctor's results; `None` while it is still running.
     pub doctor: Option<&'a [crate::doctor::Check]>,
+    /// iPhones and iPads can be mirrored here (macOS), so say how.
+    pub ios: bool,
+    /// An iOS device that is plugged in and can be mirrored: its capture id and name.
+    pub iphone: Option<(&'a str, &'a str)>,
 }
 
 pub struct Screen {
@@ -643,26 +649,43 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
 
     // bottom buttons are stacked upwards from the bottom edge; `bottom` is the top of the stack
     let mut bottom = h as f32 - 70.0 * u;
-    let mut stack = |label: &str, action: Action, buttons: &mut Vec<Button>| {
-        bottom -= btn_h;
+    let stack = |bottom: &mut f32, label: &str, action: Action, buttons: &mut Vec<Button>| {
+        *bottom -= btn_h;
         buttons.push(Button {
-            rect: [margin as u32, bottom as u32, content_w as u32, btn_h as u32],
+            rect: [margin as u32, *bottom as u32, content_w as u32, btn_h as u32],
             label: label.to_string(),
             action,
         });
-        bottom -= gap;
+        *bottom -= gap;
     };
 
     match m.view {
         View::Home => {
-            stack("Run checks", Action::Open(View::Doctor), &mut buttons);
-            stack("QR code", Action::Open(View::Qr), &mut buttons);
-            stack("Wi-Fi", Action::Open(View::Wifi), &mut buttons);
+            stack(&mut bottom, "Run checks", Action::Open(View::Doctor), &mut buttons);
+            stack(&mut bottom, "QR code", Action::Open(View::Qr), &mut buttons);
+            stack(&mut bottom, "Wi-Fi", Action::Open(View::Wifi), &mut buttons);
+            // the lead-in belongs to the ways without a cable, so it goes above those and below the rest
+            let lead_in = bottom - 14.0 * u - c.line(28.0) + gap;
+            bottom = lead_in - 22.0 * u;
             if let Some(phone) = m.usb {
-                stack(&format!("Mirror {phone}"), Action::Mirror(phone.to_string()), &mut buttons);
+                stack(&mut bottom, &format!("Mirror {phone}"), Action::Mirror(phone.to_string()), &mut buttons);
+            }
+            if let Some((uid, name)) = m.iphone {
+                // the label says it, since the note above may not fit
+                stack(
+                    &mut bottom,
+                    &format!("Mirror {name} (view only)"),
+                    Action::MirrorIos(uid.to_string()),
+                    &mut buttons,
+                );
             }
             if let Some(last) = m.recent.first() {
-                stack(&format!("Reconnect to {}", last.name), Action::Connect(last.addr.clone()), &mut buttons);
+                stack(
+                    &mut bottom,
+                    &format!("Reconnect to {}", last.name),
+                    Action::Connect(last.addr.clone()),
+                    &mut buttons,
+                );
             }
             let words = words(m.status);
             let lit = !words.animate || m.tick.is_multiple_of(2);
@@ -672,6 +695,12 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
             c.disc(margin + 11.0 * u, y + c.line(36.0) / 2.0, 10.0 * u, dot);
             y = c.para(text_x, y, content_w - 38.0 * u, Style(Weight::Semibold, 36.0, words.colour), &status)
                 + 26.0 * u;
+            // with iOS on offer the steps need to say which phone they are for
+            let both = m.ios && matches!(m.status, Status::Looking | Status::Disconnected);
+            if both && words.numbered {
+                c.text(margin, y, Weight::Semibold, 30.0, MUTED, "Android");
+                y += c.line(30.0) + 14.0 * u;
+            }
             for (i, item) in words.body.iter().enumerate() {
                 if words.numbered {
                     let top = y;
@@ -708,8 +737,31 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
                     &format!("Phone {phone}"),
                 );
             }
-            // small print only while it clears the buttons and their lead-in
-            let room = bottom - 70.0 * u;
+            // small print only while it clears the buttons
+            let room = bottom - 30.0 * u;
+            if both {
+                let text = match m.iphone {
+                    Some((_, name)) => {
+                        format!("{name} is plugged in. Mirror it with the button below. It is view only.")
+                    }
+                    None => {
+                        "Plug it in with a cable (there is no Wi-Fi option), unlock it and tap Trust. It is view only."
+                            .to_string()
+                    }
+                };
+                let lines = wrap(Weight::Regular, c.px(32.0), content_w, &text).len() as f32;
+                let top = y + 18.0 * u;
+                if top + c.line(30.0) + 14.0 * u + lines * c.line(32.0) <= room {
+                    c.text(margin, top, Weight::Semibold, 30.0, MUTED, "iPhone or iPad");
+                    y = c.para(
+                        margin,
+                        top + c.line(30.0) + 14.0 * u,
+                        content_w,
+                        Style(Weight::Regular, 32.0, TEXT),
+                        &text,
+                    ) + 10.0 * u;
+                }
+            }
             for line in wrap(Weight::Regular, c.px(28.0), content_w, &words.hint) {
                 if y + c.line(28.0) > room {
                     break;
@@ -717,21 +769,21 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
                 c.text(margin, y + 6.0 * u, Weight::Regular, 28.0, MUTED, &line);
                 y += c.line(28.0);
             }
-            c.text_centered(
-                w as f32 / 2.0,
-                bottom - 14.0 * u - c.line(28.0),
-                Weight::Regular,
-                28.0,
-                MUTED,
-                "No cable? Connect another way",
-            );
+            // Wi-Fi and QR pairing are adb features: an iPhone only ever comes over the cable
+            let lead = if m.ios { "Android without a cable?" } else { "No cable? Connect another way" };
+            c.text_centered(w as f32 / 2.0, lead_in, Weight::Regular, 28.0, MUTED, lead);
         }
         View::Wifi => {
-            stack("Back", Action::Back, &mut buttons);
+            stack(&mut bottom, "Back", Action::Back, &mut buttons);
             if let Some(usb) = m.usb.filter(|u| !is_wireless(u)) {
-                stack(&format!("Switch {usb} to Wi-Fi"), Action::SwitchToWifi(usb.to_string()), &mut buttons);
+                stack(
+                    &mut bottom,
+                    &format!("Switch {usb} to Wi-Fi"),
+                    Action::SwitchToWifi(usb.to_string()),
+                    &mut buttons,
+                );
             }
-            stack("Type an address", Action::TypeAddress, &mut buttons);
+            stack(&mut bottom, "Type an address", Action::TypeAddress, &mut buttons);
             y = c.para(margin, y, content_w, Style(Weight::Regular, 32.0, MUTED), "Tap a paired phone to connect")
                 + 22.0 * u;
             let connectable: Vec<&adb::Service> =
@@ -782,7 +834,7 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
             }
         }
         View::Qr => {
-            stack("Back", Action::Back, &mut buttons);
+            stack(&mut bottom, "Back", Action::Back, &mut buttons);
             if let Some(qr) = m.qr {
                 let quiet = 3;
                 let modules = qr.width as u32 + 2 * quiet;
@@ -823,8 +875,8 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
             c.para(margin, y, content_w, Style(Weight::Semibold, 32.0, colour), &text);
         }
         View::Doctor => {
-            stack("Back", Action::Back, &mut buttons);
-            stack("Run again", Action::RunChecks, &mut buttons);
+            stack(&mut bottom, "Back", Action::Back, &mut buttons);
+            stack(&mut bottom, "Run again", Action::RunChecks, &mut buttons);
             match m.doctor {
                 None => {
                     c.text(margin, y, Weight::Semibold, 34.0, AMBER, &format!("Checking{dots}"));
@@ -1024,7 +1076,20 @@ mod tests {
         qr: Option<&'a Qr>,
         note: Option<&'a str>,
     ) -> Model<'a> {
-        Model { status, view, tick: 1, hover: None, nearby, usb, qr, recent: &[], note, doctor: None }
+        Model {
+            status,
+            view,
+            tick: 1,
+            hover: None,
+            nearby,
+            usb,
+            qr,
+            recent: &[],
+            note,
+            doctor: None,
+            ios: false,
+            iphone: None,
+        }
     }
 
     fn sample_checks() -> Vec<crate::doctor::Check> {
@@ -1122,6 +1187,30 @@ mod tests {
         assert_eq!(render(w, h, &m).buttons.iter().filter(|b| matches!(b.action, Action::Connect(_))).count(), 2);
     }
 
+    #[test]
+    fn a_plugged_in_iphone_gets_a_mirror_button_that_fits() {
+        let (w, h) = (702u32, 1560u32);
+        let recent = [Recent { addr: "192.168.0.20:5555".into(), name: "Pixel".into(), at: 1 }];
+        let looking = Status::Looking;
+        let mut m = model(&looking, View::Home, &[], None, None, None);
+        m.ios = true;
+        assert!(!render(w, h, &m).buttons.iter().any(|b| matches!(b.action, Action::MirrorIos(_))));
+        // the busiest home screen: an iPhone, a paused USB phone and a recent Wi-Fi phone
+        let disconnected = Status::Disconnected;
+        let mut m = model(&disconnected, View::Home, &[], Some("W82202003817"), None, None);
+        (m.ios, m.iphone, m.recent) = (true, Some(("uid-1", "iPhone")), &recent);
+        let screen = render(w, h, &m);
+        let mirror: Vec<_> = screen.buttons.iter().filter(|b| matches!(b.action, Action::MirrorIos(_))).collect();
+        assert_eq!(mirror.len(), 1);
+        assert_eq!(mirror[0].action, Action::MirrorIos("uid-1".into()));
+        assert_eq!(mirror[0].label, "Mirror iPhone (view only)");
+        for (i, b) in screen.buttons.iter().enumerate() {
+            for o in &screen.buttons[i + 1..] {
+                assert!(b.rect[1] + b.rect[3] <= o.rect[1], "{:?} overlaps {:?}", b.action, o.action);
+            }
+        }
+    }
+
     /// Writes screens to `$HANDSET_TEST_OUT/connect-<n>.png` (if set) so they can be looked at.
     #[test]
     fn renders_every_screen() {
@@ -1143,6 +1232,12 @@ mod tests {
             model(&looking, View::Wifi, &nearby, Some("R58M12ABCDE"), None, Some("Connecting to 192.168.1.23...")),
             model(&looking, View::Qr, &[], None, Some(&qr), None),
             Model { doctor: Some(&checks), ..model(&looking, View::Doctor, &[], None, None, None) },
+            Model { ios: true, ..model(&looking, View::Home, &[], None, None, None) },
+            Model {
+                ios: true,
+                iphone: Some(("uid-1", "iPhone")),
+                ..model(&looking, View::Home, &[], None, None, None)
+            },
         ];
         for (n, m) in screens.iter().enumerate() {
             let (w, h) = (702, 1560); // the aspect of the frame's screen

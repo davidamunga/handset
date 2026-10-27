@@ -101,6 +101,8 @@ struct Waiting {
     next_retry: Instant,
     /// Mirroring was ended on purpose: a ready phone is offered, not started.
     paused: bool,
+    /// An iOS device that is plugged in (macOS): its capture id and name. Offered, never started by itself.
+    iphone: Option<(String, String)>,
 }
 
 impl Waiting {
@@ -128,6 +130,7 @@ impl Waiting {
             retry_addr: None,
             next_retry: Instant::now() + RECONNECT_EVERY,
             paused: false,
+            iphone: None,
             recent: crate::recent::load(),
         }
     }
@@ -312,6 +315,8 @@ impl App {
                 recent: &wt.recent,
                 note: wt.note.as_deref(),
                 doctor: wt.doctor.as_deref(),
+                ios: cfg!(target_os = "macos"),
+                iphone: wt.iphone.as_ref().map(|(uid, name)| (uid.as_str(), name.as_str())),
             };
             connect::render(pw, ph, &model)
         };
@@ -382,8 +387,14 @@ impl App {
                 }
             },
         };
-        let changed = next != wt.status || wt.usb != usb;
+        // an iOS device is looked for on the same beat as adb (and must be, on the main thread)
+        #[cfg(target_os = "macos")]
+        let iphone = crate::ios::connected().into_iter().next().map(|d| (d.uid, d.name));
+        #[cfg(not(target_os = "macos"))]
+        let iphone = None;
+        let changed = next != wt.status || wt.usb != usb || wt.iphone != iphone;
         wt.usb = usb;
+        wt.iphone = iphone;
         wt.status = next;
         if changed {
             self.draw_connect();
@@ -458,6 +469,13 @@ impl App {
 
     /// A landing screen button was clicked.
     fn on_action(&mut self, action: Action) {
+        if let Action::MirrorIos(uid) = &action {
+            #[cfg(target_os = "macos")]
+            self.begin_ios(uid.clone());
+            #[cfg(not(target_os = "macos"))]
+            let _ = uid;
+            return;
+        }
         let proxy = self.proxy.clone();
         let Some(wt) = self.waiting.as_mut() else { return };
         match action {
@@ -544,11 +562,18 @@ impl App {
         if self.mirror.is_none() && self.waiting.is_some() && self.auto_record.is_none() {
             return;
         }
-        // an iOS device has no connect screen to return to yet: finish any recording and quit
+        // an iOS device: back to the connect screen in the Android frame, unless `--record-for` is done
         if self.is_ios() {
             eprintln!("the iOS device was disconnected");
             self.end_session();
-            el.exit();
+            if self.auto_record.is_some() {
+                el.exit();
+                return;
+            }
+            self.switch_frame_family(false);
+            self.waiting = Some(Waiting::new(None, false, Status::Looking));
+            connect::spawn_poll(self.proxy.clone());
+            self.draw_connect();
             return;
         }
         if self.mirror.is_none() || self.auto_record.is_some() {
@@ -563,6 +588,65 @@ impl App {
         self.waiting = Some(wt);
         connect::spawn_poll(self.proxy.clone());
         self.draw_connect();
+    }
+
+    /// Mirror the iOS device `uid`, offered on the connect screen.
+    #[cfg(target_os = "macos")]
+    fn begin_ios(&mut self, uid: String) {
+        let Some(wt) = self.waiting.as_mut() else { return };
+        let name = wt.iphone.as_ref().filter(|(u, _)| *u == uid).map_or("iPhone".to_string(), |(_, n)| n.clone());
+        wt.status = Status::Connecting(name.clone());
+        self.draw_connect();
+        let device = crate::ios::Device { uid, name };
+        match Mirror::start_ios(
+            &device,
+            self.opts.audio,
+            self.mute,
+            self.proxy.clone(),
+            self.slot.clone(),
+            self.audio_sink.clone(),
+        ) {
+            Ok(mirror) => {
+                self.with_audio = mirror.with_audio();
+                self.control = Control::disconnected();
+                self.title = mirror.device_name().to_string();
+                if let Some(w) = &self.window {
+                    w.set_title(&self.title);
+                    w.set_cursor(Cursor::Icon(CursorIcon::Default));
+                }
+                self.mirror = Some(mirror);
+                self.black = Default::default();
+                self.hint = None;
+                self.waiting = None;
+                connect::stop_poll();
+                connect::want_mdns(false);
+                self.switch_frame_family(true);
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                if let Some(wt) = self.waiting.as_mut() {
+                    wt.status = Status::Failed(e);
+                }
+                self.draw_connect();
+            }
+        }
+    }
+
+    /// Going between an iOS device and Android: put on that family's saved frame. A frame of your own
+    /// (`--frame` with a PNG) stays.
+    fn switch_frame_family(&mut self, ios: bool) {
+        if self.frame_spec.as_deref().is_some_and(|s| !frame::builtin_names().any(|n| n == s)) {
+            return;
+        }
+        let saved = settings::Settings::load();
+        let want = match saved.get(if ios { "frame-ios" } else { "frame" }) {
+            Some("none") => None,
+            Some(spec) => Some(spec.to_string()),
+            None => Some(if ios { frame::IOS_DEFAULT } else { "obsidian" }.to_string()),
+        };
+        if want != self.frame_spec {
+            self.set_frame(want);
+        }
     }
 
     /// The Phone menu: end mirroring on purpose and open the connect screen, on `view`, without

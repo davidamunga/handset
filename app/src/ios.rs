@@ -78,6 +78,13 @@ fn list() -> Vec<Device> {
         .collect()
 }
 
+/// The iOS devices connected over USB right now, without waiting. Call it from the main thread.
+pub fn connected() -> Vec<Device> {
+    static ALLOW: std::sync::Once = std::sync::Once::new();
+    ALLOW.call_once(allow_screen_capture_devices);
+    list()
+}
+
 /// The iOS devices connected over USB, waiting up to `wait` for the first to appear. Runs the
 /// current thread's run loop while it waits, so call it from the main thread.
 pub fn devices(wait: Duration) -> Vec<Device> {

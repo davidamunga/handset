@@ -144,7 +144,8 @@ instead: `cargo install --path app --locked`.
 
 ## iPhone and iPad (experimental)
 
-On macOS, Handset can also show an iPhone or iPad connected with a cable, with its sound:
+On macOS, Handset can also show an iPhone or iPad connected with a cable, with its sound. Plug it in while
+the connect screen is open and click **Mirror iPhone (view only)**, or start it directly:
 
 ```sh
 handset --ios --audio
@@ -159,11 +160,12 @@ and battery) while it is captured.
 For now it is:
 
 - **macOS only.** Windows has no equivalent capture API.
-- **USB only.** There is no Wi-Fi option and no entry on the connect screen. Start it with `--ios`.
+- **USB only.** There is no Wi-Fi option. A plugged-in device is offered on the connect screen, never started by
+  itself, so an iPhone that is only charging does not get in the way of an Android phone.
 - **View only.** You cannot tap, type or press the device's buttons from Handset. The toolbar keeps only
   screenshot, record, next frame, menu and quit, the menu leaves out the phone's controls, and the frame list
   shows only the iPhone and iPad shapes.
-  If you unplug the device, Handset saves any recording and quits.
+  If you unplug the device, Handset saves any recording and goes back to the connect screen.
 
 `--ios <name>` picks a device when several are connected. To open the app straight into this mode, put `--ios --audio`
 in `~/.config/handset/args`. Why it works this way: [ADR 0025](docs/adr/0025-mirror-ios-devices-through-avfoundation-screen-capture.md).
@@ -243,7 +245,7 @@ Ideas, not promises:
 - A device picker
 - OBS-friendly output (Syphon or a virtual camera)
 - Microphone to phone, and Linux
-- Touch control for iPhone and iPad, and an iPhone option on the connect screen
+- Touch control for iPhone and iPad
 
 ## Contributing
 

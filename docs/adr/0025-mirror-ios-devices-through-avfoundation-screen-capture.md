@@ -38,7 +38,10 @@ control:
   the Android phone's `frame`. A custom `--frame` PNG is still used as given.
 - iOS only sends audio while something plays, so silence fills gaps in what the recorder receives.
   Otherwise ffmpeg's `-shortest` cuts the video at the end of the sound.
-- When the device goes away, Handset finishes any recording and quits. The connect screen is Android only.
+- The connect screen also looks for an iOS device on each adb poll and offers a **Mirror ... (view only)**
+  button. It never starts by itself: an iPhone that is plugged in to charge must not take over from an
+  Android phone. When the device goes away, Handset finishes any recording and returns to the connect screen,
+  in the Android frame again.
 - The app bundle declares `NSCameraUsageDescription` and `NSMicrophoneUsageDescription`. macOS treats the
   capture as camera and microphone use. Without access the session runs but delivers nothing, so Handset
   asks first and stops with a clear message if access is denied.
@@ -61,5 +64,4 @@ control:
   that app cannot be granted access, the capture is refused. The packaged `Handset.app` gets its own prompt.
 - iOS replaces the status bar with a clean one (9:41, full signal and battery) while it is captured. That
   suits demo captures.
-- Control (WebDriverAgent, or a Bluetooth HID accessory) and an iOS entry on the connect screen are left
-  for later. The `Mirror` split is where they plug in.
+- Control (WebDriverAgent, or a Bluetooth HID accessory) is left for later. The `Mirror` split is where they plug in.
