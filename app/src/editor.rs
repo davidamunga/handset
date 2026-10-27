@@ -332,19 +332,19 @@ mod theme {
     }
 
     pub fn bg() -> Color32 {
-        pick(0x000000, 0xe3e5e9)
+        pick(0x1a1a1a, 0xe3e5e9)
     }
     pub fn panel() -> Color32 {
-        pick(0x0b0b0d, 0xf2f3f5)
+        pick(0x232325, 0xf2f3f5)
     }
     pub fn card() -> Color32 {
-        pick(0x161618, 0xffffff)
+        pick(0x2d2d2f, 0xffffff)
     }
     pub fn card_hi() -> Color32 {
-        pick(0x222226, 0xe7e8eb)
+        pick(0x38383c, 0xe7e8eb)
     }
     pub fn line() -> Color32 {
-        pick(0x2a2a2f, 0xd5d8dd)
+        pick(0x3f3f44, 0xd5d8dd)
     }
     pub fn text() -> Color32 {
         pick(0xeceef0, 0x1f2024)
@@ -363,17 +363,17 @@ mod theme {
         pick(0x1f2024, 0xffffff)
     }
     pub fn accent_dim() -> Color32 {
-        pick(0x3a3a40, 0xcdd0d6)
+        pick(0x4e4e53, 0xcdd0d6)
     }
     pub fn hover() -> Color32 {
-        pick(0x2f2f35, 0xd5d8dd)
+        pick(0x444449, 0xd5d8dd)
     }
     pub fn pressed() -> Color32 {
-        pick(0x3a3a41, 0xc5c8cf)
+        pick(0x4e4e54, 0xc5c8cf)
     }
     /// The part of a recording that is kept, brighter than the track.
     pub fn kept() -> Color32 {
-        pick(0x3a3a40, 0xb9bcc2)
+        pick(0x4e4e53, 0xb9bcc2)
     }
     /// The playhead knob.
     pub fn knob() -> Color32 {
