@@ -1,11 +1,11 @@
 # Updates
 
-Handset looks for a newer release once a day. What happens next depends on how you installed it, because a
+Handset looks for a newer release on every start. What happens next depends on how you installed it, because a
 package manager should be the one to update what it installed.
 
 ## What you see
 
-A few seconds after start (at most once a day), Handset asks GitHub for the latest release. If it is newer than
+On every start, Handset asks GitHub for the latest release. If it is newer than
 the version you run, a toast tells you:
 
 | You installed with | The toast says | A click |
@@ -26,7 +26,7 @@ installs) or **Copy "..." to Update to X** (package managers) or **Download Hand
 - **Skip** keeps that version quiet from then on; a newer version is announced again.
 - **Remind me in 3 days** keeps the toast quiet for three days.
 - **Check for Updates...** always answers, even for a skipped version.
-- **Check for Updates Daily** (or `--no-update-check`, or `update-check=off` in the settings file) turns the automatic
+- **Check for Updates on Start** (or `--no-update-check`, or `update-check=off` in the settings file) turns the automatic
   check off.
 
 The check is one request to `api.github.com` through `curl`, with only a `handset/<version>` User-Agent.

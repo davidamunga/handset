@@ -145,7 +145,35 @@ fn parse_connect(stdout: &str, stderr: &str, addr: &str) -> io::Result<String> {
 }
 
 /// `adb pair host:port code`, as shown under Developer options > Wireless debugging > Pair device.
+///
+/// A wedged adb server is the usual reason a correct code is refused or never answered, and restarting
+/// it fixes that. It drops other adb sessions for a moment, so it is tried once, only after a failure.
 pub fn pair(addr: &str, code: &str) -> io::Result<String> {
+    // phones show the code as "123 456" or "123-456"; adb wants the bare digits
+    let code: String = code.chars().filter(char::is_ascii_digit).collect();
+    match pair_once(addr, &code) {
+        Ok(text) => Ok(text),
+        Err(first) => {
+            restart_server();
+            pair_once(addr, &code).map_err(|second| {
+                io::Error::other(format!(
+                    "{second}\n\nHandset also restarted adb and tried again. First attempt: {first}"
+                ))
+            })
+        }
+    }
+}
+
+/// Stop and start the adb server, the cure for most "adb is stuck" problems.
+pub fn restart_server() {
+    for arg in ["kill-server", "start-server"] {
+        let mut cmd = crate::tools::command(adb_path());
+        cmd.arg(arg);
+        let _ = output_within(cmd, std::time::Duration::from_secs(10));
+    }
+}
+
+fn pair_once(addr: &str, code: &str) -> io::Result<String> {
     let mut cmd = crate::tools::command(adb_path());
     cmd.args(["pair", addr, code]);
     let out = output_within(cmd, std::time::Duration::from_secs(20)).map_err(|e| {
@@ -159,6 +187,12 @@ pub fn pair(addr: &str, code: &str) -> io::Result<String> {
         format!("{} {}", String::from_utf8_lossy(&out.stdout).trim(), String::from_utf8_lossy(&out.stderr).trim());
     if text.to_lowercase().contains("successfully paired") {
         Ok(text.trim().to_string())
+    } else if text.contains("protocol fault") {
+        // the phone hung up on the handshake: a wrong or expired code, or a pairing screen that was reopened
+        Err(io::Error::other(format!(
+            "The phone refused the code. Reopen the pairing screen and use the new code.\n\nadb said: {}",
+            text.trim()
+        )))
     } else {
         Err(io::Error::other(format!(
             "Pairing with {addr} failed: {}\n\nUse the address and the six digit code from the \"Pair device with pairing code\" \
