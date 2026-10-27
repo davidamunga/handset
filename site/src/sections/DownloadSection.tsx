@@ -1,5 +1,5 @@
 import { CopyBlock } from '../components/CopyBlock'
-import { BREW, LINUX_BUILD, LINUX_GUIDE, RELEASES, REPO, SCOOP } from '../links'
+import { BREW, LINUX_GUIDE, LINUX_INSTALL, RELEASES, REPO, SCOOP } from '../links'
 import { useReleaseInfo } from '../release'
 import type { Download } from '../useRelease'
 
@@ -33,11 +33,11 @@ export function DownloadSection() {
               <Card
                 key="linux"
                 title="Linux"
-                note="Experimental, and built from source for now: there is no download yet. Ubuntu 22.04 or Debian 12 and newer, Fedora, Arch, Alpine and NixOS build. It has not run on a real Linux desktop yet."
+                note="Experimental: there is no download yet, so it installs from source with Cargo. Works on Ubuntu 22.04 or Debian 12 and newer, Fedora, Arch (and Omarchy), Alpine and NixOS. It has not run on a real Linux desktop yet."
                 fallback={LINUX_GUIDE}
                 cta="Read the Linux guide"
-                command={LINUX_BUILD}
-                commandLabel="Build on Debian or Ubuntu"
+                command={LINUX_INSTALL}
+                commandLabel="Install with Cargo (needs Rust 1.91 or newer, cmake, nasm and ALSA headers)"
                 featured={platform === 'linux'}
               />
             ) : os === 'mac' ? (

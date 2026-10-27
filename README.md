@@ -94,13 +94,28 @@ with Smart App Control turned on blocks it. Install `adb` (`winget install Googl
 ### Linux (experimental)
 
 It builds and passes its tests on Ubuntu 22.04 in CI, but nobody has run the window on a Linux desktop yet, so
-expect problems with the transparent, borderless frame on some compositors. Install the build dependencies
-(Debian and Ubuntu names) and build:
+expect problems with the transparent, borderless frame on some compositors. There is no download yet; install it
+from source with Cargo. You need Rust 1.91 or newer, `cmake`, `nasm` and the ALSA headers.
+
+Arch, Omarchy, EndeavourOS and Manjaro:
 
 ```sh
-sudo apt install build-essential pkg-config cmake nasm libasound2-dev
-cd app && cargo build --release    # app/target/release/handset
+sudo pacman -S --needed base-devel cmake nasm alsa-lib android-tools rust zenity
+cargo install --git https://github.com/davidamunga/handset --locked handset
 ```
+
+Debian and Ubuntu (install Rust with [rustup](https://rustup.rs): the Rust in Ubuntu 22.04 and Debian 12 is too old):
+
+```sh
+sudo apt install build-essential pkg-config cmake nasm libasound2-dev adb zenity
+cargo install --git https://github.com/davidamunga/handset --locked handset
+```
+
+That puts `handset` in `~/.cargo/bin` (put that on your `PATH`). Run `handset --doctor` to check your setup, then
+`handset --audio`. Run the same command with `--force` to update. This does not add a launcher entry: copy
+`app/packaging/linux/handset.desktop` and `app/packaging/icon/handset-icon-512.png` into `~/.local/share/applications` and
+`~/.local/share/icons/hicolor/512x512/apps/handset.png` if you want one. To build from a clone instead, run
+`cargo build --release` in `app`; the binary is `app/target/release/handset`.
 
 At run time, `adb` and `ffmpeg` are found on `PATH`, in `~/.local/bin` or in `~/Android/Sdk/platform-tools`.
 Optional helpers: `xdg-open` (open links and captures), `wl-clipboard` on Wayland or `xclip`/`xsel` on X11
@@ -126,7 +141,9 @@ Which systems:
 On Arch and its derivatives (Omarchy, EndeavourOS, Manjaro) install the build packages with
 `sudo pacman -S --needed base-devel cmake nasm alsa-lib android-tools`; `app/packaging/linux/PKGBUILD` builds
 a package from a release tag (`makepkg -si`; not on the AUR yet). On a tiling compositor such as Hyprland, float the
-window or it is tiled to fit: `windowrule = float, class:handset` (the class is `handset` on Wayland and X11).
+window or it is tiled to fit. The class is `handset` on Wayland and X11, and Hyprland's rule syntax differs by version:
+`windowrulev2 = float, class:^(handset)$` on older ones, `windowrule = float on, match:class ^(handset)$` on newer ones
+(check `hyprctl version` and the Hyprland wiki).
 A stock Omarchy has no `zenity`, so the address and pairing-code prompts do nothing until you `pacman -S zenity`.
 
 `scripts/package-linux.sh` builds `dist/linux/Handset-<version>-linux-<arch>.tar.gz` (the binary, a

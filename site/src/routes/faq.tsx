@@ -70,7 +70,8 @@ function Faq() {
         </li>
         <li>
           <strong>The phone is tiled or squashed.</strong> On a tiling desktop such as Hyprland, make the window float. In Hyprland
-          that is <code>windowrule = float, class:handset</code>.
+          the class is <code>handset</code>. The rule is <code>windowrulev2 = float, class:^(handset)$</code> on older versions and{' '}
+          <code>windowrule = float on, match:class ^(handset)$</code> on newer ones; check <code>hyprctl version</code>.
         </li>
       </ul>
 
