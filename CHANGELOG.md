@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0
+
+### Minor Changes
+
+- [#45](https://github.com/davidamunga/handset/pull/45) [`02423ca`](https://github.com/davidamunga/handset/commit/02423ca97c2d6ad3b970e55912a37fb11d5ef954) Thanks [@davidamunga](https://github.com/davidamunga)! - The style editor now plays a recording's sound while you preview it. A **Sound** switch next to Loop mutes it (it only shows for recordings that have audio).
+
+- [#44](https://github.com/davidamunga/handset/pull/44) [`28e89e0`](https://github.com/davidamunga/handset/commit/28e89e0acc146c68b1b5a2c56497968ea04a4745) Thanks [@davidamunga](https://github.com/davidamunga)! - Looks: save the editor's current style under a name and pick it again later from the **Looks** menu at the top of the editor. Five come with Handset (Clean white, Dark card, Sunset 4:5, Aurora 16:9, Dusk square). `--style` also accepts a look's name, for example `handset --restyle shot.png --style "Aurora 16:9"`.
+
+- [#42](https://github.com/davidamunga/handset/pull/42) [`653b2c6`](https://github.com/davidamunga/handset/commit/653b2c6d1941c58d0ce6fcc83b8fbb599badba3c) Thanks [@davidamunga](https://github.com/davidamunga)! - A style editor with a live preview: **EDIT** on the toast that appears after a capture is saved (next to **SHOW**), **EDIT** on the toast that appears after a capture is saved (next to **SHOW**), **Recent Captures > Edit Style...** (or `handset --edit <file>`) opens a window to pick the background (gradients, wallpapers, your own picture or a colour), padding, corner radius, shadow and aspect ratio, then exports a styled copy of a PNG, MP4 or GIF. Your last export's look is remembered. Recordings can be played and scrubbed in the editor's preview (Space plays and pauses). The editor has its own icon in the Dock. Cmd/Ctrl+Z undoes a change, a Loop switch repeats the preview, video exports show their progress and can be cancelled, and a capture dropped on the editor opens in a new window.
+
+- [#39](https://github.com/davidamunga/handset/pull/39) [`96db140`](https://github.com/davidamunga/handset/commit/96db140e92997f717b487b0ada553db903f979f1) Thanks [@davidamunga](https://github.com/davidamunga)! - Captures can be put on a styled background: gradients, wallpapers, plain colours or your own picture, with padding, shadow, rounded corners and an aspect ratio such as 1:1, 16:9 or 4:5. Works for PNG, MP4 and GIF. Turn on **Recording > Save a styled copy of each capture**, use **Recent Captures > Save Styled Copy**, or run `handset --restyle <file> --style "bg=gradient:dusk;padding=12;radius=6;shadow=60;aspect=16:9"`. The original is always kept.
+
+- [#43](https://github.com/davidamunga/handset/pull/43) [`ac7589a`](https://github.com/davidamunga/handset/commit/ac7589a2d4433a782823b7beded79df38db0b7b4) Thanks [@davidamunga](https://github.com/davidamunga)! - Recordings can be trimmed in the style editor: drag the two green handles at the ends of the scrubber to keep only part of a recording. Playback, Loop and Export follow the kept part, the exported file is cut to it (audio included), and **Reset trim** brings the whole recording back.
+
 ## 0.4.0
 
 ### Minor Changes
