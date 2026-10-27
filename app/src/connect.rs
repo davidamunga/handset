@@ -246,15 +246,15 @@ fn random_alnum(n: usize) -> String {
 }
 
 // Handset's colours: the app icon's greys and whites, with the status colours kept for meaning only.
-const BG: [u8; 3] = [244, 245, 247];
-const SURFACE: [u8; 3] = [227, 229, 233];
-const SURFACE_HOVER: [u8; 3] = [213, 216, 221];
+const BG: [u8; 3] = [221, 224, 229];
+const SURFACE: [u8; 3] = [255, 255, 255];
+const SURFACE_HOVER: [u8; 3] = [238, 239, 242];
 const INK: [u8; 3] = [46, 48, 54];
 const TEXT: [u8; 3] = [31, 32, 36];
-const MUTED: [u8; 3] = [107, 110, 117];
+const MUTED: [u8; 3] = [88, 91, 98];
 const OK: [u8; 3] = [30, 142, 90];
-const AMBER: [u8; 3] = [196, 120, 0];
-const RED: [u8; 3] = [217, 48, 37];
+const AMBER: [u8; 3] = [160, 96, 0];
+const RED: [u8; 3] = [190, 35, 25];
 
 static REGULAR: &[u8] = include_bytes!("../assets/fonts/Inter-Regular.ttf");
 static SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/Inter-SemiBold.ttf");
@@ -389,6 +389,30 @@ impl Canvas {
             prev = Some(id);
         }
         caret - x
+    }
+
+    /// Text whose ink (not its line box) is centred on (`cx`, `cy`): for a figure inside a circle.
+    fn text_ink_centered(&mut self, cx: f32, cy: f32, weight: Weight, size: f32, c: [u8; 3], text: &str) {
+        let px = self.px(size);
+        let f = font(weight);
+        let scaled = f.as_scaled(PxScale::from(px));
+        let (mut x0, mut x1, mut y0, mut y1) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
+        let mut caret = 0.0;
+        for ch in text.chars() {
+            let id = scaled.glyph_id(ch);
+            let glyph = id.with_scale_and_position(PxScale::from(px), point(caret, 0.0));
+            if let Some(outline) = f.outline_glyph(glyph) {
+                let b = outline.px_bounds();
+                (x0, x1, y0, y1) = (x0.min(b.min.x), x1.max(b.max.x), y0.min(b.min.y), y1.max(b.max.y));
+            }
+            caret += scaled.h_advance(id);
+        }
+        if x0 > x1 {
+            return;
+        }
+        // the text origin puts the baseline at y + ascent, and the ink spans y0..y1 around the baseline
+        let baseline = cy - (y0 + y1) / 2.0;
+        self.text(cx - (x0 + x1) / 2.0, baseline - scaled.ascent(), weight, size, c, text);
     }
 
     /// Line height for `size`.
@@ -626,10 +650,23 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
     // header: the icon large on the home screen, small beside the title elsewhere
     let mut y;
     if m.view == View::Home {
-        c.logo((776.0 - 190.0) / 2.0 * 1.0, 86.0, 190.0);
-        y = 300.0 * u;
-        c.text_centered(w as f32 / 2.0, y, Weight::Semibold, 54.0, TEXT, "Connect a phone");
-        y += c.line(54.0) + 14.0 * u;
+        // the logo mark with the name beside it, centred
+        let (mark, gap_x, name_size) = (104.0, 22.0 * u, 60.0);
+        let name_w = measure(Weight::Semibold, c.px(name_size), "Handset");
+        let x0 = (w as f32 - (c.d(mark) + gap_x + name_w)) / 2.0;
+        let top = 70.0 * u;
+        c.logo(x0, top, mark);
+        c.text_ink_centered(
+            x0 + c.d(mark) + gap_x + name_w / 2.0,
+            top + c.d(mark) / 2.0,
+            Weight::Semibold,
+            name_size,
+            TEXT,
+            "Handset",
+        );
+        y = top + c.d(mark) + 44.0 * u;
+        c.text_centered(w as f32 / 2.0, y, Weight::Semibold, 46.0, TEXT, "Connect a phone");
+        y += c.line(46.0) + 14.0 * u;
     } else {
         c.logo(56.0, 70.0, 92.0);
         let title = match m.view {
@@ -709,9 +746,9 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
                     let lines = wrap(Weight::Regular, c.px(32.0), content_w - 66.0 * u, item).len().max(1) as f32;
                     let row = (lines * c.line(32.0)).max(48.0 * u);
                     c.disc(margin + 24.0 * u, top + 24.0 * u, 24.0 * u, SURFACE);
-                    c.text_centered(
+                    c.text_ink_centered(
                         margin + 24.0 * u,
-                        top + 24.0 * u - c.line(28.0) / 2.0,
+                        top + 24.0 * u,
                         Weight::Semibold,
                         28.0,
                         INK,
