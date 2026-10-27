@@ -28,6 +28,10 @@ glance about.
   <img src="docs/images/connect-qr.png" alt="The QR code view for pairing a phone" width="230">
 </p>
 
+Once a phone is connected, it appears in its frame with a toolbar beside it:
+
+<p align="center"><img src="docs/images/mirroring.png" alt="Handset mirroring an Android phone inside a device frame, with its toolbar beside it" width="330"></p>
+
 ## Features
 
 - Live video and device audio over adb (USB), decoded in software and drawn with wgpu
@@ -87,8 +91,6 @@ with Smart App Control turned on blocks it. Install `adb` (`winget install Googl
 
 
 ### Windows
-
-<img src="docs/images/windows-mirroring.png" alt="Handset mirroring an Android phone on Windows, inside the Obsidian frame" width="280">
 
 Build with `cargo rustc --release --bin handset -- -C link-arg=packaging/windows/handset.res` in `app` (plain `cargo build --release` also works, but the `.exe` file then has no icon); the binary is `app\target\release\handset.exe`. `adb` and `ffmpeg`
 are found on `PATH`, in the Android SDK (`%LOCALAPPDATA%\Android\Sdk\platform-tools`), in winget, scoop or

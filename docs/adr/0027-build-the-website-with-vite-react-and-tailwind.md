@@ -1,4 +1,4 @@
-# 0027. Build the website with Vite, React and Tailwind
+# 0027. Build the website with Vite, React, TanStack Router and Tailwind
 
 - Status: accepted
 - Date: 2026-10-27
@@ -11,8 +11,17 @@ words stay in step with what ships.
 
 ## Decision
 
-The site is a small single page in `site/`, built with Vite, React, TypeScript and Tailwind CSS 4. It is its
-own npm package, apart from the Changesets setup at the root, and nothing in it is part of a release.
+The site is in `site/`, built with Vite, React, TypeScript, TanStack Router and Tailwind CSS 4. It is its own
+npm package, apart from the Changesets setup at the root, and nothing in it is part of a release.
+
+- Three routes, in `src/routes` (file-based, the tree in `routeTree.gen.ts` is generated and committed): the
+  home page, `/terms` and `/privacy`. The terms and the privacy policy describe what the app and the site
+  really do (no account, no telemetry, one update check to GitHub), so they are to be kept in step with the app.
+- It is a single-page app. `scripts/route-pages.mjs` runs after the build and writes a copy of `index.html` for
+  each legal URL with its own title, description and address, plus a `_redirects` fallback, so link previews read
+  the right words and a static host needs no rewrite rule of its own.
+- Screenshots are of Handset itself: the connect screens are rendered by the app's code, and the mirroring
+  and editor pictures were taken of the app mirroring a stock Android emulator, so no one's own phone is shown.
 
 - It shows the same pictures as the README. `scripts/sync-assets.mjs` copies them (and the icon and the Open
   Graph image) from `docs/images` and `app/packaging/icon` into the git-ignored `site/public/shared`, so there
@@ -34,11 +43,13 @@ Where the site is hosted is not decided here.
 
 - A second toolchain (Node) is needed to work on the site, but not to build or release the app.
 - A screenshot changed in the README changes on the site at its next build.
+- Without prerendering, the text of a page is drawn by JavaScript. The legal pages could be rendered ahead of
+  time later (TanStack Start can do it) if that matters to a search engine or an app-store form.
 - The site shows a version number only if the GitHub API answers; it never hard-codes one.
 
 ## Alternatives considered
 
-- **Astro or plain HTML:** lighter for a page this size, but React was asked for, and the logo and the download
-  card are small components worth having.
+- **Astro or plain HTML:** lighter for a page this size, but React and TanStack Router were asked for, and the logo
+  and the download card are small components worth having.
 - **Committing a copy of each picture under `site/`:** simpler to build, but two copies drift apart.
 - **Hard-coding the download links:** the file names carry the version, so they would break at each release.
