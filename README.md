@@ -273,11 +273,12 @@ you can edit. Command-line options win for the run they are given and are never 
 ## Updates
 
 On every start, Handset asks GitHub whether a newer release exists and
-shows a toast you can click to open it. **Check for Updates...** in the menu asks right away, and **Check for
+shows a blue banner at the bottom of the phone and a green update button in the toolbar; click either to update,
+or the banner's **X** to hide it for three days. **Check for Updates...** in the menu asks right away, and **Check for
 Updates on Start** turns the automatic check off (or use `--no-update-check`, or `update-check=off` in the settings
 file). The request goes to `api.github.com` through `curl` and carries only a `handset/<version>` User-Agent.
 
-Handset knows how it was installed: with Homebrew, Scoop or winget the toast gives the command to run
+Handset knows how it was installed: with Homebrew, Scoop or winget the banner gives the command to run
 (`brew upgrade --cask handset`, `scoop update handset`, `winget upgrade davidamunga.Handset`) and a click
 copies it, so the package manager stays in charge. A downloaded app (macOS) or unzipped release (Windows) can
 install the update itself: it checks the release's signature and checksum, replaces the app and restarts, and puts the

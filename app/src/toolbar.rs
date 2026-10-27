@@ -22,6 +22,8 @@ pub enum Button {
     Record,
     Rotate,
     NextFrame,
+    /// Shown only while a newer release is known.
+    Update,
     More,
     Quit,
 }
@@ -46,9 +48,13 @@ const ORDER: [Button; 13] = [
 /// Mirroring an iOS device is view only: just Handset's own buttons.
 const IOS_ORDER: [Button; 5] = [Button::Screenshot, Button::Record, Button::NextFrame, Button::More, Button::Quit];
 
-/// The buttons shown, top to bottom.
-pub fn order(ios: bool) -> &'static [Button] {
-    if ios { &IOS_ORDER } else { &ORDER }
+/// The buttons shown, top to bottom. `update` adds the update button above the menu while a newer release is known.
+pub fn order(ios: bool, update: bool) -> Vec<Button> {
+    let mut list = if ios { IOS_ORDER.to_vec() } else { ORDER.to_vec() };
+    if update && let Some(i) = list.iter().position(|b| *b == Button::More) {
+        list.insert(i, Button::Update);
+    }
+    list
 }
 
 impl Button {
@@ -66,6 +72,7 @@ impl Button {
             Button::Record => "RECORD",
             Button::Rotate => "ROTATE",
             Button::NextFrame => "NEXT FRAME",
+            Button::Update => "UPDATE",
             Button::More => "MENU",
             Button::Quit => "QUIT",
         }
@@ -129,6 +136,8 @@ fn triangle(p: V, a: V, b: V, c: V) -> f32 {
 
 const WHITE: [f32; 3] = [245.0, 245.0, 247.0];
 const RED: [f32; 3] = [235.0, 60.0, 60.0];
+/// The update button stands out in green: it is there only when there is something to do.
+const GREEN: [f32; 3] = [70.0, 205.0, 115.0];
 
 /// Coverage and colour of the icon of `button` at `p` (cell units, origin at
 /// the button centre, y down).
@@ -215,6 +224,16 @@ fn icon(button: Button, p: V, px: f32, recording: bool) -> Option<(f32, [f32; 3]
             let cam = cov(circle(p, (0.0, -0.13), 0.02), px);
             Some((outline.max(cam), WHITE))
         }
+        Button::Update => {
+            // an arrow down into a tray
+            let shaft = cov(seg(p, (0.0, -0.17), (0.0, 0.0)) - 0.02, px);
+            let head = cov(triangle(p, (-0.08, -0.02), (0.08, -0.02), (0.0, 0.07)), px);
+            let tray = [((-0.15, 0.05), (-0.15, 0.15)), ((-0.15, 0.15), (0.15, 0.15)), ((0.15, 0.15), (0.15, 0.05))]
+                .iter()
+                .map(|(a, b)| cov(seg(p, *a, *b) - 0.018, px))
+                .fold(0.0, f32::max);
+            Some((shaft.max(head).max(tray), GREEN))
+        }
         Button::More => {
             let d = [-0.12, 0.0, 0.12].iter().map(|x| cov(circle(p, (*x, 0.0), 0.035), px)).fold(0.0, f32::max);
             Some((d, WHITE))
@@ -275,13 +294,13 @@ mod tests {
     #[test]
     fn every_button_is_hit_in_its_own_cell() {
         let (ww, wh) = (700.0, 820.0);
-        for order in [order(false), order(true)] {
+        for order in [order(false, false), order(true, false), order(false, true), order(true, true)] {
             let [rx, ry, rw, rh] = rect(ww, wh, order.len());
             for (i, b) in order.iter().enumerate() {
                 let y = ry + rh / order.len() as f32 * (i as f32 + 0.5);
-                assert_eq!(button_at(ww, wh, rx + rw / 2.0, y, order), Some(*b), "{b:?}");
+                assert_eq!(button_at(ww, wh, rx + rw / 2.0, y, &order), Some(*b), "{b:?}");
             }
-            assert_eq!(button_at(ww, wh, rx - 5.0, ry + 3.0, order), None);
+            assert_eq!(button_at(ww, wh, rx - 5.0, ry + 3.0, &order), None);
             // the pill fits in the window with room to spare
             assert!(rh < wh * 0.8, "toolbar is {rh} px in a {wh} px window");
         }
@@ -289,16 +308,27 @@ mod tests {
 
     #[test]
     fn ios_shows_only_what_works_without_control() {
-        let ios = order(true);
-        assert!(ios.iter().all(|b| order(false).contains(b)));
+        let ios = order(true, false);
+        assert!(ios.iter().all(|b| order(false, false).contains(b)));
         for b in [Button::Back, Button::Home, Button::Power, Button::VolumeUp, Button::Rotate, Button::Notifications] {
             assert!(!ios.contains(&b), "{b:?}");
         }
     }
 
     #[test]
+    fn the_update_button_shows_only_when_there_is_an_update_and_sits_above_the_menu() {
+        for ios in [false, true] {
+            assert!(!order(ios, false).contains(&Button::Update));
+            let with = order(ios, true);
+            let at = with.iter().position(|b| *b == Button::Update).unwrap();
+            assert_eq!(with[at + 1], Button::More);
+            assert_eq!(with.len(), order(ios, false).len() + 1);
+        }
+    }
+
+    #[test]
     fn every_button_draws_an_icon_and_has_a_label() {
-        for b in ORDER {
+        for b in order(false, true) {
             let covered: f32 = (0..21)
                 .flat_map(|y| (0..21).map(move |x| (x, y)))
                 .filter_map(|(x, y)| icon(b, ((x as f32 - 10.0) / 40.0, (y as f32 - 10.0) / 40.0), 1.0 / 40.0, false))
@@ -312,7 +342,7 @@ mod tests {
     /// Writes the toolbar to `$HANDSET_TEST_OUT/toolbar.png` (if set) so it can be looked at.
     #[test]
     fn toolbar_renders() {
-        let p = raster(820.0, order(false), Some(Button::Notifications), false);
+        let p = raster(820.0, &order(false, true), Some(Button::Notifications), false);
         assert_eq!(p.rgba.len(), (p.width * p.height * 4) as usize);
         if let Some(dir) = std::env::var_os("HANDSET_TEST_OUT") {
             let path = std::path::Path::new(&dir).join("toolbar.png");
