@@ -654,8 +654,13 @@ impl Renderer {
     pub fn render(&mut self) {
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(f) | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
-            _ => {
-                self.surface.configure(&self.device, &self.config);
+            other => {
+                if matches!(other, wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost) {
+                    self.surface.configure(&self.device, &self.config);
+                }
+                // the frame uploaded for this draw waits in wgpu until something is submitted; skipping the
+                // submit on every frame of a covered window piled them up by the gigabyte
+                self.queue.submit([]);
                 return;
             }
         };

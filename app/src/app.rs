@@ -169,6 +169,8 @@ pub struct App {
     styling: Vec<std::thread::JoinHandle<()>>,
     auto_stop_at: Option<Instant>,
     hover: Option<Button>,
+    /// The window is fully covered or minimised: nothing is drawn until it shows again.
+    occluded: bool,
     toolbar_key: Option<(u32, Option<Button>, bool, bool)>,
     toast: Option<Toast>,
     /// What the renderer's overlay currently shows (text, dot colour).
@@ -262,6 +264,7 @@ impl App {
             styling: Vec::new(),
             auto_stop_at: None,
             hover: None,
+            occluded: false,
             toolbar_key: None,
             toast: None,
             overlay_key: None,
@@ -1828,6 +1831,14 @@ impl ApplicationHandler<UserEvent> for App {
                     w.request_redraw();
                 }
             }
+            WindowEvent::Occluded(o) => {
+                self.occluded = o;
+                if !o && let Some(w) = &self.window {
+                    w.request_redraw();
+                }
+            }
+            // a covered window cannot be drawn to; leave the newest frame in the slot for when it shows
+            WindowEvent::RedrawRequested if self.occluded => {}
             WindowEvent::RedrawRequested => {
                 self.upload_latest();
                 if let Some(r) = self.renderer.as_mut() {
