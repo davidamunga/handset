@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.0
+
+### Minor Changes
+
+- [#63](https://github.com/davidamunga/handset/pull/63) [`3f3a288`](https://github.com/davidamunga/handset/commit/3f3a2880511f6a1521fbf15de27ae0c8615eae29) Thanks [@davidamunga](https://github.com/davidamunga)! - Handset has a new icon: a phone with two eyes in front of an Android-green and an iOS-blue echo, so it no longer looks like it is only for Android. The connect screen is now grey and white, and the style editor uses a grey look that follows your system's light or dark setting. The Dock icon still shows what Handset is doing, now through the phone's eyes. The editor's **Looks** menu is now a **Presets** card at the top of the sidebar, with a thumbnail of your picture for each preset.
+
+- [#59](https://github.com/davidamunga/handset/pull/59) [`88884c0`](https://github.com/davidamunga/handset/commit/88884c06bf02bd98e84d627b628e7ce32376d0a2) Thanks [@davidamunga](https://github.com/davidamunga)! - Handset can show an iPhone or iPad connected over USB on macOS, with its sound: click **Mirror iPhone** on the connect screen, or start it with `handset --ios`. The frame, screenshots and recordings work as they do for Android phones. Controlling the device is not supported yet, so the toolbar and menu offer only what works without it. The frame list shows only the iPhone and iPad shapes, and an iPhone starts in the Dynamic Island frame.
+
+### Patch Changes
+
+- [#61](https://github.com/davidamunga/handset/pull/61) [`4fa6d03`](https://github.com/davidamunga/handset/commit/4fa6d037b9201222594a3525524c731507aba263) Thanks [@davidamunga](https://github.com/davidamunga)! - Fixed Handset using more and more memory, up to tens of gigabytes, while its window was hidden or had not appeared yet. New phone frames and the animated connect screen are now sent to the graphics card only when the window draws.
+
 ## 0.6.1
 
 ### Patch Changes
