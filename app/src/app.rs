@@ -29,6 +29,8 @@ use winit::window::{Cursor, CursorIcon, Window, WindowId};
 /// Everything `App` needs from `main`.
 pub struct Init {
     pub bezel: Option<Bezel>,
+    /// The version this run replaced, when Handset has just been updated.
+    pub updated_from: Option<String>,
     pub title: String,
     pub slot: Arc<Mutex<Slot>>,
     pub control: Control,
@@ -182,6 +184,8 @@ pub struct App {
     install: crate::install::Source,
     /// An update is being downloaded or prepared.
     updating: bool,
+    /// Set after an update until the first toast has been shown.
+    just_updated: Option<String>,
     /// Window height at start (physical pixels), what Default Size returns to.
     home_height: u32,
     mirror: Option<Mirror>,
@@ -261,6 +265,7 @@ impl App {
             toolbar_start: init.toolbar,
             touches_start: init.touches,
             update_auto: init.update_check,
+            just_updated: init.updated_from,
             update: None,
             install: crate::install::current(),
             updating: false,
@@ -1479,6 +1484,12 @@ impl ApplicationHandler<UserEvent> for App {
     }
 
     fn about_to_wait(&mut self, el: &ActiveEventLoop) {
+        if self.renderer.is_some()
+            && let Some(from) = self.just_updated.take()
+        {
+            eprintln!("updated from {from} to {}", update::CURRENT);
+            self.show_toast(&format!("UPDATED TO {}", update::CURRENT));
+        }
         if self.auto_stop_at.is_some_and(|t| Instant::now() >= t) {
             self.auto_stop_at = None;
             self.auto_record = None;

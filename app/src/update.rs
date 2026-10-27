@@ -78,6 +78,13 @@ pub fn due(last_checked: Option<u64>, now: u64) -> bool {
     last_checked.is_none_or(|t| now.saturating_sub(t) >= EVERY)
 }
 
+/// The version Handset ran the last time, when this run is a newer one: the person has just updated. `None` for
+/// the first run that records a version, for the same version and for an older one (a downgrade says nothing).
+pub fn updated_from(previous: Option<&str>, current: &str) -> Option<String> {
+    let previous = previous?;
+    is_newer(current, previous).then(|| previous.to_string())
+}
+
 /// How long "Remind me later" waits.
 pub const SNOOZE: u64 = 3 * 24 * 60 * 60;
 
@@ -142,6 +149,17 @@ mod tests {
         assert!(announce("0.5.0", "0.4.0", Some("0.5.0"), Some(9_999), 1_000, true));
         assert!(!announce("0.4.0", "0.4.0", None, None, 1_000, true), "nothing newer is never announced");
         assert!(!announce("0.3.0", "0.4.0", None, None, 1_000, true));
+    }
+
+    #[test]
+    fn a_newer_run_than_the_last_one_means_it_was_updated() {
+        assert_eq!(updated_from(Some("0.6.0"), "0.6.1").as_deref(), Some("0.6.0"));
+        assert_eq!(updated_from(Some("0.5.9"), "0.6.0").as_deref(), Some("0.5.9"));
+        assert_eq!(updated_from(Some("0.9.0"), "0.10.0").as_deref(), Some("0.9.0"), "compared as numbers, not text");
+        assert_eq!(updated_from(None, "0.6.1"), None, "the first run that records a version says nothing");
+        assert_eq!(updated_from(Some("0.6.1"), "0.6.1"), None, "the same version");
+        assert_eq!(updated_from(Some("0.7.0"), "0.6.1"), None, "an older version is not an update");
+        assert_eq!(updated_from(Some("garbled"), "0.6.1"), None);
     }
 
     #[test]

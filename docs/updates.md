@@ -51,6 +51,12 @@ says why. A failed update leaves its log in `handset-update-<id>/update.log` in 
 Package-manager installs are never replaced by Handset itself: updating them with `brew`, `scoop` or `winget` keeps
 those tools' records right.
 
+## After an update
+
+Handset remembers the version it last ran (`last-version` in `~/.config/handset/settings`). The first start of a
+newer version, however it got there (its own installer, `brew`, `scoop` or a download), shows `UPDATED TO 0.6.1`.
+The first run that records a version, and a start of the same or an older version, show nothing.
+
 ## Checking a download yourself
 
 Put the release files and the `.sig` next to each other and run:

@@ -231,6 +231,11 @@ fn main() {
     }
     let waiting = mirror.is_none();
 
+    // after an update, the first run says so; every run remembers its version
+    let updated_from = update::updated_from(saved.get("last-version"), update::CURRENT);
+    if saved.get("last-version") != Some(update::CURRENT) {
+        settings::save("last-version", update::CURRENT);
+    }
     let mut app = app::App::new(app::Init {
         bezel,
         title,
@@ -250,6 +255,7 @@ fn main() {
         toolbar: saved.get_bool("toolbar").unwrap_or(true),
         touches,
         update_check,
+        updated_from,
     });
     app.auto_record = record_for.map(std::time::Duration::from_secs_f32);
     if waiting {
