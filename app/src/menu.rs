@@ -127,6 +127,7 @@ pub fn show(window: &Window, s: &State) {
         let p = path.to_string_lossy();
         let _ = item.append(&MenuItem::with_id(format!("recent:open:{p}"), "Open", true, None));
         if matches!(path.extension().and_then(|e| e.to_str()), Some("png" | "mp4" | "gif")) {
+            let _ = item.append(&MenuItem::with_id(format!("recent:edit:{p}"), "Edit Style...", true, None));
             let _ = item.append(&MenuItem::with_id(format!("recent:style:{p}"), "Save Styled Copy", true, None));
         }
         let _ = item.append(&MenuItem::with_id(

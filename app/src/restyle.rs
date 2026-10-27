@@ -123,17 +123,37 @@ fn parse_size(banner: &str) -> Option<(u32, u32)> {
     })
 }
 
+/// A video cannot be transparent: styled with no background it sits on a dark colour.
+pub fn video_style(style: &Style) -> Style {
+    match style.background {
+        Background::None => Style { background: Background::Color(DARK), ..style.clone() },
+        _ => style.clone(),
+    }
+}
+
+/// The first frame of a video, for previews.
+pub fn first_frame(path: &Path) -> Result<Img, String> {
+    let tmp = scratch("png");
+    let out = crate::tools::command(crate::tools::find("ffmpeg"))
+        .args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
+        .arg(path)
+        .args(["-frames:v", "1"])
+        .arg(&tmp)
+        .output()
+        .map_err(|e| format!("cannot run ffmpeg (is it installed?): {e}"))?;
+    let img = if out.status.success() {
+        read_png(&tmp)
+    } else {
+        Err(format!("cannot read {}: {}", path.display(), String::from_utf8_lossy(&out.stderr).trim()))
+    };
+    let _ = std::fs::remove_file(&tmp);
+    img
+}
+
 fn style_video(input: &Path, out: &Path, style: &Style, image: Option<&Img>) -> Result<(), String> {
     let size = probe_size(input)?;
     let layout = style.layout(size);
-    // a video cannot be transparent
-    let solid;
-    let style = if style.background == Background::None {
-        solid = Style { background: Background::Color(DARK), ..style.clone() };
-        &solid
-    } else {
-        style
-    };
+    let style = &video_style(style);
     let mut backdrop = style.backdrop(&layout, None, image);
     style.punch_hole(&mut backdrop, &layout);
     let bd_path = scratch("png");

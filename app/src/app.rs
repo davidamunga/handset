@@ -902,6 +902,12 @@ impl App {
                         "open" => capture::open_file(&path),
                         "reveal" => capture::reveal(&path),
                         "style" => self.style_in_background(path),
+                        "edit" => {
+                            let _ = crate::tools::command(std::env::current_exe().unwrap_or_else(|_| "handset".into()))
+                                .arg("--edit")
+                                .arg(&path)
+                                .spawn();
+                        }
                         "copy" => {
                             let ok = capture::copy_to_clipboard(&path);
                             self.show_toast(if ok { "COPIED" } else { "COPY FAILED" });

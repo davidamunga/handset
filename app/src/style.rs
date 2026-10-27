@@ -27,7 +27,6 @@ pub enum Aspect {
     Ratio(u32, u32),
 }
 
-#[allow(dead_code)] // the editor's choices
 pub const ASPECTS: [Aspect; 7] = [
     Aspect::Auto,
     Aspect::Ratio(1, 1),
@@ -39,7 +38,6 @@ pub const ASPECTS: [Aspect; 7] = [
 ];
 
 impl Aspect {
-    #[allow(dead_code)]
     pub fn label(self) -> String {
         match self {
             Self::Auto => "Auto".into(),
@@ -313,7 +311,6 @@ impl Style {
         Some(s)
     }
 
-    #[allow(dead_code)]
     pub fn to_spec(&self) -> String {
         let bg = match &self.background {
             Background::None => "none".to_string(),

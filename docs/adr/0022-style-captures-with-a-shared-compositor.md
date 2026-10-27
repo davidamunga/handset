@@ -42,3 +42,13 @@ never destroy the original.
   not done yet.
 - Styling a video re-encodes it (libx264, crf 18); audio is copied.
 - Styling needs `ffmpeg` for video and for non-PNG background images only.
+
+## The editor window
+
+`handset --edit <file>` opens an `eframe`/`egui` window (egui 0.37 uses the same wgpu 30 and winit 0.30 as the
+renderer, so nothing is duplicated). It runs as its own process, started from Recent Captures > Edit Style...,
+so it does not touch the mirroring window's event loop and works for any saved file. The preview is a
+downscaled still (a picture, or a video's first frame) styled by the same `Style::compose` as the export.
+Choosing a picture background uses a native file dialog (`rfd`). Exporting remembers the look as the
+`style` setting. egui adds compile time and some binary size; the alternative, hand-drawing sliders and a
+colour picker in the bitmap-font overlay, would have been a lot more code for a worse result.
