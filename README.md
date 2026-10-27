@@ -17,7 +17,10 @@ framed screenshots and recordings with audio.
 ## What it looks like
 
 With no phone connected, Handset opens on a connect screen inside the frame: USB steps that update as you plug in,
-and Wi-Fi and QR code options for connecting without a cable.
+and Wi-Fi and QR code options for connecting without a cable. While it looks for a phone, the eyes in the logo
+glance about.
+
+<p align="center"><img src="docs/images/handset-looking.gif" alt="The Handset logo, its two eyes glancing left and right" width="300"></p>
 
 <p align="center">
   <img src="docs/images/connect-home.png" alt="The connect screen with USB steps and Wi-Fi and QR code buttons" width="230">

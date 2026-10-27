@@ -1444,5 +1444,17 @@ mod tests {
                 enc.write_header().unwrap().write_image_data(&screen.rgb).unwrap();
             }
         }
+        // one lap of the looking animation, a frame per tick, for making the README's animated logo
+        if let Some(dir) = std::env::var_os("HANDSET_TEST_OUT") {
+            for tick in 0..16 {
+                let m = Model { tick, ..model(&looking, View::Home, &[], None, None, None) };
+                let screen = render(702, 1560, &m);
+                let path = std::path::Path::new(&dir).join(format!("looking-{tick}.png"));
+                let mut enc = png::Encoder::new(std::fs::File::create(path).unwrap(), 702, 1560);
+                enc.set_color(png::ColorType::Rgb);
+                enc.set_depth(png::BitDepth::Eight);
+                enc.write_header().unwrap().write_image_data(&screen.rgb).unwrap();
+            }
+        }
     }
 }
