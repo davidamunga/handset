@@ -37,9 +37,11 @@ never destroy the original.
 
 ## Consequences
 
-- A recording has an opaque background colour, so its styled copy shows the phone and that colour as a
-  rounded card, not the bare phone silhouette. Recording the phone with transparency would fix that; it is
-  not done yet.
+- A recording is flattened onto an opaque colour, so its transparency is lost. The phone's outline does not
+  change during a recording, so Handset saves it once at the start as `<name>.matte` (a greyscale PNG) beside
+  the recording. Styling uses it as the shape of the hole in the backdrop and as the shadow's silhouette, so
+  the phone sits directly on the background. A recording without a matte (made by an older version, or moved
+  without it) is styled as a rounded card on its own backdrop colour; the corner radius only applies then.
 - Styling a video re-encodes it (libx264, crf 18); audio is copied.
 - Styling needs `ffmpeg` for video and for non-PNG background images only.
 

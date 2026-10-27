@@ -16,6 +16,38 @@ fn ext(path: &Path) -> String {
     path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase()
 }
 
+/// The outline of the phone in a recording, saved beside it as `<name>.matte` (a greyscale PNG).
+///
+/// A recording is flattened onto an opaque colour, so its own transparency is lost; the outline of the
+/// framed phone does not change during a recording, so one picture of it is enough to cut the phone out
+/// again when the recording is styled.
+pub fn matte_path(video: &Path) -> PathBuf {
+    video.with_extension("matte")
+}
+
+/// Save the alpha of a transparent capture as the matte of the recording at `video`.
+pub fn save_matte(video: &Path, rgba: &[u8], w: u32, h: u32) -> Result<(), String> {
+    let file = std::fs::File::create(matte_path(video)).map_err(|e| e.to_string())?;
+    let mut enc = png::Encoder::new(BufWriter::new(file), w, h);
+    enc.set_color(png::ColorType::Grayscale);
+    enc.set_depth(png::BitDepth::Eight);
+    let alpha: Vec<u8> = rgba.as_chunks::<4>().0.iter().map(|p| p[3]).collect();
+    let mut writer = enc.write_header().map_err(|e| e.to_string())?;
+    writer.write_image_data(&alpha).map_err(|e| e.to_string())?;
+    writer.finish().map_err(|e| e.to_string())
+}
+
+/// The matte of a recording as an image whose alpha is the outline, if there is one of the right size.
+pub fn load_matte(video: &Path, (w, h): (u32, u32)) -> Option<Img> {
+    let g = read_png(&matte_path(video)).ok()?;
+    // read_png turns grey into opaque RGBA: the alpha of the matte is its grey level
+    (g.w == w && g.h == h).then(|| Img {
+        w,
+        h,
+        rgba: g.rgba.as_chunks::<4>().0.iter().flat_map(|p| [0, 0, 0, p[0]]).collect(),
+    })
+}
+
 /// Where the styled copy of `input` goes: `<stem>-styled[-N].<ext>` beside it.
 pub fn styled_path(input: &Path) -> PathBuf {
     let dir = input.parent().map(Path::to_path_buf).unwrap_or_default();
@@ -152,10 +184,15 @@ pub fn first_frame(path: &Path) -> Result<Img, String> {
 
 fn style_video(input: &Path, out: &Path, style: &Style, image: Option<&Img>) -> Result<(), String> {
     let size = probe_size(input)?;
-    let layout = style.layout(size);
+    let matte = load_matte(input, size);
+    let mut layout = style.layout(size);
+    if matte.is_some() {
+        // the phone's own outline is the shape: no rounded rectangle on top of it
+        layout.radius = 0.0;
+    }
     let style = &video_style(style);
-    let mut backdrop = style.backdrop(&layout, None, image);
-    style.punch_hole(&mut backdrop, &layout);
+    let mut backdrop = style.backdrop(&layout, matte.as_ref(), image);
+    style.punch_hole(&mut backdrop, &layout, matte.as_ref());
     let bd_path = scratch("png");
     write_png(&bd_path, &Img { w: layout.out.0, h: layout.out.1, rgba: backdrop })?;
 
@@ -230,6 +267,56 @@ mod tests {
         let styled = read_png(&out).unwrap();
         assert_eq!(styled.w, styled.h);
         assert_eq!(std::fs::read(&src).unwrap(), before);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_matte_cuts_the_phone_out_of_the_recording() {
+        if !ffmpeg_present() {
+            return;
+        }
+        let dir = temp_dir("matte");
+        let src = dir.join("clip.mp4");
+        assert!(
+            crate::tools::command(crate::tools::find("ffmpeg"))
+                .args([
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc=size=160x240:rate=10:duration=1"
+                ])
+                .args(["-pix_fmt", "yuv420p"])
+                .arg(&src)
+                .status()
+                .unwrap()
+                .success()
+        );
+        // the left half of the picture is outside the phone
+        let rgba: Vec<u8> = (0..160 * 240).flat_map(|i| [0, 0, 0, if i % 160 < 80 { 0 } else { 255 }]).collect();
+        save_matte(&src, &rgba, 160, 240).unwrap();
+        let style = Style { background: Background::Color([200, 0, 0]), shadow: 0, radius: 20, ..Style::default() };
+        let out = export(&src, &style).unwrap();
+        let png = dir.join("frame.png");
+        assert!(
+            crate::tools::command(crate::tools::find("ffmpeg"))
+                .args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
+                .arg(&out)
+                .args(["-frames:v", "1"])
+                .arg(&png)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let f = read_png(&png).unwrap();
+        let l = style.layout((160, 240));
+        let at = |x: u32, y: u32| f.rgba[(((l.y + y) * f.w + l.x + x) * 4) as usize..][..3].to_vec();
+        let outside = at(10, 120);
+        assert!(outside[0] > 180 && outside[1] < 40, "outside the matte shows the background: {outside:?}");
+        assert_ne!(at(150, 120), outside, "inside the matte shows the video");
         let _ = std::fs::remove_dir_all(dir);
     }
 

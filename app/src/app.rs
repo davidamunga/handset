@@ -1173,6 +1173,10 @@ impl App {
                     size.0,
                     size.1
                 );
+                // the phone's outline, so a styled copy can cut the phone out of the recording's backdrop
+                if let Some(rgba) = self.renderer.as_mut().and_then(|r| r.capture(size, None)) {
+                    let _ = restyle::save_matte(&rec.path, &rgba, size.0, size.1);
+                }
                 *self.audio_sink.lock().unwrap() = rec.audio_sender();
                 self.recorder = Some(rec);
                 self.next_tick = Instant::now();

@@ -56,7 +56,14 @@ fn load_source(path: &Path) -> Result<Img, String> {
     if !restyle::is_video(path) {
         return restyle::read_png(path);
     }
-    restyle::first_frame(path)
+    let mut frame = restyle::first_frame(path)?;
+    // a recording of a framed phone has its outline saved beside it: cut the phone out of its backdrop
+    if let Some(matte) = restyle::load_matte(path, (frame.w, frame.h)) {
+        for (px, m) in frame.rgba.as_chunks_mut::<4>().0.iter_mut().zip(matte.rgba.as_chunks::<4>().0) {
+            px[3] = m[3];
+        }
+    }
+    Ok(frame)
 }
 
 fn downscale(src: &Img, long_side: u32) -> Img {
@@ -95,6 +102,8 @@ fn downscale(src: &Img, long_side: u32) -> Img {
 struct Editor {
     path: PathBuf,
     video: bool,
+    /// The recording has its phone outline saved, so the corner radius does not apply.
+    matte: bool,
     preview_src: Img,
     style: Style,
     /// The picture chosen as background, decoded once, with the path it came from.
@@ -130,6 +139,7 @@ impl Editor {
         }
         let mut ed = Self {
             video: restyle::is_video(&path),
+            matte: restyle::is_video(&path) && restyle::matte_path(&path).is_file(),
             preview_src: downscale(&source, PREVIEW_LONG_SIDE),
             path,
             custom: match style.background {
@@ -164,7 +174,10 @@ impl Editor {
     }
 
     fn render_preview(&mut self, ctx: &egui::Context) {
-        let style = if self.video { restyle::video_style(&self.style) } else { self.style.clone() };
+        let mut style = if self.video { restyle::video_style(&self.style) } else { self.style.clone() };
+        if self.matte {
+            style.radius = 0;
+        }
         let out = style.compose(&self.preview_src, self.image.as_ref().map(|(_, i)| i));
         let img = egui::ColorImage::from_rgba_unmultiplied([out.w as usize, out.h as usize], &out.rgba);
         match &mut self.texture {
@@ -348,11 +361,13 @@ impl Editor {
             self.style.padding = v;
             changed = true;
         }
-        Self::section(ui, "Corner radius");
-        let mut v = self.style.radius;
-        if ui.add(egui::Slider::new(&mut v, 0..=crate::style::MAX_RADIUS).suffix("%")).changed() {
-            self.style.radius = v;
-            changed = true;
+        if !self.matte {
+            Self::section(ui, "Corner radius");
+            let mut v = self.style.radius;
+            if ui.add(egui::Slider::new(&mut v, 0..=crate::style::MAX_RADIUS).suffix("%")).changed() {
+                self.style.radius = v;
+                changed = true;
+            }
         }
         Self::section(ui, "Shadow");
         let mut v = self.style.shadow;

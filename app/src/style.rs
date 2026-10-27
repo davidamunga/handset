@@ -445,10 +445,14 @@ impl Style {
 
     /// Make the capture's rounded rectangle see-through in a backdrop, so that video laid underneath
     /// shows through it. Edge pixels keep the background in proportion, which anti-aliases the corners.
-    pub fn punch_hole(&self, backdrop: &mut [u8], l: &Layout) {
+    /// `matte` is the capture's own outline (its alpha), when it has one, in place of a rounded rectangle.
+    pub fn punch_hole(&self, backdrop: &mut [u8], l: &Layout, matte: Option<&Img>) {
         for y in 0..l.h {
             for x in 0..l.w {
-                let cover = rounded_cover(x, y, l.w, l.h, l.radius);
+                let cover = match matte {
+                    Some(m) => m.rgba[((y * m.w + x) * 4 + 3) as usize] as f32 / 255.0,
+                    None => rounded_cover(x, y, l.w, l.h, l.radius),
+                };
                 let i = (((l.y + y) * l.out.0 + l.x + x) * 4 + 3) as usize;
                 backdrop[i] = (backdrop[i] as f32 * (1.0 - cover)).round() as u8;
             }
@@ -601,11 +605,26 @@ mod tests {
     }
 
     #[test]
+    fn hole_follows_a_matte() {
+        let s = Style { background: Background::Color([9, 9, 9]), radius: 30, shadow: 0, ..Style::default() };
+        let l = s.layout((100, 100));
+        // left half outside the outline, right half inside
+        let rgba = (0..100 * 100).flat_map(|i| [0, 0, 0, if i % 100 < 50 { 0 } else { 255 }]).collect();
+        let matte = Img { w: 100, h: 100, rgba };
+        let mut bd = s.backdrop(&l, Some(&matte), None);
+        s.punch_hole(&mut bd, &l, Some(&matte));
+        let a = |x: u32, y: u32| bd[(((l.y + y) * l.out.0 + l.x + x) * 4 + 3) as usize];
+        assert_eq!(a(10, 50), 255);
+        assert_eq!(a(90, 50), 0);
+        assert_eq!(a(90, 0), 0, "the matte, not the rounded corner, decides the shape");
+    }
+
+    #[test]
     fn hole_is_transparent_inside_and_opaque_outside() {
         let s = Style { background: Background::Color([9, 9, 9]), radius: 0, shadow: 0, ..Style::default() };
         let l = s.layout((100, 100));
         let mut bd = s.backdrop(&l, None, None);
-        s.punch_hole(&mut bd, &l);
+        s.punch_hole(&mut bd, &l, None);
         let a = |x: u32, y: u32| bd[((y * l.out.0 + x) * 4 + 3) as usize];
         assert_eq!(a(l.x + 50, l.y + 50), 0);
         assert_eq!(a(1, 1), 255);
