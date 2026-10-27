@@ -1,6 +1,6 @@
 //! Looking for a newer release on GitHub. Package managers update their own installs; this is for
 //! people who downloaded a zip. It asks GitHub's public API (through `curl`, which macOS and
-//! Windows 10 and later ship) at most once a day, sends nothing but a User-Agent, and can be
+//! Windows 10 and later ship) once on every start, sends nothing but a User-Agent, and can be
 //! switched off in the menu.
 
 use std::time::Duration;
@@ -13,9 +13,6 @@ pub fn current() -> String {
     std::env::var("HANDSET_UPDATE_CURRENT").unwrap_or_else(|_| CURRENT.to_string())
 }
 
-/// How long to wait before the next automatic check.
-const EVERY: u64 = 24 * 60 * 60;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Release {
     /// Without the leading `v`.
@@ -26,10 +23,10 @@ pub struct Release {
 /// Ask GitHub for the latest release.
 pub fn latest() -> Result<Release, String> {
     let mut cmd = crate::tools::command("curl");
-    cmd.args(["-sS", "-L", "--max-time", "10", "-H", "Accept: application/vnd.github+json", "-A"])
+    cmd.args(["-sS", "-L", "--max-time", "5", "-H", "Accept: application/vnd.github+json", "-A"])
         .arg(format!("handset/{CURRENT}"))
         .arg(LATEST);
-    let out = crate::adb::output_within(cmd, Duration::from_secs(15)).map_err(|e| e.to_string())?;
+    let out = crate::adb::output_within(cmd, Duration::from_secs(8)).map_err(|e| e.to_string())?;
     if !out.status.success() {
         return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
     }
@@ -73,9 +70,10 @@ pub fn is_newer(latest: &str, current: &str) -> bool {
     }
 }
 
-/// Is an automatic check due, given when the last one succeeded (Unix seconds)?
-pub fn due(last_checked: Option<u64>, now: u64) -> bool {
-    last_checked.is_none_or(|t| now.saturating_sub(t) >= EVERY)
+/// Should this start look for a newer release? Every start does when automatic checking is on, except a
+/// scripted recording, which has nobody to tell.
+pub fn check_on_start(auto: bool, unattended: bool) -> bool {
+    auto && !unattended
 }
 
 /// The version Handset ran the last time, when this run is a newer one: the person has just updated. `None` for
@@ -89,19 +87,21 @@ pub fn updated_from(previous: Option<&str>, current: &str) -> Option<String> {
 pub const SNOOZE: u64 = 3 * 24 * 60 * 60;
 
 /// Should the person hear about `latest`? A manual check always says so when there is something newer. An
-/// automatic one stays quiet about a version they chose to skip, and while a "remind me later" is running.
+/// automatic one stays quiet about a version they chose to skip, while a "remind me later" is running, and
+/// about a version it already announced in this run.
 pub fn announce(
     latest: &str,
     current: &str,
     skipped: Option<&str>,
     remind_after: Option<u64>,
     now: u64,
+    told: Option<&str>,
     manual: bool,
 ) -> bool {
     if !is_newer(latest, current) {
         return false;
     }
-    manual || (skipped != Some(latest) && remind_after.is_none_or(|t| now >= t))
+    manual || (skipped != Some(latest) && told != Some(latest) && remind_after.is_none_or(|t| now >= t))
 }
 
 pub fn now() -> u64 {
@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn a_newer_version_is_announced_unless_skipped_or_snoozed() {
-        let go = |skipped, remind, manual| announce("0.5.0", "0.4.0", skipped, remind, 1_000, manual);
+        let go = |skipped, remind, manual| announce("0.5.0", "0.4.0", skipped, remind, 1_000, None, manual);
         assert!(go(None, None, false));
         assert!(!go(Some("0.5.0"), None, false), "a skipped version stays quiet");
         assert!(go(Some("0.4.9"), None, false), "skipping an older version does not hide a newer one");
@@ -146,9 +146,9 @@ mod tests {
 
     #[test]
     fn asking_yourself_always_answers() {
-        assert!(announce("0.5.0", "0.4.0", Some("0.5.0"), Some(9_999), 1_000, true));
-        assert!(!announce("0.4.0", "0.4.0", None, None, 1_000, true), "nothing newer is never announced");
-        assert!(!announce("0.3.0", "0.4.0", None, None, 1_000, true));
+        assert!(announce("0.5.0", "0.4.0", Some("0.5.0"), Some(9_999), 1_000, Some("0.5.0"), true));
+        assert!(!announce("0.4.0", "0.4.0", None, None, 1_000, None, true), "nothing newer is never announced");
+        assert!(!announce("0.3.0", "0.4.0", None, None, 1_000, None, true));
     }
 
     #[test]
@@ -168,12 +168,16 @@ mod tests {
     }
 
     #[test]
-    fn a_check_is_due_once_a_day() {
-        let day = 24 * 60 * 60;
-        assert!(due(None, 1_000_000));
-        assert!(!due(Some(1_000_000), 1_000_000 + day - 1));
-        assert!(due(Some(1_000_000), 1_000_000 + day));
-        assert!(!due(Some(2_000_000), 1_000_000), "a clock set back does not trigger a check");
+    fn a_version_is_announced_once_per_run() {
+        assert!(!announce("0.5.0", "0.4.0", None, None, 1_000, Some("0.5.0"), false));
+        assert!(announce("0.6.0", "0.4.0", None, None, 1_000, Some("0.5.0"), false), "a newer one is still news");
+    }
+
+    #[test]
+    fn every_start_checks_unless_off_or_unattended() {
+        assert!(check_on_start(true, false));
+        assert!(!check_on_start(false, false), "switched off");
+        assert!(!check_on_start(true, true), "a scripted recording");
     }
 
     #[test]
