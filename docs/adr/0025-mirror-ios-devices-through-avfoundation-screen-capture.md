@@ -24,10 +24,18 @@ control:
 
 - `ios.rs` sets the CoreMediaIO property, waits up to four seconds for the device, and runs an
   `AVCaptureSession` with a video output (NV12, video range, split into I420 for the existing slot and
-  renderer) and an audio output (48 kHz stereo signed 16-bit, the same PCM the scrcpy server sends).
+  renderer) and an audio output that asks for 48 kHz stereo signed 16-bit, the same PCM the scrcpy server
+  sends. The request is not always honoured (one run delivered planar 32-bit float), so each buffer is
+  converted from the format it says it has.
 - `Mirror` wraps either a scrcpy session or an iOS capture. The window, frame, toolbar, screenshots,
   recordings and styling do not know the difference.
 - The control is `Control::disconnected()`: input is ignored. Dropping files is refused with a toast.
+- Only what works without control is offered. The toolbar shows Screenshot, Record, Next Frame, Menu and
+  Quit. The menu leaves out the Phone and Open App submenus, Rotate Device, clipboard sharing and Show
+  Touches.
+- Only Apple-shaped built-in frames are offered: island, notch, home and tablet. An iOS device starts in
+  `island-black`, whose screen has the iPhone's proportions. Its choice is saved as `frame-ios`, apart from
+  the Android phone's `frame`. A custom `--frame` PNG is still used as given.
 - iOS only sends audio while something plays, so silence fills gaps in what the recorder receives.
   Otherwise ffmpeg's `-shortest` cuts the video at the end of the sound.
 - When the device goes away, Handset finishes any recording and quits. The connect screen is Android only.
@@ -53,7 +61,5 @@ control:
   that app cannot be granted access, the capture is refused. The packaged `Handset.app` gets its own prompt.
 - iOS replaces the status bar with a clean one (9:41, full signal and battery) while it is captured. That
   suits demo captures.
-- The frames are drawn for Android phones. The iPhone's taller screen fits with small bands, and an iPhone
-  bezel would be its own change.
 - Control (WebDriverAgent, or a Bluetooth HID accessory) and an iOS entry on the connect screen are left
   for later. The `Mirror` split is where they plug in.

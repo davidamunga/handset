@@ -7,6 +7,8 @@ use winit::window::Window;
 
 /// What the menu needs to show its current state.
 pub struct State {
+    /// An iOS device is mirrored: view only, so the phone's own controls are left out.
+    pub ios: bool,
     pub frames: Vec<&'static str>,
     /// Current frame: a built-in name, or `None` for no frame.
     pub frame: Option<String>,
@@ -166,9 +168,13 @@ pub fn show(window: &Window, s: &State) {
     }
 
     let audio_label = if s.audio { "Mute playback" } else { "Audio off (start with --audio)" };
-    let _ = menu.append(&phone);
+    if !s.ios {
+        let _ = menu.append(&phone);
+    }
     let _ = menu.append(&frame);
-    let _ = menu.append(&open_app);
+    if !s.ios {
+        let _ = menu.append(&open_app);
+    }
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&MenuItem::with_id("shot", format!("Take Screenshot    {MOD}S"), true, None));
     let rec_label = format!("{} Recording    {MOD}E", if s.recording { "Stop" } else { "Start" });
@@ -177,10 +183,14 @@ pub fn show(window: &Window, s: &State) {
     let _ = menu.append(&record);
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&CheckMenuItem::with_id("mute", audio_label, s.audio, s.audio && s.muted, None));
-    let _ = menu.append(&MenuItem::with_id("rotate", format!("Rotate Device    {MOD}R"), true, None));
-    let _ = menu.append(&CheckMenuItem::with_id("sync", "Share Clipboard With Phone", true, s.sync, None));
+    if !s.ios {
+        let _ = menu.append(&MenuItem::with_id("rotate", format!("Rotate Device    {MOD}R"), true, None));
+        let _ = menu.append(&CheckMenuItem::with_id("sync", "Share Clipboard With Phone", true, s.sync, None));
+    }
     let _ = menu.append(&CheckMenuItem::with_id("toolbar", "Show Toolbar", true, s.toolbar, None));
-    let _ = menu.append(&CheckMenuItem::with_id("touches", "Show Touches", true, s.touches, None));
+    if !s.ios {
+        let _ = menu.append(&CheckMenuItem::with_id("touches", "Show Touches", true, s.touches, None));
+    }
     let _ = menu.append(&MenuItem::with_id("zoom:in", format!("Larger    {MOD}+"), true, None));
     let _ = menu.append(&MenuItem::with_id("zoom:out", format!("Smaller    {MOD}-"), true, None));
     let _ = menu.append(&MenuItem::with_id("zoom:reset", format!("Default Size    {MOD}0"), true, None));

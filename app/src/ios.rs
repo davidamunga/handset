@@ -150,6 +150,8 @@ struct Sinks {
     ring: Option<Ring>,
     rec: RecSink,
     logged: AtomicBool,
+    /// The last audio format seen, so a change is logged once.
+    audio_format: AtomicU64,
     seen_video: AtomicBool,
     pacer: Arc<Pacer>,
 }
@@ -243,24 +245,33 @@ impl Delegate {
 
     fn audio(&self, buffer: &CMSampleBuffer) {
         let s = &self.ivars();
-        if !s.logged.swap(true, Relaxed)
-            && let Some(desc) = unsafe { buffer.format_description() }
-        {
-            let asbd = unsafe { CMAudioFormatDescriptionGetStreamBasicDescription(&desc) };
-            if let Some(a) = unsafe { asbd.as_ref() } {
-                eprintln!(
-                    "iOS audio: {} Hz, {} channels, {} bits, flags {:x}",
-                    a.mSampleRate, a.mChannelsPerFrame, a.mBitsPerChannel, a.mFormatFlags
-                );
+        let Some(desc) = (unsafe { buffer.format_description() }) else { return };
+        let Some(a) = (unsafe { CMAudioFormatDescriptionGetStreamBasicDescription(&desc).as_ref() }) else { return };
+        let format = Pcm {
+            float: a.mFormatFlags & FLAG_FLOAT != 0,
+            bits: a.mBitsPerChannel,
+            channels: a.mChannelsPerFrame as usize,
+            planar: a.mFormatFlags & FLAG_NON_INTERLEAVED != 0,
+        };
+        // the output settings are not always honoured, so say what actually arrives when it changes
+        let key = (a.mSampleRate as u64) << 32 | (a.mFormatFlags as u64) << 8 | a.mBitsPerChannel as u64;
+        if s.audio_format.swap(key, Relaxed) != key {
+            eprintln!(
+                "iOS audio: {} Hz, {} channels, {} bits, flags {:x}",
+                a.mSampleRate, a.mChannelsPerFrame, a.mBitsPerChannel, a.mFormatFlags
+            );
+            if a.mSampleRate as u32 != audio::SAMPLE_RATE {
+                eprintln!("iOS audio is not {} Hz: it will play at the wrong speed", audio::SAMPLE_RATE);
             }
         }
         let Some(data) = (unsafe { buffer.data_buffer() }) else { return };
         let len = unsafe { data.data_length() };
-        let mut pcm = vec![0u8; len];
-        let Some(dest) = NonNull::new(pcm.as_mut_ptr().cast()) else { return };
+        let mut raw = vec![0u8; len];
+        let Some(dest) = NonNull::new(raw.as_mut_ptr().cast()) else { return };
         if unsafe { data.copy_data_bytes(0, len, dest) } != 0 {
             return;
         }
+        let Some(pcm) = format.to_s16_stereo(&raw, unsafe { buffer.num_samples() } as usize) else { return };
         s.pacer.sent.fetch_add(pcm.len() as u64 / 2, Relaxed);
         if let Some(r) = &s.ring {
             audio::push_samples(r, &pcm);
@@ -268,6 +279,48 @@ impl Delegate {
         if let Some(tx) = s.rec.lock().unwrap().as_ref() {
             let _ = tx.send(pcm);
         }
+    }
+}
+
+const FLAG_FLOAT: u32 = 0x1;
+const FLAG_NON_INTERLEAVED: u32 = 0x20;
+
+/// The layout of the linear PCM a capture delivers.
+struct Pcm {
+    float: bool,
+    bits: u32,
+    channels: usize,
+    planar: bool,
+}
+
+impl Pcm {
+    /// Convert `frames` frames to interleaved 16-bit stereo, what playback and the recorder take. A
+    /// planar buffer holds each channel's frames one after the other. `None` for a layout not handled.
+    fn to_s16_stereo(&self, raw: &[u8], frames: usize) -> Option<Vec<u8>> {
+        let width = match (self.float, self.bits) {
+            (false, 16) => 2,
+            (true, 32) => 4,
+            _ => return None,
+        };
+        if self.channels == 0 || raw.len() < frames * self.channels * width {
+            return None;
+        }
+        let sample = |frame: usize, ch: usize| -> i16 {
+            let ch = ch.min(self.channels - 1); // mono plays on both sides
+            let i = if self.planar { ch * frames + frame } else { frame * self.channels + ch } * width;
+            if self.float {
+                let v = f32::from_le_bytes(raw[i..i + 4].try_into().unwrap());
+                (v.clamp(-1.0, 1.0) * 32767.0) as i16
+            } else {
+                i16::from_le_bytes([raw[i], raw[i + 1]])
+            }
+        };
+        let mut out = Vec::with_capacity(frames * 4);
+        for f in 0..frames {
+            out.extend_from_slice(&sample(f, 0).to_le_bytes());
+            out.extend_from_slice(&sample(f, 1).to_le_bytes());
+        }
+        Some(out)
     }
 }
 
@@ -325,6 +378,7 @@ impl Capture {
             ring,
             rec,
             logged: AtomicBool::new(false),
+            audio_format: AtomicU64::new(0),
             seen_video: AtomicBool::new(false),
             pacer: pacer.clone(),
         });
@@ -413,5 +467,39 @@ impl Capture {
         });
 
         Ok(Capture { session, name: device.name.clone(), uid: device.uid.clone(), audio, stop, _delegate: delegate })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Pcm;
+
+    fn s16(out: &[u8]) -> Vec<i16> {
+        out.as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b)).collect()
+    }
+
+    #[test]
+    fn interleaved_s16_stereo_passes_through() {
+        let raw: Vec<u8> = [1i16, -2, 3, -4].iter().flat_map(|v| v.to_le_bytes()).collect();
+        let pcm = Pcm { float: false, bits: 16, channels: 2, planar: false };
+        assert_eq!(s16(&pcm.to_s16_stereo(&raw, 2).unwrap()), [1, -2, 3, -4]);
+    }
+
+    #[test]
+    fn planar_float_is_interleaved_and_scaled() {
+        // left: 0.5, 1.0; right: -0.5, -2.0 (clipped)
+        let raw: Vec<u8> = [0.5f32, 1.0, -0.5, -2.0].iter().flat_map(|v| v.to_le_bytes()).collect();
+        let pcm = Pcm { float: true, bits: 32, channels: 2, planar: true };
+        assert_eq!(s16(&pcm.to_s16_stereo(&raw, 2).unwrap()), [16383, -16383, 32767, -32767]);
+    }
+
+    #[test]
+    fn mono_plays_on_both_sides_and_odd_layouts_are_refused() {
+        let raw: Vec<u8> = [7i16, 9].iter().flat_map(|v| v.to_le_bytes()).collect();
+        let mono = Pcm { float: false, bits: 16, channels: 1, planar: false };
+        assert_eq!(s16(&mono.to_s16_stereo(&raw, 2).unwrap()), [7, 7, 9, 9]);
+        let s24 = Pcm { float: false, bits: 24, channels: 2, planar: false };
+        assert!(s24.to_s16_stereo(&raw, 1).is_none());
+        assert!(mono.to_s16_stereo(&raw, 3).is_none(), "too short");
     }
 }

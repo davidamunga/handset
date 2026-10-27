@@ -88,6 +88,7 @@ fn main() {
     let mut wifi = false;
     let mut last = false;
     let mut ios = false;
+    let mut frame_given = false;
     let mut update_check = saved.get_bool("update-check").unwrap_or(true);
     let mut touches = saved.get_bool("touches").unwrap_or(false);
     let mut sync_clipboard = saved.get_bool("sync-clipboard").unwrap_or(true);
@@ -100,6 +101,7 @@ fn main() {
             "--frame" => {
                 let v = args.next().unwrap_or_else(|| usage());
                 frame_spec = (v != "none").then_some(v);
+                frame_given = true;
             }
             "--max-size" => opts.max_size = args.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage()),
             "--record-format" => {
@@ -178,6 +180,17 @@ fn main() {
         }
     }
 
+    // an iOS device has its own saved frame, and only Apple-shaped built-in ones (a custom PNG is kept)
+    if ios && !frame_given {
+        frame_spec = match saved.get("frame-ios") {
+            Some("none") => None,
+            Some(spec) => Some(spec.to_string()),
+            None => Some(frame::IOS_DEFAULT.to_string()),
+        };
+    }
+    if ios && frame_spec.as_deref().is_some_and(|s| frame::builtin_names().any(|n| n == s) && !frame::is_ios(s)) {
+        frame_spec = Some(frame::IOS_DEFAULT.to_string());
+    }
     let bezel = frame_spec
         .as_deref()
         .map(|s| frame::load(s).unwrap_or_else(|e| tools::die(&format!("Cannot load the frame: {e}"))));

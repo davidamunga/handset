@@ -9,8 +9,6 @@ pub const SIDE_FRAC: f32 = 0.075;
 /// Width of the pill itself, as a fraction of the window height.
 const WIDTH_FRAC: f32 = 0.05;
 
-pub const BUTTONS: usize = 13;
-
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Button {
     Back,
@@ -29,7 +27,7 @@ pub enum Button {
 }
 
 /// Top to bottom: the phone's own buttons first, then Handset's.
-pub const ORDER: [Button; BUTTONS] = [
+const ORDER: [Button; 13] = [
     Button::Back,
     Button::Home,
     Button::Recents,
@@ -44,6 +42,14 @@ pub const ORDER: [Button; BUTTONS] = [
     Button::More,
     Button::Quit,
 ];
+
+/// Mirroring an iOS device is view only: just Handset's own buttons.
+const IOS_ORDER: [Button; 5] = [Button::Screenshot, Button::Record, Button::NextFrame, Button::More, Button::Quit];
+
+/// The buttons shown, top to bottom.
+pub fn order(ios: bool) -> &'static [Button] {
+    if ios { &IOS_ORDER } else { &ORDER }
+}
 
 impl Button {
     /// Shown while the pointer is over the button.
@@ -72,21 +78,21 @@ fn cell(wh: f32) -> f32 {
 }
 
 /// Toolbar rectangle in window pixels: x, y, w, h. The pill is centred in the
-/// strip reserved at the right edge, and vertically centred.
-pub fn rect(ww: f32, wh: f32) -> [f32; 4] {
+/// strip reserved at the right edge, and vertically centred. `buttons` is how many it holds.
+pub fn rect(ww: f32, wh: f32, buttons: usize) -> [f32; 4] {
     let c = cell(wh);
-    let (w, h) = (c, c * BUTTONS as f32);
+    let (w, h) = (c, c * buttons as f32);
     let strip = SIDE_FRAC * wh;
     [ww - strip + (strip - w) / 2.0, (wh - h) / 2.0, w, h]
 }
 
 /// Which button is under the window-pixel point, if any.
-pub fn button_at(ww: f32, wh: f32, x: f32, y: f32) -> Option<Button> {
-    let [rx, ry, rw, rh] = rect(ww, wh);
+pub fn button_at(ww: f32, wh: f32, x: f32, y: f32, order: &[Button]) -> Option<Button> {
+    let [rx, ry, rw, rh] = rect(ww, wh, order.len());
     if x < rx || x >= rx + rw || y < ry || y >= ry + rh {
         return None;
     }
-    ORDER.get(((y - ry) / (rh / BUTTONS as f32)) as usize).copied()
+    order.get(((y - ry) / (rh / order.len() as f32)) as usize).copied()
 }
 
 fn cov(d: f32, px: f32) -> f32 {
@@ -223,9 +229,9 @@ fn icon(button: Button, p: V, px: f32, recording: bool) -> Option<(f32, [f32; 3]
 
 /// Rasterize the toolbar for a window `wh` pixels high. `hover` highlights a
 /// button; `recording` turns the record button into a stop square.
-pub fn raster(wh: f32, hover: Option<Button>, recording: bool) -> Pill {
+pub fn raster(wh: f32, order: &[Button], hover: Option<Button>, recording: bool) -> Pill {
     let c = cell(wh);
-    let (w, h) = (c as u32, c as u32 * BUTTONS as u32);
+    let (w, h) = (c as u32, c as u32 * order.len() as u32);
     let mut rgba = vec![0u8; (w * h * 4) as usize];
     let r = w as f32 / 2.0;
     let px = 1.0 / c; // one pixel, in cell units
@@ -240,16 +246,16 @@ pub fn raster(wh: f32, hover: Option<Button>, recording: bool) -> Pill {
             let rim = r - d < 0.04 * c;
             let (mut col, mut alpha) = (if rim { [96.0, 96.0, 110.0] } else { [20.0, 20.0, 24.0] }, a * 225.0);
 
-            let i = ((fy / c) as usize).min(BUTTONS - 1);
+            let i = ((fy / c) as usize).min(order.len() - 1);
             let p = (fx / c - 0.5, fy / c - (i as f32 + 0.5));
-            if hover == Some(ORDER[i]) {
+            if hover == Some(order[i]) {
                 let k = cov(circle(p, (0.0, 0.0), 0.38), px) * 0.22;
                 for c in col.iter_mut() {
                     *c += (255.0 - *c) * k;
                 }
                 alpha = alpha.max(k * 255.0);
             }
-            if let Some((k, ic)) = icon(ORDER[i], p, px, recording) {
+            if let Some((k, ic)) = icon(order[i], p, px, recording) {
                 for (c, i) in col.iter_mut().zip(ic) {
                     *c += (i - *c) * k;
                 }
@@ -269,15 +275,25 @@ mod tests {
     #[test]
     fn every_button_is_hit_in_its_own_cell() {
         let (ww, wh) = (700.0, 820.0);
-        let [rx, ry, rw, rh] = rect(ww, wh);
-        for (i, b) in ORDER.iter().enumerate() {
-            let y = ry + rh / BUTTONS as f32 * (i as f32 + 0.5);
-            assert_eq!(button_at(ww, wh, rx + rw / 2.0, y), Some(*b), "{b:?}");
+        for order in [order(false), order(true)] {
+            let [rx, ry, rw, rh] = rect(ww, wh, order.len());
+            for (i, b) in order.iter().enumerate() {
+                let y = ry + rh / order.len() as f32 * (i as f32 + 0.5);
+                assert_eq!(button_at(ww, wh, rx + rw / 2.0, y, order), Some(*b), "{b:?}");
+            }
+            assert_eq!(button_at(ww, wh, rx - 5.0, ry + 3.0, order), None);
+            // the pill fits in the window with room to spare
+            assert!(rh < wh * 0.8, "toolbar is {rh} px in a {wh} px window");
         }
-        assert_eq!(button_at(ww, wh, rx - 5.0, ry + 3.0), None);
-        // the pill fits in the window with room to spare
-        assert!(rh < wh * 0.8, "toolbar is {rh} px in a {wh} px window");
-        assert_eq!(ORDER.len(), BUTTONS);
+    }
+
+    #[test]
+    fn ios_shows_only_what_works_without_control() {
+        let ios = order(true);
+        assert!(ios.iter().all(|b| order(false).contains(b)));
+        for b in [Button::Back, Button::Home, Button::Power, Button::VolumeUp, Button::Rotate, Button::Notifications] {
+            assert!(!ios.contains(&b), "{b:?}");
+        }
     }
 
     #[test]
@@ -296,7 +312,7 @@ mod tests {
     /// Writes the toolbar to `$HANDSET_TEST_OUT/toolbar.png` (if set) so it can be looked at.
     #[test]
     fn toolbar_renders() {
-        let p = raster(820.0, Some(Button::Notifications), false);
+        let p = raster(820.0, order(false), Some(Button::Notifications), false);
         assert_eq!(p.rgba.len(), (p.width * p.height * 4) as usize);
         if let Some(dir) = std::env::var_os("HANDSET_TEST_OUT") {
             let path = std::path::Path::new(&dir).join("toolbar.png");

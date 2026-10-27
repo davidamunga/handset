@@ -76,6 +76,8 @@ pub struct Renderer {
     dots: Vec<Dot>,
     show_touches: bool,
     toolbar_on: bool,
+    /// How many buttons the toolbar pill holds.
+    toolbar_buttons: usize,
     /// The device is in landscape: the bezel is drawn rotated by 90 degrees.
     landscape: bool,
     /// Video rectangle in window space (x, y, w, h), valid after `layout()`.
@@ -244,6 +246,7 @@ impl Renderer {
             show_touches: false,
             toolbar: None,
             toolbar_on: true,
+            toolbar_buttons: 1,
             landscape: false,
             video_rect: [0.0, 0.0, 1.0, 1.0],
         };
@@ -397,8 +400,10 @@ impl Renderer {
     }
 
     /// Replace (or clear) the toolbar image.
-    pub fn set_toolbar_image(&mut self, pill: Option<&crate::overlay::Pill>) {
+    /// `buttons` is how many the pill holds, for laying it out.
+    pub fn set_toolbar_image(&mut self, pill: Option<&crate::overlay::Pill>, buttons: usize) {
         self.toolbar = pill.map(|p| self.build_overlay(p, 1.0));
+        self.toolbar_buttons = buttons;
     }
 
     pub fn toolbar_visible(&self) -> bool {
@@ -579,7 +584,7 @@ impl Renderer {
         // the overlay is only laid out for the window: bottom centre of the screen
         if remember {
             if let Some(t) = &self.toolbar {
-                let [x, y, w, h] = crate::toolbar::rect(ww, wh);
+                let [x, y, w, h] = crate::toolbar::rect(ww, wh, self.toolbar_buttons);
                 write(&t.layer.ubuf, [x / ww, y / wh, w / ww, h / wh], 0.0, 1.0);
             }
             if let Some(o) = &self.overlay {

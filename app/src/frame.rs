@@ -50,6 +50,22 @@ pub fn builtin_names() -> impl Iterator<Item = &'static str> {
     BUILTIN.iter().map(|b| b.0)
 }
 
+/// The device types an iPhone or iPad looks like; the others have Android shapes (punch-hole, fold...).
+const IOS_DEVICES: &[&str] = &["island", "notch", "home", "tablet"];
+
+/// The frame an iOS device starts in.
+pub const IOS_DEFAULT: &str = "island-black";
+
+/// Whether a built-in frame suits an iOS device.
+pub fn is_ios(name: &str) -> bool {
+    name.split_once('-').is_some_and(|(device, _)| IOS_DEVICES.contains(&device))
+}
+
+/// The built-in frames offered while an iOS device is mirrored, or all of them.
+pub fn names_for(ios: bool) -> Vec<&'static str> {
+    builtin_names().filter(|n| !ios || is_ios(n)).collect()
+}
+
 /// `spec` is a built-in name or a path to a PNG with a `.frame` sidecar.
 pub fn load(spec: &str) -> Result<Bezel, String> {
     if let Some((_, png, meta)) = BUILTIN.iter().find(|b| b.0 == spec) {
@@ -173,6 +189,15 @@ impl Bezel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ios_frames_are_apple_shaped_and_include_the_default() {
+        let ios = names_for(true);
+        assert!(ios.contains(&IOS_DEFAULT));
+        assert!(ios.iter().all(|n| ["island-", "notch-", "home-", "tablet-"].iter().any(|p| n.starts_with(p))));
+        assert!(!ios.contains(&"obsidian") && !ios.contains(&"fold-black"));
+        assert_eq!(names_for(false).len(), builtin_names().count());
+    }
 
     #[test]
     fn every_built_in_frame_loads_with_its_screen_inside() {
