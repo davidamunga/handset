@@ -37,7 +37,8 @@ A release happens only when you start it. Merging a version pull request does no
    tool with the licence and notice; and `SHA256SUMS`) and, on Windows, `scripts/package-windows.ps1`
    (`Handset-X.Y.Z-windows.zip`, unsigned, and `SHA256SUMS-windows`). It then tags `vX.Y.Z`, creates a normal GitHub
    release with the changelog section as its notes and the files attached, bumps the Homebrew cask, and
-   points `bucket/handset.json` (the Scoop manifest, this repository is the bucket) at the new Windows zip.
+   opens a pull request that points `bucket/handset.json` (the Scoop manifest, this repository is the bucket) at the
+   new Windows zip. `main` only takes pull requests, so merge that one; Scoop users get the release once you do.
 5. Check the release page. With the signing secrets set (below) the app is Developer ID signed,
    notarised and stapled, so it opens without a Gatekeeper warning. Without them the files are
    ad-hoc signed and Gatekeeper blocks a downloaded copy until it is opened with right-click, Open
