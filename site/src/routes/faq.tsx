@@ -54,8 +54,8 @@ function Faq() {
       <p>
         Yes, but it is experimental. It builds and passes its tests on Ubuntu 22.04, Alpine and with Nix, and the same code runs on
         Debian 12 and newer, Fedora and Arch. It has not been run on a real Linux desktop yet, so the transparent phone-shaped window
-        may misbehave on some desktops. There is no download yet: you build it from source, as the{' '}
-        <a href={`${REPO}#linux-experimental`}>Linux guide</a> explains.
+        may misbehave on some desktops. Releases after 0.8.1 include a tarball for x86_64 and aarch64 (glibc 2.35 or newer, with
+        ALSA); on other systems you build it from source. The <a href={`${REPO}#linux-experimental`}>Linux guide</a> explains both.
       </p>
       <ul>
         <li>

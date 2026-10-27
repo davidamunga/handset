@@ -1,9 +1,10 @@
 name: release-dry-run
 
-# Rehearses a release without publishing anything: builds the signed and notarised macOS files and the
-# Windows zip exactly as `release` would, and keeps them as the `release-files` and `release-files-windows`
-# artifacts of the run. It does not tag, create a release or touch the Homebrew cask. It can run from any
-# branch: Actions > release-dry-run > Run workflow, or `gh workflow run release-dry-run.yml --ref <branch>`.
+# Rehearses a release without publishing anything: builds the signed and notarised macOS files, the Windows
+# zip and the Linux tarballs exactly as `release` would, and keeps them as the `release-files`,
+# `release-files-windows` and `release-files-linux` artifacts of the run. It does not tag, create a release
+# or touch the Homebrew cask. It can run from any branch: Actions > release-dry-run > Run workflow, or
+# `gh workflow run release-dry-run.yml --ref <branch>`.
 # See docs/runbooks/release.md.
 
 on:
