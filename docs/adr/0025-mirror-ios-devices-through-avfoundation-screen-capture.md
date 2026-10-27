@@ -1,6 +1,6 @@
 # 0025. Mirror iOS devices through AVFoundation screen capture, view only for now
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-27
 
 ## Context

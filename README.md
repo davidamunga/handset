@@ -142,6 +142,32 @@ instead: `cargo install --path app --locked`.
 - Screenshots are saved to `~/Pictures/handset`, recordings to `~/Movies/handset`, and both are copied to
   the clipboard. Click the toast to show the file in Finder.
 
+## iPhone and iPad (experimental)
+
+On macOS, Handset can also show an iPhone or iPad connected with a cable, with its sound:
+
+```sh
+handset --ios --audio
+```
+
+It uses the same screen capture as QuickTime, so nothing is installed on the device and it does not need
+developer mode. Unlock the device and tap **Trust** if it asks. The first time, macOS asks to let Handset use the
+camera and microphone, because it treats the device's screen and sound as those. The frame, screenshots,
+recordings and styling work as they do for Android phones. iOS shows a clean status bar (9:41, full signal
+and battery) while it is captured.
+
+For now it is:
+
+- **macOS only.** Windows has no equivalent capture API.
+- **USB only.** There is no Wi-Fi option and no entry on the connect screen. Start it with `--ios`.
+- **View only.** You cannot tap, type or press the device's buttons from Handset. The toolbar keeps only
+  screenshot, record, next frame, menu and quit, the menu leaves out the phone's controls, and the frame list
+  shows only the iPhone and iPad shapes.
+  If you unplug the device, Handset saves any recording and quits.
+
+`--ios <name>` picks a device when several are connected. To open the app straight into this mode, put `--ios --audio`
+in `~/.config/handset/args`. Why it works this way: [ADR 0025](docs/adr/0025-mirror-ios-devices-through-avfoundation-screen-capture.md).
+
 ## Options
 
 | Option | What it does |
@@ -170,6 +196,7 @@ instead: `cargo install --path app --locked`.
 | `--doctor` | Check `adb`, `ffmpeg` and each connected phone (authorised, online, Android version, screen on) and say what to fix; exits 1 when something blocks mirroring |
 | `--wifi` | Switch a USB-connected phone to Wi-Fi, connect, and mirror (you can unplug the cable) |
 | `--start-app <package>` | Open an app on the phone once it is mirrored, e.g. `--start-app com.android.chrome` (a leading `?` searches app names) |
+| `--ios [name]` | Mirror an iPhone or iPad connected by USB instead of an Android phone (macOS, experimental, view only; see above) |
 | `[serial]` | Pick a device when several are connected |
 
 With no phone plugged in, Handset opens on a "connect a phone" screen inside the frame. It watches adb,
@@ -216,6 +243,7 @@ Ideas, not promises:
 - A device picker
 - OBS-friendly output (Syphon or a virtual camera)
 - Microphone to phone, and Linux
+- Touch control for iPhone and iPad, and an iPhone option on the connect screen
 
 ## Contributing
 
