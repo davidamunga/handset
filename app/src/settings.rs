@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 #[derive(Default)]
 pub struct Settings(BTreeMap<String, String>);
 
-fn dir() -> PathBuf {
+pub fn dir() -> PathBuf {
     crate::tools::home().join(".config/handset")
 }
 

@@ -6,6 +6,7 @@
 //! worker thread has ffmpeg decode small frames (silently; the preview has no sound), and only the picture
 //! is blended again for each frame, over a backdrop that is drawn once per style change.
 
+use crate::presets::{self, Preset};
 use crate::restyle;
 use crate::style::{ASPECTS, Aspect, Background, GRADIENTS, Img, Layout, Style, WALLPAPERS};
 use crate::trim::{self, Trim};
@@ -591,6 +592,9 @@ struct Editor {
     style_dirty: bool,
     frame_dirty: bool,
     swatches: Vec<(Background, egui::TextureHandle)>,
+    /// The looks you saved, and the name being typed for the next one.
+    saved_looks: Vec<Preset>,
+    look_name: String,
     export: Option<Export>,
     /// Earlier looks, for undo, and the look as of the last frame.
     history: Vec<Style>,
@@ -668,6 +672,8 @@ impl Editor {
             style_dirty: true,
             frame_dirty: true,
             swatches,
+            saved_looks: presets::load(),
+            look_name: String::new(),
             export: None,
             history: Vec::new(),
             last_push: Instant::now(),
@@ -899,6 +905,96 @@ impl Editor {
         changed
     }
 
+    /// Switch to a saved look. The change is picked up (and made undoable) with any other change to the style.
+    fn apply_look(&mut self, style: &Style) {
+        self.style = style.clone();
+        self.tab = tab_of(&self.style.background);
+        if let Background::Color(c) = self.style.background {
+            self.custom = c;
+        }
+        self.ensure_image();
+    }
+
+    /// Keep the current style under `raw_name`; false when the name is empty.
+    fn save_look(&mut self, raw_name: &str) -> bool {
+        let Some(name) = presets::clean_name(raw_name) else { return false };
+        presets::upsert(&mut self.saved_looks, Preset { name, style: self.style.clone() });
+        true
+    }
+
+    fn forget_look(&mut self, name: &str) -> bool {
+        presets::remove(&mut self.saved_looks, name)
+    }
+
+    /// What the Looks menu shows: a field to save the current look, then the saved and built-in ones.
+    fn looks_contents(&mut self, ui: &mut egui::Ui) {
+        {
+            ui.horizontal(|ui| {
+                let w = ui.available_width() - 72.0;
+                let edit = egui::TextEdit::singleline(&mut self.look_name)
+                    .hint_text("Name this look")
+                    .desired_width(w)
+                    .char_limit(32);
+                let enter = ui.add(edit).lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                let name = presets::clean_name(&self.look_name);
+                let save = ui.add_enabled(name.is_some(), egui::Button::new("Save")).clicked();
+                if name.is_some() && (save || enter) && self.save_look(&self.look_name.clone()) {
+                    presets::save(&self.saved_looks);
+                    self.look_name.clear();
+                }
+            });
+            let mut apply = None;
+            let mut delete = None;
+            let all: Vec<(Preset, bool)> = self
+                .saved_looks
+                .iter()
+                .map(|p| (p.clone(), true))
+                .chain(
+                    presets::builtin()
+                        .into_iter()
+                        .filter(|b| !self.saved_looks.iter().any(|s| s.name.eq_ignore_ascii_case(&b.name)))
+                        .map(|p| (p, false)),
+                )
+                .collect();
+            egui::ScrollArea::vertical().max_height(220.0).auto_shrink([false, true]).show(ui, |ui| {
+                for (look, mine) in &all {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        let w = ui.available_width() - if *mine { 34.0 } else { 0.0 };
+                        let on = look.style == self.style;
+                        let button = egui::Button::new(egui::RichText::new(&look.name).color(if on {
+                            theme::ACCENT
+                        } else {
+                            theme::TEXT
+                        }))
+                        .fill(if on { theme::ACCENT_DIM } else { theme::BG })
+                        .min_size(egui::vec2(w, 28.0));
+                        if ui.add(button).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                            apply = Some(look.style.clone());
+                        }
+                        if *mine
+                            && ui
+                                .add(egui::Button::new("x").min_size(egui::vec2(28.0, 28.0)))
+                                .on_hover_text("Forget this look")
+                                .clicked()
+                        {
+                            delete = Some(look.name.clone());
+                        }
+                    });
+                }
+            });
+            if let Some(style) = apply {
+                self.apply_look(&style);
+                ui.close();
+            }
+            if let Some(name) = delete
+                && self.forget_look(&name)
+            {
+                presets::save(&self.saved_looks);
+            }
+        }
+    }
+
     fn layout_card(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;
         card(ui, |ui| {
@@ -1088,7 +1184,17 @@ impl eframe::App for Editor {
             .resizable(false)
             .frame(egui::Frame::new().fill(theme::PANEL).inner_margin(egui::Margin::symmetric(14, 0)))
             .show(ui, |ui| {
-                ui.add_space(TOP);
+                // the Looks menu sits beside the window buttons
+                ui.allocate_ui_with_layout(
+                    egui::vec2(ui.available_width(), TOP),
+                    egui::Layout::right_to_left(egui::Align::Center),
+                    |ui| {
+                        ui.menu_button(egui::RichText::new("Looks").size(13.0).family(semibold()), |ui| {
+                            ui.set_width(250.0);
+                            self.looks_contents(ui);
+                        });
+                    },
+                );
                 egui::Panel::bottom("export").show_separator_line(false).frame(egui::Frame::NONE).show(ui, |ui| {
                     ui.add_space(8.0);
                     self.export_area(ui, &ctx);
@@ -1261,5 +1367,52 @@ mod tests {
         assert_eq!(clock(0.0), "0:00");
         assert_eq!(clock(75.4), "1:15");
         assert_eq!(clock(-3.0), "0:00");
+    }
+
+    fn editor() -> Editor {
+        let ctx = egui::Context::default();
+        let picture = |_: ()| Img { w: 40, h: 80, rgba: vec![200; 40 * 80 * 4] };
+        let source = Source { first: picture(()), size: (40, 80), video: None, matte: None };
+        let mut ed = Editor::new(&ctx, PathBuf::from("shot.png"), source, Style::default());
+        ed.saved_looks.clear();
+        ed
+    }
+
+    #[test]
+    fn applying_a_look_switches_the_style_the_tab_and_the_custom_colour() {
+        let mut ed = editor();
+        let dark = Style { background: Background::Color([1, 2, 3]), padding: 22, ..Style::default() };
+        ed.apply_look(&dark);
+        assert_eq!(ed.style, dark);
+        assert!(ed.tab == Tab::Color);
+        assert_eq!(ed.custom, [1, 2, 3]);
+        ed.apply_look(&Style { background: Background::Wallpaper(2), ..Style::default() });
+        assert!(ed.tab == Tab::Wallpaper);
+    }
+
+    #[test]
+    fn saving_a_look_keeps_the_current_style_under_a_tidy_name() {
+        let mut ed = editor();
+        ed.style.padding = 31;
+        assert!(ed.save_look("  Launch   post "));
+        assert_eq!(ed.saved_looks.len(), 1);
+        assert_eq!(ed.saved_looks[0].name, "Launch post");
+        assert_eq!(ed.saved_looks[0].style.padding, 31);
+        // the same name again replaces it
+        ed.style.padding = 4;
+        assert!(ed.save_look("launch post"));
+        assert_eq!(ed.saved_looks.len(), 1);
+        assert_eq!(ed.saved_looks[0].style.padding, 4);
+    }
+
+    #[test]
+    fn a_blank_name_saves_nothing_and_a_look_can_be_forgotten() {
+        let mut ed = editor();
+        assert!(!ed.save_look("   "));
+        assert!(ed.saved_looks.is_empty());
+        assert!(ed.save_look("Keep"));
+        assert!(!ed.forget_look("missing"));
+        assert!(ed.forget_look("KEEP"));
+        assert!(ed.saved_looks.is_empty());
     }
 }

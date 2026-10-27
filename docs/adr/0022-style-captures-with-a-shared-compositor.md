@@ -62,3 +62,8 @@ change and only the picture is blended again per frame. The preview is silent; a
 Trimming (`trim.rs`) is applied at the ffmpeg input (`-ss` and `-t` before `-i`), so only the kept part is
 decoded and styled and the audio is cut with it. The start and end are clamped so that a clip is never shorter
 than 0.2 s, and a trim within 0.05 s of the whole recording counts as no trim. It is not applied to pictures.
+
+Saved looks (`presets.rs`) are a style under a name. Yours are kept in `~/.config/handset/looks`, one
+`name<TAB>style` per line, in the same text form the `style` setting uses, so the file is easy to read and
+edit; a line that cannot be read is skipped rather than losing the rest. Five built-in looks ship with the app.
+`--style` accepts a name (yours first, then the built-in ones, ignoring case) or a style written out.

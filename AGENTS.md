@@ -23,6 +23,7 @@ small native Rust app that implements the desktop side of the scrcpy protocol an
 | `app/src/connect.rs`, `mirror.rs` | The landing screen drawn in the frame while no phone is ready (USB status, Wi-Fi list, QR pairing, clickable buttons); one mirroring session (server, video, audio) |
 | `app/src/style.rs`, `restyle.rs` | Capture styling: background, padding, shadow, radius, aspect (pure pixels); styling saved PNG, MP4 and GIF files (ffmpeg for video) |
 | `app/src/trim.rs` | The part of a recording to keep (start and end, clamped), used by the editor's trim handles and the export |
+| `app/src/presets.rs` | Named looks (a style saved under a name): built-in ones, yours in `~/.config/handset/looks`, and `--style <name>` |
 | `app/src/editor.rs` | `handset --edit <file>`: egui window with live preview and playback, run as its own process |
 | `app/src/menu.rs`, `tools.rs` | Native macOS menu; tool lookup, error dialogs, default arguments |
 | `app/assets/` | Embedded scrcpy server, the built-in phone frames and the Inter fonts |

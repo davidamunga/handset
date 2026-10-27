@@ -16,6 +16,7 @@ mod frame;
 mod menu;
 mod mirror;
 mod overlay;
+mod presets;
 mod recent;
 mod render;
 mod restyle;
@@ -37,7 +38,7 @@ fn usage() -> ! {
         "usage: handset [--frame <name|path|none>] [--max-size <px>]\n\
          \x20                  [--connect <ip[:port]> | --last | --wifi] [--start-app <package>] [serial]\n\
          \x20      handset --pair <ip:port> <code>\n\
-         \x20      handset --restyle <png|mp4|gif> [--style <look>]\n\
+         \x20      handset --restyle <png|mp4|gif> [--style <look name|style>]\n\
          \x20      handset --edit [png|mp4|gif]\n\
          \x20      handset --doctor\n\
          \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--show-touches] [--style <look>] [--style-captures] [--no-update-check] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
@@ -97,7 +98,8 @@ fn main() {
             "--record-size" => cap.rec_size = args.next().and_then(|v| v.parse().ok()).unwrap_or_else(|| usage()),
             "--record-bg" => cap.rec_bg = args.next().and_then(|v| capture::parse_color(&v)).unwrap_or_else(|| usage()),
             "--style" => {
-                cap.style = args.next().and_then(|v| style::Style::parse(&v)).unwrap_or_else(|| usage());
+                // a saved look's name, or a style written out
+                cap.style = args.next().and_then(|v| presets::resolve(&v, &presets::load())).unwrap_or_else(|| usage());
             }
             "--style-captures" => cap.auto_style = true,
             "--edit" => edit = Some(args.next().unwrap_or_default()),
