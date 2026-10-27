@@ -383,7 +383,10 @@ function Start-Handset {{
   $psi.FileName = $exe
   $psi.WorkingDirectory = $dir
   $psi.UseShellExecute = $false
-{arguments}  [System.Diagnostics.Process]::Start($psi) | Out-Null
+{arguments}  $p = [System.Diagnostics.Process]::Start($psi)
+  if ($null -eq $p) {{ throw 'the program did not start' }}
+  # a program that cannot run exits at once with an error; Handset itself keeps running
+  if ($p.WaitForExit(3000) -and $p.ExitCode -ne 0) {{ throw ('the program exited with code ' + $p.ExitCode) }}
 }}
 
 function Restore-Old {{
