@@ -64,6 +64,14 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
       - run: cargo build --release
+      - name: Package (tarball)
+        working-directory: .
+        run: scripts/package-linux.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: handset-linux
+          path: dist/linux/
+          retention-days: 7
 
   release-scripts:
     name: release scripts

@@ -39,3 +39,4 @@ Copy [`0000-template.md`](0000-template.md) to start a new one.
 | [0027](0027-build-the-website-with-vite-react-and-tailwind.md) | Build the website with Vite, React and Tailwind | accepted |
 | [0028](0028-find-phones-on-the-network-ourselves.md) | Find phones on the network ourselves, next to adb | accepted |
 | [0029](0029-support-linux-by-compiling-first-and-using-desktop-helpers.md) | Support Linux by building it in CI first, and use the desktop's own helpers | accepted |
+| [0030](0030-package-linux-as-a-tarball-before-a-release-file.md) | Package Linux as a tarball in CI before it becomes a release file | accepted |

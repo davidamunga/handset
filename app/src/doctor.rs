@@ -110,6 +110,14 @@ pub fn device_checks(serial: &str, state: &str, p: &Props) -> Vec<Check> {
                  `adb kill-server`, plug it in again, or use Developer options > Revoke USB debugging authorisations",
             ),
         )),
+        "no permissions" => out.push(check(
+            Level::Fail,
+            format!("{serial} is plugged in but this user may not use it"),
+            Some(
+                "on Linux this is missing udev rules: install `android-udev-rules` (or your distro's `android-tools` \
+                 package), or add a rule for the phone's vendor id, replug it, and run `adb kill-server`",
+            ),
+        )),
         "offline" => out.push(check(
             Level::Fail,
             format!("{serial} is offline"),
@@ -178,9 +186,52 @@ fn tools() -> Vec<Check> {
     out
 }
 
+/// Is `name` an executable on `PATH`?
+#[cfg(not(any(target_os = "macos", windows)))]
+fn on_path(name: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(name).is_file()))
+}
+
+/// The optional desktop programs Handset runs on Linux. `have` says whether one is installed; `wayland` picks
+/// which clipboard program matters. Each missing one only turns a feature off, so these are warnings.
+#[cfg(any(test, not(any(target_os = "macos", windows))))]
+fn helper_checks(have: &dyn Fn(&str) -> bool, wayland: bool) -> Vec<Check> {
+    let mut out = Vec::new();
+    let any = |names: &[&str]| names.iter().any(|n| have(n));
+    if !have("xdg-open") {
+        out.push(check(
+            Level::Warn,
+            "xdg-open was not found, so links and captures cannot be opened from Handset",
+            Some("install xdg-utils"),
+        ));
+    }
+    let (clipboard, hint) = if wayland {
+        (any(&["wl-copy"]) && any(&["wl-paste"]), "install wl-clipboard (Wayland session)")
+    } else {
+        (any(&["xclip", "xsel"]), "install xclip (or xsel) (X11 session)")
+    };
+    if !clipboard {
+        out.push(check(
+            Level::Warn,
+            "no clipboard program was found, so clipboard sync and \"copy capture\" are off",
+            Some(hint),
+        ));
+    }
+    if !any(&["zenity", "kdialog"]) {
+        out.push(check(
+            Level::Warn,
+            "neither zenity nor kdialog was found, so \"Type an address\", \"Pair with a code\" and error dialogs are off",
+            Some("install zenity (GNOME and others) or kdialog (KDE)"),
+        ));
+    }
+    out
+}
+
 /// Run every check (slow: it talks to adb and the phones).
 pub fn checks() -> Vec<Check> {
     let mut checks = tools();
+    #[cfg(not(any(target_os = "macos", windows)))]
+    checks.extend(helper_checks(&on_path, std::env::var_os("WAYLAND_DISPLAY").is_some()));
     if checks[0].level == Level::Ok {
         match adb::list() {
             Err(e) => checks.push(check(Level::Fail, format!("could not run `adb devices`: {e}"), None)),
@@ -248,6 +299,26 @@ mod tests {
     fn no_phone_depends_on_whether_one_is_on_wifi() {
         assert_eq!(no_phone(false).level, Level::Fail);
         assert_eq!(no_phone(true).level, Level::Warn);
+    }
+
+    #[test]
+    fn a_phone_without_permission_points_at_udev_rules() {
+        let c = device_checks("X", "no permissions", &Props::default());
+        assert_eq!(c[0].level, Level::Fail);
+        assert!(c[0].hint.as_deref().unwrap().contains("udev"));
+    }
+
+    #[test]
+    fn missing_linux_helpers_are_warnings_that_name_what_to_install() {
+        let none = helper_checks(&|_| false, false);
+        assert_eq!(none.len(), 3);
+        assert!(none.iter().all(|c| c.level == Level::Warn));
+        assert!(none.iter().any(|c| c.hint.as_deref().is_some_and(|h| h.contains("xclip"))));
+        // on Wayland the clipboard needs both halves of wl-clipboard
+        let wl = helper_checks(&|n| ["xdg-open", "wl-copy", "zenity"].contains(&n), true);
+        assert_eq!(wl.len(), 1);
+        assert!(wl[0].hint.as_deref().unwrap().contains("wl-clipboard"));
+        assert!(helper_checks(&|n| n != "kdialog" && n != "xsel", false).is_empty());
     }
 
     #[test]

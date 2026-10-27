@@ -1,0 +1,43 @@
+# Maintainer: David Amunga
+# Build and install from a release tag on Arch Linux and its derivatives (Omarchy, EndeavourOS, Manjaro):
+#   cd app/packaging/linux && makepkg -si
+# Not published to the AUR yet, and not tested with namcap: set sha256sums to the tag archive's hash first.
+pkgname=handset
+pkgver=0.7.1
+pkgrel=1
+pkgdesc='Mirror and control an Android phone inside a realistic device frame'
+arch=('x86_64' 'aarch64')
+url='https://github.com/davidamunga/handset'
+license=('Apache-2.0')
+depends=('gtk3' 'alsa-lib' 'android-tools')
+makedepends=('cargo' 'cmake' 'nasm')
+optdepends=(
+  'ffmpeg: recording and styled exports'
+  'wl-clipboard: clipboard sync and copying captures on Wayland'
+  'xclip: clipboard sync and copying captures on X11'
+  'zenity: the address and pairing-code prompts and error dialogs'
+  'xdg-utils: opening links and captures'
+  'android-udev: USB access to phones without extra setup'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "$pkgname-$pkgver/app"
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver/app"
+  export CARGO_TARGET_DIR=target
+  cargo build --release --frozen
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 app/target/release/handset "$pkgdir/usr/bin/handset"
+  install -Dm644 app/packaging/linux/handset.desktop "$pkgdir/usr/share/applications/handset.desktop"
+  install -Dm644 app/packaging/icon/handset-icon-512.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/handset.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 NOTICE "$pkgdir/usr/share/licenses/$pkgname/NOTICE"
+}

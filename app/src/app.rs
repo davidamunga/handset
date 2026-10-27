@@ -1582,7 +1582,7 @@ impl ApplicationHandler<UserEvent> for App {
         });
         let mut attrs = Window::default_attributes()
             .with_title(self.title.clone())
-            .with_window_icon(if cfg!(windows) { window_icon() } else { None })
+            .with_window_icon(if cfg!(target_os = "macos") { None } else { window_icon() })
             .with_inner_size(LogicalSize::new(height * aspect, height))
             .with_min_inner_size(LogicalSize::new(200.0 * aspect, 200.0));
         #[cfg(windows)]
@@ -1592,6 +1592,14 @@ impl ApplicationHandler<UserEvent> for App {
                 x + (w as i32 - win_w) / 2,
                 y + (h as i32 - win_h) / 2,
             ));
+        }
+        // desktops match the window to its `handset.desktop` entry (icon, taskbar grouping) by this class
+        #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
+        {
+            use winit::platform::wayland::WindowAttributesExtWayland;
+            use winit::platform::x11::WindowAttributesExtX11;
+            attrs = WindowAttributesExtWayland::with_name(attrs, "handset", "handset");
+            attrs = WindowAttributesExtX11::with_name(attrs, "handset", "handset");
         }
         if self.bezel.is_some() {
             attrs = attrs.with_transparent(true).with_decorations(false);

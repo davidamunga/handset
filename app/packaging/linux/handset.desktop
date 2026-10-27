@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Handset
+GenericName=Phone mirror
+Comment=Mirror and control an Android phone inside a realistic device frame
+Exec=handset --audio
+Icon=handset
+Terminal=false
+Categories=Utility;
+Keywords=android;phone;mirror;scrcpy;adb;
+StartupWMClass=handset

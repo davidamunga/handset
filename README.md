@@ -107,7 +107,19 @@ Optional helpers: `xdg-open` (open links and captures), `wl-clipboard` on Waylan
 (clipboard and "copy capture"), and `zenity` or `kdialog` (the address prompt and error dialogs). There is no
 right-click menu yet; the toolbar and the keyboard shortcuts work. Your user needs USB access to the phone
 (udev rules for Android, usually the `plugdev` group or the `android-udev-rules` package). Captures go to
-`~/Pictures/handset` and `~/Videos/handset`. There is no release file or in-place update for Linux yet.
+`~/Pictures/handset` and `~/Videos/handset`. `handset --doctor` lists any of the optional helpers that are
+missing and says what to install.
+
+On Arch and its derivatives (Omarchy, EndeavourOS, Manjaro) install the build packages with
+`sudo pacman -S --needed base-devel cmake nasm gtk3 alsa-lib android-tools`; `app/packaging/linux/PKGBUILD` builds
+a package from a release tag (`makepkg -si`; not on the AUR yet). On a tiling compositor such as Hyprland, float the
+window or it is tiled to fit: `windowrule = float, class:handset` (the class is `handset` on Wayland and X11).
+A stock Omarchy has no `zenity`, so the address and pairing-code prompts do nothing until you `pacman -S zenity`.
+
+ `dist/linux/Handset-<version>-linux-<arch>.tar.gz` (the binary, a
+`handset.desktop` entry, the icon and the licences) and, when `appimagetool` is installed, an AppImage; CI
+attaches the tarball to each run. Neither is part of a release yet, and neither bundles GTK or ALSA, so those
+must be installed. There is no in-place update on Linux.
 
 ### Windows
 
