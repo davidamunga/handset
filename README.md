@@ -45,7 +45,7 @@ Once a phone is connected, it appears in its frame with a toolbar beside it:
   with sound; keep your own presets. Your original is kept. See [docs/styling.md](docs/styling.md)
 - A Dock icon that shows what Handset is doing: grey eyes while waiting for a phone, amber while connecting, white
   while mirroring, red with a dot while recording
-- A toolbar beside the phone and a native right-click menu
+- A toolbar beside the phone and a native right-click menu, with an **About Handset** item that credits the author
 - Clipboard text is shared with the phone: copy on the phone and paste on the Mac, or copy on the Mac, click the
   Handset window and paste on the phone
 - A clickable "saved" toast, a recent captures menu and automatic clipboard copy

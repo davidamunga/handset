@@ -217,6 +217,7 @@ pub fn show(window: &Window, s: &State) {
     let _ = menu.append(&MenuItem::with_id("update", "Check for Updates...", true, None));
     let _ = menu.append(&CheckMenuItem::with_id("update-auto", "Check for Updates Daily", true, s.update_auto, None));
     let _ = menu.append(&PredefinedMenuItem::separator());
+    let _ = menu.append(&PredefinedMenuItem::about(Some("About Handset"), Some(about())));
     let _ = menu.append(&MenuItem::with_id("quit", "Quit", true, None));
 
     unsafe {
@@ -224,6 +225,28 @@ pub fn show(window: &Window, s: &State) {
         menu.show_context_menu_for_nsview(h.ns_view.as_ptr() as *const std::ffi::c_void, None);
         #[cfg(windows)]
         menu.show_context_menu_for_hwnd(h.hwnd.get(), None);
+    }
+}
+
+/// What the About window says: who made Handset, what it stands on, and under which licence.
+#[cfg(any(target_os = "macos", windows))]
+fn about() -> muda::AboutMetadata {
+    muda::AboutMetadata {
+        name: Some("Handset".into()),
+        version: Some(env!("CARGO_PKG_VERSION").into()),
+        authors: Some(vec!["David Amunga (@davidamunga_)".into()]),
+        comments: Some("Your phone, on your desktop.".into()),
+        copyright: Some("\u{a9} 2026 David Amunga".into()),
+        license: Some("Apache-2.0".into()),
+        website: Some("https://github.com/davidamunga/handset".into()),
+        website_label: Some("github.com/davidamunga/handset".into()),
+        credits: Some(
+            "Made by David Amunga (@davidamunga_).\n\nBuilt on the scrcpy server by Genymobile and Romain Vimont \
+             (Apache-2.0). Set in Inter by the Inter Project Authors (SIL Open Font License). Not affiliated with \
+             or endorsed by Genymobile."
+                .into(),
+        ),
+        ..Default::default()
     }
 }
 
