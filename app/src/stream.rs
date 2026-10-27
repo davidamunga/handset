@@ -16,6 +16,7 @@ pub enum UserEvent {
     /// The stream cannot be shown; the message says why.
     Failed(String),
     /// A native menu item was chosen.
+    #[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
     Menu(String),
     /// The phone's installed apps, or why they could not be listed.
     Apps(Result<Vec<crate::apps::AppEntry>, String>),

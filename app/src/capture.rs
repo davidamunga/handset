@@ -162,7 +162,10 @@ pub fn reveal(path: &std::path::Path) {
     #[cfg(windows)]
     let _ = Command::new("explorer").arg(format!("/select,{}", path.display())).spawn();
     #[cfg(not(any(target_os = "macos", windows)))]
-    let _ = path;
+    {
+        // no portable "select this file": open the folder that holds it
+        let _ = Command::new("xdg-open").arg(path.parent().unwrap_or(path)).spawn();
+    }
 }
 
 /// Open the file in its default app.
@@ -172,7 +175,7 @@ pub fn open_file(path: &std::path::Path) {
     #[cfg(windows)]
     let _ = crate::tools::command("cmd").args(["/C", "start", ""]).arg(path).spawn();
     #[cfg(not(any(target_os = "macos", windows)))]
-    let _ = path;
+    let _ = Command::new("xdg-open").arg(path).spawn();
 }
 
 /// Put the capture on the clipboard: a PNG as an image, anything else as a
@@ -194,8 +197,13 @@ pub fn copy_to_clipboard(path: &std::path::Path) -> bool {
     }
     #[cfg(not(any(target_os = "macos", windows)))]
     {
-        let _ = path;
-        false
+        let Ok(path) = path.canonicalize() else { return false };
+        if path.extension().is_some_and(|e| e == "png") {
+            std::fs::read(&path).is_ok_and(|png| crate::tools::linux::copy(&png, Some("image/png")))
+        } else {
+            let uri = format!("file://{}\r\n", path.display());
+            crate::tools::linux::copy(uri.as_bytes(), Some("text/uri-list"))
+        }
     }
 }
 

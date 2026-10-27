@@ -12,7 +12,8 @@ so it can draw things a plain window cannot: phone bezels on a transparent windo
 framed screenshots and recordings with audio.
 
 > **Status: early work in progress.** It works on the author's Mac with one phone. Expect rough edges.
-> It has been tested on macOS and on Windows 11.
+> It has been tested on macOS and on Windows 11. Linux builds and is checked in CI, but has not been run on a
+> real desktop yet (see [Linux](#linux-experimental)).
 
 ## What it looks like
 
@@ -83,12 +84,30 @@ with Smart App Control turned on blocks it. Install `adb` (`winget install Googl
 
 ## Requirements
 
-- macOS 12 or later, on Apple Silicon or Intel, or Windows 10/11 (see below)
+- macOS 12 or later, on Apple Silicon or Intel, Windows 10/11, or Linux (experimental, see below)
 - An Android phone with USB debugging enabled (audio needs Android 11 or later)
 - [`adb`](https://developer.android.com/tools/releases/platform-tools) (Android platform-tools)
 - [`ffmpeg`](https://ffmpeg.org) for recording (optional)
 - Rust (stable) to build from source
 
+
+### Linux (experimental)
+
+It builds and passes its tests on Ubuntu 24.04 in CI, but nobody has run the window on a Linux desktop yet, so
+expect problems with the transparent, borderless frame on some compositors. Install the build dependencies
+(Debian and Ubuntu names) and build:
+
+```sh
+sudo apt install build-essential pkg-config cmake nasm libgtk-3-dev libasound2-dev
+cd app && cargo build --release    # app/target/release/handset
+```
+
+At run time, `adb` and `ffmpeg` are found on `PATH`, in `~/.local/bin` or in `~/Android/Sdk/platform-tools`.
+Optional helpers: `xdg-open` (open links and captures), `wl-clipboard` on Wayland or `xclip`/`xsel` on X11
+(clipboard and "copy capture"), and `zenity` or `kdialog` (the address prompt and error dialogs). There is no
+right-click menu yet; the toolbar and the keyboard shortcuts work. Your user needs USB access to the phone
+(udev rules for Android, usually the `plugdev` group or the `android-udev-rules` package). Captures go to
+`~/Pictures/handset` and `~/Videos/handset`. There is no release file or in-place update for Linux yet.
 
 ### Windows
 
@@ -249,7 +268,8 @@ Ideas, not promises:
 - Keyboard-to-touch mapping profiles (a long-standing request in the scrcpy world)
 - A device picker
 - OBS-friendly output (Syphon or a virtual camera)
-- Microphone to phone, and Linux
+- Microphone to phone
+- A Linux release (AppImage) and a right-click menu there
 - Touch control for iPhone and iPad
 
 ## Contributing

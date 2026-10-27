@@ -6,6 +6,7 @@ use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 
 /// What the menu needs to show its current state.
+#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 pub struct State {
     /// An iOS device is mirrored: view only, so the phone's own controls are left out.
     pub ios: bool,

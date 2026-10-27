@@ -38,3 +38,4 @@ Copy [`0000-template.md`](0000-template.md) to start a new one.
 | [0026](0026-draw-an-original-icon-and-a-device-gray-look.md) | Draw an original icon and a Device Gray look | accepted |
 | [0027](0027-build-the-website-with-vite-react-and-tailwind.md) | Build the website with Vite, React and Tailwind | accepted |
 | [0028](0028-find-phones-on-the-network-ourselves.md) | Find phones on the network ourselves, next to adb | accepted |
+| [0029](0029-support-linux-by-compiling-first-and-using-desktop-helpers.md) | Support Linux by building it in CI first, and use the desktop's own helpers | accepted |

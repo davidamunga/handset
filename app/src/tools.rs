@@ -53,7 +53,7 @@ pub fn open_url(url: &str) {
     #[cfg(windows)]
     let _ = command("cmd").args(["/C", "start", ""]).arg(url).spawn();
     #[cfg(not(any(target_os = "macos", windows)))]
-    let _ = url;
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
 /// The user's home directory (`HOME`, or `USERPROFILE` on Windows).
@@ -108,6 +108,10 @@ pub fn attach_console() {
 pub fn die(msg: &str) -> ! {
     use std::io::IsTerminal;
     eprintln!("{msg}");
+    #[cfg(not(any(target_os = "macos", windows)))]
+    if !std::io::stderr().is_terminal() {
+        linux::error_dialog(msg);
+    }
     #[cfg(windows)]
     if !std::io::stderr().is_terminal() {
         let text = msg.replace('\'', "''");
@@ -138,4 +142,117 @@ pub fn default_args() -> Vec<String> {
     }
     let in_bundle = std::env::current_exe().is_ok_and(|p| p.to_string_lossy().contains(".app/Contents/MacOS"));
     if in_bundle { vec!["--audio".to_string()] } else { Vec::new() }
+}
+
+/// Helpers for Linux desktops, where the same job is done by different programs depending on the desktop and
+/// whether it runs Wayland or X11. Each tries what is installed and gives up quietly if there is nothing.
+#[cfg(not(any(target_os = "macos", windows)))]
+pub mod linux {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    fn wayland() -> bool {
+        std::env::var_os("WAYLAND_DISPLAY").is_some()
+    }
+
+    /// The clipboard commands to try, best first: `wl-clipboard` on Wayland, then `xclip` and `xsel` (which also
+    /// work through XWayland).
+    fn copy_commands(mime: Option<&str>) -> Vec<Command> {
+        let mut list = Vec::new();
+        if wayland() {
+            let mut c = Command::new("wl-copy");
+            if let Some(m) = mime {
+                c.args(["--type", m]);
+            }
+            list.push(c);
+        }
+        let mut c = Command::new("xclip");
+        c.args(["-selection", "clipboard"]);
+        if let Some(m) = mime {
+            c.args(["-t", m]);
+        }
+        list.push(c);
+        if mime.is_none() {
+            let mut c = Command::new("xsel");
+            c.args(["--clipboard", "--input"]);
+            list.push(c);
+        }
+        list
+    }
+
+    /// Put `data` on the clipboard, as `mime` or as plain text. Returns whether a program took it.
+    pub fn copy(data: &[u8], mime: Option<&str>) -> bool {
+        for mut cmd in copy_commands(mime) {
+            // wl-copy and xclip stay running to serve the clipboard, so we hand over the data and let go
+            let Ok(mut child) = cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() else {
+                continue;
+            };
+            let wrote = child.stdin.take().is_some_and(|mut pipe| pipe.write_all(data).is_ok());
+            // both hand the clipboard to a background process and exit at once; waiting also reaps the child
+            if wrote && child.wait().is_ok_and(|s| s.success()) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// The clipboard as text.
+    pub fn paste() -> Option<String> {
+        let mut list = Vec::new();
+        if wayland() {
+            let mut c = Command::new("wl-paste");
+            c.arg("--no-newline");
+            list.push(c);
+        }
+        let mut c = Command::new("xclip");
+        c.args(["-selection", "clipboard", "-o"]);
+        list.push(c);
+        let mut c = Command::new("xsel");
+        c.args(["--clipboard", "--output"]);
+        list.push(c);
+        list.into_iter().find_map(|mut c| {
+            let out = c.stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
+            out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+        })
+    }
+
+    /// Ask for a line of text with `zenity` or `kdialog`; `None` if cancelled or neither is installed.
+    pub fn ask(prompt: &str, initial: &str) -> Option<String> {
+        let tries = [
+            (
+                "zenity",
+                vec![
+                    "--entry".into(),
+                    "--title=Handset".into(),
+                    format!("--text={prompt}"),
+                    format!("--entry-text={initial}"),
+                ],
+            ),
+            (
+                "kdialog",
+                vec!["--title".into(), "Handset".into(), "--inputbox".into(), prompt.to_string(), initial.to_string()],
+            ),
+        ];
+        for (program, args) in tries {
+            if let Ok(out) = Command::new(program).args(&args).stderr(Stdio::null()).output() {
+                return out
+                    .status
+                    .success()
+                    .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+                    .filter(|s| !s.is_empty());
+            }
+        }
+        None
+    }
+
+    /// Show an error in a window when there is no terminal to print it in.
+    pub fn error_dialog(msg: &str) {
+        let shown = Command::new("zenity")
+            .args(["--error", "--title=Handset", "--no-markup"])
+            .arg(format!("--text={msg}"))
+            .status();
+        if shown.is_err() {
+            let _ = Command::new("kdialog").args(["--title", "Handset", "--error", msg]).status();
+        }
+    }
 }

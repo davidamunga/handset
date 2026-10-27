@@ -328,7 +328,7 @@ pub fn read_mac() -> Option<String> {
 
 #[cfg(not(any(target_os = "macos", windows)))]
 pub fn read_mac() -> Option<String> {
-    None
+    crate::tools::linux::paste()
 }
 
 #[cfg(target_os = "macos")]
@@ -351,7 +351,9 @@ fn write_mac(text: &str) {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-fn write_mac(_text: &str) {}
+fn write_mac(text: &str) {
+    crate::tools::linux::copy(text.as_bytes(), None);
+}
 
 /// Put `text` on the Mac's (or PC's) clipboard.
 pub fn write_text(text: &str) {

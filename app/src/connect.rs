@@ -223,7 +223,7 @@ fn ask_address() -> Option<String> {
 
 #[cfg(not(any(target_os = "macos", windows)))]
 fn ask_address() -> Option<String> {
-    None
+    crate::tools::linux::ask("Phone address, as ip or ip:port (shown under Wireless debugging):", "192.168.")
 }
 
 #[cfg(target_os = "macos")]
@@ -244,7 +244,7 @@ fn ask_code() -> Option<String> {
 
 #[cfg(not(any(target_os = "macos", windows)))]
 fn ask_code() -> Option<String> {
-    None
+    crate::tools::linux::ask("Pairing code, as shown on the phone under Pair device with pairing code:", "")
 }
 
 /// A QR code that pairs a phone: scanning it on the phone (Wireless debugging > Pair device with QR code)
