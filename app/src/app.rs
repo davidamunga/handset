@@ -1373,7 +1373,9 @@ impl ApplicationHandler<UserEvent> for App {
         }
         let connecting =
             self.waiting.as_ref().is_some_and(|w| w.starting.is_some() || matches!(w.status, Status::Connecting(_)));
-        crate::dock::set(crate::dock::state_for(self.recorder.is_some(), self.mirror.is_some(), connecting));
+        if let Some(w) = &self.window {
+            crate::dock::set(crate::dock::state_for(self.recorder.is_some(), self.mirror.is_some(), connecting), w);
+        }
         self.refresh_toolbar();
         let fading = self.renderer.as_ref().is_some_and(|r| r.touches_animating());
         if fading && let Some(w) = &self.window {

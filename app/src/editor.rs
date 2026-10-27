@@ -46,19 +46,15 @@ const COLORS: [[u8; 3]; 16] = [
 const ICON: &[u8] = include_bytes!("../packaging/icon/editor-icon-512.png");
 
 fn window_icon() -> Option<egui::IconData> {
-    let mut reader = png::Decoder::new(std::io::Cursor::new(ICON)).read_info().ok()?;
-    let mut buf = vec![0; reader.output_buffer_size()?];
-    let info = reader.next_frame(&mut buf).ok()?;
-    buf.truncate(info.buffer_size());
-    Some(egui::IconData { rgba: buf, width: info.width, height: info.height })
+    let (rgba, width, height) = crate::dock::decode_png(ICON)?;
+    Some(egui::IconData { rgba, width, height })
 }
 
 pub fn run(path: PathBuf, style: Style) -> Result<(), String> {
     let source = Source::load(&path)?;
-    let name = path.file_name().map_or(String::new(), |n| n.to_string_lossy().into());
     let opts = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title(format!("Style - {name}"))
+            .with_title("Handset Style")
             .with_inner_size([960.0, 700.0])
             .with_min_inner_size(MIN_SIZE)
             .with_max_inner_size(MAX_SIZE)
@@ -72,6 +68,8 @@ pub fn run(path: PathBuf, style: Style) -> Result<(), String> {
         "Handset Style",
         opts,
         Box::new(move |cc| {
+            // the Dock icon is separate from the window icon on macOS
+            #[cfg(target_os = "macos")]
             crate::dock::set_image(ICON);
             Ok(Box::new(Editor::new(&cc.egui_ctx, path, source, style)))
         }),
@@ -526,14 +524,13 @@ const TABS: [(Tab, &str); 5] = [
     (Tab::Image, "Image"),
 ];
 
-/// Height of the strip along the top that holds the window buttons and drags the window (macOS hides the
-/// title bar; elsewhere the system one stays and this is just a margin).
-const TOP: f32 = if cfg!(target_os = "macos") { 34.0 } else { 8.0 };
+/// Height of the strip along the top: the window buttons on macOS (which hides the title bar), the file name
+/// everywhere, and a place to drag the window.
+const TOP: f32 = 34.0;
 
 struct Editor {
     path: PathBuf,
-    /// Drawn in the hidden title bar, which only macOS has.
-    #[cfg(target_os = "macos")]
+    /// Drawn along the top of the window.
     name: String,
     full_size: (u32, u32),
     style: Style,
@@ -607,7 +604,6 @@ impl Editor {
         });
         let tab = tab_of(&style.background);
         let mut ed = Self {
-            #[cfg(target_os = "macos")]
             name: path.file_name().map_or(String::new(), |n| n.to_string_lossy().into()),
             full_size: source.size,
             matte: source.matte.is_some(),
@@ -1050,7 +1046,6 @@ impl eframe::App for Editor {
             ui.painter().rect_stroke(rect, 10.0, egui::Stroke::new(1.0, theme::LINE), egui::StrokeKind::Outside);
         });
 
-        #[cfg(target_os = "macos")]
         {
             // the title bar is hidden: draw the file name there, and let the strip drag the window
             let screen = ctx.content_rect();
