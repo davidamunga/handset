@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1
+
+### Patch Changes
+
+- [#65](https://github.com/davidamunga/handset/pull/65) [`1952aab`](https://github.com/davidamunga/handset/commit/1952aab31e9748673c7e92ff305941fded530054) Thanks [@davidamunga](https://github.com/davidamunga)! - The connect screen is now black with white text, shows the Handset mark and name at the top, and has clearer buttons: one bright button for the main action, quieter ones for the other ways to connect, each with a small symbol. The mark's eyes glance about while Handset looks for a phone, and the step numbers are centred in their circles.
+
 ## 0.7.0
 
 ### Minor Changes
