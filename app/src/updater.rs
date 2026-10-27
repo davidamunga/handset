@@ -91,6 +91,9 @@ impl Plan {
 pub enum Failure {
     /// The release has no signature (or no signed list): it is announced but not installed in place.
     Unsigned,
+    /// Handset cannot write where it is installed (the folder named), for example `/Applications` for a
+    /// person who is not an administrator: it cannot replace itself there.
+    NotWritable(String),
     Other(String),
 }
 
@@ -98,6 +101,7 @@ impl std::fmt::Display for Failure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unsigned => write!(f, "this release is not signed"),
+            Self::NotWritable(dir) => write!(f, "Handset cannot write to {dir}"),
             Self::Other(e) => write!(f, "{e}"),
         }
     }
@@ -510,6 +514,31 @@ pub fn can_replace(current: &Path) -> bool {
     ok
 }
 
+// ---- tidying up -------------------------------------------------------------------------------------
+
+/// The folders `prepare` leaves in `tmp` (`handset-update-<pid>`: the download, the unpacked app and the
+/// helper's log) that are older than `max_age`, so they can be removed. A folder that is still in use is
+/// recent, and the one for `current_pid` is never listed.
+pub fn stale_work_dirs(tmp: &Path, current_pid: u32, max_age: Duration) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(tmp) else { return Vec::new() };
+    entries
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let pid = name.strip_prefix("handset-update-")?.parse::<u32>().ok()?;
+            let old = e.metadata().ok()?.modified().ok()?.elapsed().is_ok_and(|age| age >= max_age);
+            (pid != current_pid && e.path().is_dir() && old).then(|| e.path())
+        })
+        .collect()
+}
+
+/// Remove old update folders from the temporary folder. Logs are kept for a week.
+pub fn clean_stale() {
+    for dir in stale_work_dirs(&std::env::temp_dir(), std::process::id(), Duration::from_secs(7 * 24 * 60 * 60)) {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
 // ---- the whole thing --------------------------------------------------------------------------------
 
 /// Everything up to, but not including, replacing the app: download, check, unpack, check again. `work` is a
@@ -526,10 +555,7 @@ pub fn prepare(
     let os = os_for(source).ok_or_else(|| other("this copy of Handset is updated another way"))?;
     let current = install_root(exe, os).ok_or_else(|| other("cannot tell where Handset is installed"))?;
     if !can_replace(&current) {
-        return Err(other(format!(
-            "Handset cannot replace itself in {}: it needs permission to write there",
-            current.parent().unwrap_or(&current).display()
-        )));
+        return Err(Failure::NotWritable(current.parent().unwrap_or(&current).display().to_string()));
     }
     let plan = Plan::new(version, os);
     std::fs::create_dir_all(work).map_err(other)?;
@@ -662,6 +688,28 @@ mod tests {
         assert!(can_replace(&dir.join("Handset.app")));
         assert!(!can_replace(&dir.join("no/such/folder/Handset.app")));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn only_old_update_folders_of_other_runs_are_cleaned_up() {
+        let tmp = temp_dir("clean");
+        let week = Duration::from_secs(7 * 24 * 60 * 60);
+        let make = |name: &str, age_days: u64| {
+            let d = tmp.join(name);
+            std::fs::create_dir_all(&d).unwrap();
+            let when = std::time::SystemTime::now() - Duration::from_secs(age_days * 24 * 60 * 60);
+            std::fs::File::open(&d).unwrap().set_modified(when).unwrap();
+            d
+        };
+        let old = make("handset-update-111", 9);
+        let _recent = make("handset-update-222", 1);
+        let _mine = make("handset-update-333", 30);
+        let _other = make("something-else", 30);
+        let _not_a_pid = make("handset-update-abc", 30);
+        std::fs::write(tmp.join("handset-update-444"), "a file, not a folder").unwrap();
+        assert_eq!(stale_work_dirs(&tmp, 333, week), vec![old], "only an old folder of another run, named for a pid");
+        assert!(stale_work_dirs(&tmp.join("missing"), 1, week).is_empty());
+        let _ = std::fs::remove_dir_all(tmp);
     }
 
     #[test]
@@ -882,7 +930,7 @@ mod tests {
             let root = temp_dir("mac-readonly");
             let exe = root.join("missing/Handset.app/Contents/MacOS/handset");
             let e = prepare(VERSION, Source::MacApp, &exe, &root.join("work"), &[], false, &|_| {}).unwrap_err();
-            assert!(matches!(&e, Failure::Other(m) if m.contains("permission")), "{e}");
+            assert!(matches!(&e, Failure::NotWritable(d) if d.contains("missing")), "{e:?}");
             assert!(!root.join("work").exists(), "nothing was downloaded");
             let _ = std::fs::remove_dir_all(root);
         }

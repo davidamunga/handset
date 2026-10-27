@@ -179,6 +179,7 @@ fn main() {
         .map(|s| frame::load(s).unwrap_or_else(|e| tools::die(&format!("Cannot load the frame: {e}"))));
 
     std::thread::spawn(capture::prune_mattes);
+    std::thread::spawn(updater::clean_stale);
     let event_loop = EventLoop::<stream::UserEvent>::with_user_event().build().unwrap();
     menu::install(event_loop.create_proxy());
     let slot = Arc::new(Mutex::new(stream::Slot::default()));

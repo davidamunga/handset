@@ -65,3 +65,8 @@ waits for Handset to exit, copies the new app next to the old one, moves the old
 place, starts it, and deletes the old one. If the swap or the start fails, it puts the old one back and starts
 that. The update never starts if Handset cannot write where it is installed (for example `/Applications` for a
 non-administrator), while a recording is running, or for an install that a package manager owns.
+
+When the folder is not writable the updater does not try to elevate: it opens the download page and says why,
+the same fallback as for an unsigned release. The `handset-update-<pid>` folders it leaves in the temporary
+folder (the download, the unpacked app and the helper's log) are removed at start once they are a week old, so
+the log stays available for a while after a failed update.

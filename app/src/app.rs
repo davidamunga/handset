@@ -1103,6 +1103,11 @@ impl App {
                 crate::tools::open_url(&page);
                 self.show_toast("NOT SIGNED - OPENING DOWNLOAD PAGE");
             }
+            Err(Failure::NotWritable(dir)) => {
+                eprintln!("update: Handset cannot write to {dir}, so it cannot replace itself there");
+                crate::tools::open_url(&page);
+                self.show_toast("NO PERMISSION TO UPDATE HERE - OPENING DOWNLOAD PAGE");
+            }
             Err(Failure::Other(e)) => {
                 eprintln!("update failed: {e}");
                 self.show_toast("UPDATE FAILED - SEE THE LOG");
