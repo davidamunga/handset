@@ -161,6 +161,7 @@ pub struct App {
     frame_spec: Option<String>,
     /// `--record-for`: record this long from the first frame, then quit.
     pub auto_record: Option<Duration>,
+    styling: Vec<std::thread::JoinHandle<()>>,
     auto_stop_at: Option<Instant>,
     hover: Option<Button>,
     toolbar_key: Option<(u32, Option<Button>, bool)>,
@@ -238,6 +239,7 @@ impl App {
             with_audio: init.with_audio,
             frame_spec: init.frame_spec,
             auto_record: None,
+            styling: Vec::new(),
             auto_stop_at: None,
             hover: None,
             toolbar_key: None,
@@ -1132,9 +1134,9 @@ impl App {
         let style = self.cap.style.clone();
         let proxy = self.proxy.clone();
         self.show_toast("STYLING...");
-        std::thread::spawn(move || {
+        self.styling.push(std::thread::spawn(move || {
             let _ = proxy.send_event(UserEvent::Styled(restyle::export(&path, &style)));
-        });
+        }));
     }
 
     fn start_recording(&mut self) {
@@ -1335,6 +1337,10 @@ impl ApplicationHandler<UserEvent> for App {
             self.auto_stop_at = None;
             self.auto_record = None;
             self.stop_recording();
+            // a run that ends by itself must not leave a styled copy half made
+            for job in self.styling.drain(..) {
+                let _ = job.join();
+            }
             el.exit();
             return;
         }
