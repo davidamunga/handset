@@ -15,6 +15,7 @@ use crate::restyle;
 use crate::server;
 use crate::settings;
 use crate::stream::{Slot, UserEvent};
+use crate::tilt::Tilt;
 use crate::toolbar::{self, Button};
 use crate::transfer;
 use crate::update;
@@ -52,6 +53,8 @@ pub struct Init {
     pub toolbar: bool,
     /// Show touch indicators at start (a saved setting or `--show-touches`).
     pub touches: bool,
+    /// How the phone is turned at start (a saved setting or `--tilt`).
+    pub tilt: Tilt,
     /// Check for a newer release now and then (a saved setting, off with `--no-update-check`).
     pub update_check: bool,
 }
@@ -196,6 +199,7 @@ pub struct App {
     /// Whether the toolbar starts visible.
     toolbar_start: bool,
     touches_start: bool,
+    tilt_start: Tilt,
     /// Look for newer releases by itself (a saved setting), and the newer release once one is found.
     update_auto: bool,
     update: Option<update::Release>,
@@ -286,6 +290,7 @@ impl App {
             notifications_open: false,
             toolbar_start: init.toolbar,
             touches_start: init.touches,
+            tilt_start: init.tilt,
             update_auto: init.update_check,
             just_updated: init.updated_from,
             update: None,
@@ -362,6 +367,7 @@ impl App {
         let (wt, r, w) = (self.waiting.as_ref()?, self.renderer.as_ref()?, self.window.as_ref()?);
         let s = w.inner_size();
         let p = ((self.cursor.0 / s.width as f64) as f32, (self.cursor.1 / s.height as f64) as f32);
+        let p = r.untilt(p)?;
         let v = r.video_rect;
         if p.0 < v[0] || p.0 >= v[0] + v[2] || p.1 < v[1] || p.1 >= v[1] + v[3] {
             return None;
@@ -848,8 +854,11 @@ impl App {
         let p = ((self.cursor.0 / s.width as f64) as f32, (self.cursor.1 / s.height as f64) as f32);
         let v = r.video_rect;
         let (dw, dh) = self.device;
-        let inside = dw > 0 && p.0 >= v[0] && p.0 < v[0] + v[2] && p.1 >= v[1] && p.1 < v[1] + v[3];
-        let dev = inside.then(|| (((p.0 - v[0]) / v[2] * dw as f32) as i32, ((p.1 - v[1]) / v[3] * dh as f32) as i32));
+        // the phone may be turned: find where the cursor is on the flat layout
+        let Some(fp) = r.untilt(p) else { return Some((p, None)) };
+        let inside = dw > 0 && fp.0 >= v[0] && fp.0 < v[0] + v[2] && fp.1 >= v[1] && fp.1 < v[1] + v[3];
+        let dev =
+            inside.then(|| (((fp.0 - v[0]) / v[2] * dw as f32) as i32, ((fp.1 - v[1]) / v[3] * dh as f32) as i32));
         Some((p, dev))
     }
 
@@ -987,6 +996,7 @@ impl App {
             muted: audio::is_muted(),
             toolbar: self.renderer.as_ref().is_some_and(|r| r.toolbar_visible()),
             touches: self.renderer.as_ref().is_some_and(|r| r.show_touches()),
+            tilt: self.renderer.as_ref().map(|r| r.tilt()).unwrap_or_default(),
             update_auto: self.update_auto,
             update: self.update.as_ref().map(|u| u.version.clone()),
             update_command: self.install.upgrade_command(),
@@ -1310,6 +1320,14 @@ impl App {
             other => {
                 if let Some(name) = other.strip_prefix("frame:") {
                     self.set_frame(Some(name.to_string()));
+                } else if let Some(tilt) = other.strip_prefix("tilt:").and_then(Tilt::parse)
+                    && let Some(r) = self.renderer.as_mut()
+                {
+                    r.set_tilt(tilt);
+                    settings::save("tilt", &tilt.to_spec());
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
                 }
             }
         }
@@ -1798,6 +1816,7 @@ impl App {
 
     fn on_bezel(&self, p: (f32, f32)) -> bool {
         let (Some(r), Some(b)) = (self.renderer.as_ref(), self.bezel.as_ref()) else { return false };
+        let Some(p) = r.untilt(p) else { return false };
         let br = r.bezel_rect();
         let (fx, fy) = ((p.0 - br[0]) / br[2], (p.1 - br[1]) / br[3]);
         // the bezel image is drawn rotated 90 degrees clockwise in landscape
@@ -1855,6 +1874,7 @@ impl ApplicationHandler<UserEvent> for App {
             Ok(mut r) => {
                 r.set_toolbar_visible(self.toolbar_start);
                 r.set_show_touches(self.touches_start);
+                r.set_tilt(self.tilt_start);
                 if update::check_on_start(self.update_auto, self.auto_record.is_some()) {
                     self.check_for_update(false);
                 }

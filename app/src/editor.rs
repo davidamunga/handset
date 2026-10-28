@@ -552,6 +552,22 @@ fn slider_row(ui: &mut egui::Ui, label: &str, value: &mut u32, max: u32, unit: &
     changed
 }
 
+/// Like [`slider_row`] for a value that runs from `-max` to `max` degrees.
+fn signed_slider_row(ui: &mut egui::Ui, label: &str, value: &mut i32, max: i32) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        ui.allocate_ui_with_layout(egui::vec2(98.0, 24.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.set_min_width(98.0);
+            ui.label(egui::RichText::new(label).color(theme::weak()));
+        });
+        ui.spacing_mut().slider_width = (ui.available_width() - 52.0).max(40.0);
+        changed = ui.add(egui::Slider::new(value, -max..=max).show_value(false).trailing_fill(true)).changed();
+        let text = egui::RichText::new(format!("{value}\u{b0}")).family(semibold());
+        ui.add_sized([36.0, 24.0], egui::Label::new(text));
+    });
+    changed
+}
+
 /// What the person did to the scrubber.
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Scrub {
@@ -685,6 +701,8 @@ struct Editor {
     custom: [u8; 3],
     /// Background and shadow at preview size, redrawn only when the style changes.
     backdrop: Option<(Vec<u8>, Layout)>,
+    /// `src` turned by the style's tilt, redrawn with the backdrop; `None` when flat.
+    tilted: Option<Img>,
     texture: Option<egui::TextureHandle>,
     style_dirty: bool,
     frame_dirty: bool,
@@ -772,6 +790,7 @@ impl Editor {
             tab,
             image: None,
             backdrop: None,
+            tilted: None,
             texture: None,
             style_dirty: true,
             frame_dirty: true,
@@ -828,11 +847,16 @@ impl Editor {
         let style = self.effective_style();
         if self.style_dirty || self.backdrop.is_none() {
             let l = style.layout((self.src.w, self.src.h));
-            let bd = style.backdrop(&l, Some(&self.src), self.image.as_ref().map(|(_, i)| i));
+            self.tilted = style.tilted(&self.src);
+            let bd = style.backdrop(
+                &l,
+                Some(self.tilted.as_ref().unwrap_or(&self.src)),
+                self.image.as_ref().map(|(_, i)| i),
+            );
             self.backdrop = Some((bd, l));
         }
         let (bd, l) = self.backdrop.as_ref().expect("backdrop just drawn");
-        let out = style.compose_over(bd, l, &self.src);
+        let out = style.compose_over(bd, l, self.tilted.as_ref().unwrap_or(&self.src));
         let img = egui::ColorImage::from_rgba_unmultiplied([out.w as usize, out.h as usize], &out.rgba);
         match &mut self.texture {
             Some(t) => t.set(img, egui::TextureOptions::LINEAR),
@@ -1214,6 +1238,15 @@ impl Editor {
             }
             changed |= slider_row(ui, "Shadow", &mut self.style.shadow, 100, "");
         });
+        if !self.is_video() {
+            card(ui, |ui| {
+                section_title(ui, "TILT");
+                let t = &mut self.style.tilt;
+                changed |= signed_slider_row(ui, "Turn", &mut t.yaw, crate::tilt::MAX_YAW);
+                changed |= signed_slider_row(ui, "Lean", &mut t.pitch, crate::tilt::MAX_PITCH);
+                changed |= signed_slider_row(ui, "Roll", &mut t.roll, crate::tilt::MAX_ROLL);
+            });
+        }
         card(ui, |ui| {
             section_title(ui, "ASPECT RATIO");
             ui.horizontal(|ui| {

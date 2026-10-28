@@ -6,6 +6,8 @@
 
 use std::path::PathBuf;
 
+use crate::tilt::Tilt;
+
 pub const MAX_PADDING: u32 = 40;
 pub const MAX_RADIUS: u32 = 25;
 
@@ -56,11 +58,20 @@ pub struct Style {
     /// Shadow strength, 0 (none) to 100.
     pub shadow: u32,
     pub aspect: Aspect,
+    /// Turn the capture in 3D. Screenshots only; recordings stay flat.
+    pub tilt: Tilt,
 }
 
 impl Default for Style {
     fn default() -> Self {
-        Self { background: Background::Gradient(0), padding: 10, radius: 6, shadow: 60, aspect: Aspect::Auto }
+        Self {
+            background: Background::Gradient(0),
+            padding: 10,
+            radius: 6,
+            shadow: 60,
+            aspect: Aspect::Auto,
+            tilt: Tilt::default(),
+        }
     }
 }
 
@@ -218,7 +229,7 @@ fn image_at(img: &Img, x: u32, y: u32, ow: u32, oh: u32) -> [f32; 3] {
 }
 
 /// Coverage (0..=1, anti-aliased) of a rounded rectangle at pixel `(x, y)`.
-fn rounded_cover(x: u32, y: u32, w: u32, h: u32, r: f32) -> f32 {
+pub(crate) fn rounded_cover(x: u32, y: u32, w: u32, h: u32, r: f32) -> f32 {
     let (hx, hy) = (w as f32 / 2.0, h as f32 / 2.0);
     let r = r.min(hx).min(hy);
     let (px, py) = ((x as f32 + 0.5 - hx).abs(), (y as f32 + 0.5 - hy).abs());
@@ -228,7 +239,7 @@ fn rounded_cover(x: u32, y: u32, w: u32, h: u32, r: f32) -> f32 {
 }
 
 /// Run `f(row, pixels_of_row)` over the rows of an RGBA buffer on several threads.
-fn par_rows(buf: &mut [u8], w: u32, f: impl Fn(u32, &mut [u8]) + Sync) {
+pub(crate) fn par_rows(buf: &mut [u8], w: u32, f: impl Fn(u32, &mut [u8]) + Sync) {
     let row_len = (w * 4) as usize;
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).min(8);
     let rows_per = (buf.len() / row_len).div_ceil(threads).max(1);
@@ -305,6 +316,7 @@ impl Style {
                         Aspect::Ratio(a, b)
                     }
                 }
+                "tilt" => s.tilt = Tilt::parse(v)?,
                 _ => return None,
             }
         }
@@ -323,7 +335,8 @@ impl Style {
             Aspect::Auto => "auto".to_string(),
             Aspect::Ratio(a, b) => format!("{a}:{b}"),
         };
-        format!("bg={bg};padding={};radius={};shadow={};aspect={aspect}", self.padding, self.radius, self.shadow)
+        let tilt = if self.tilt.is_flat() { String::new() } else { format!(";tilt={}", self.tilt.to_spec()) };
+        format!("bg={bg};padding={};radius={};shadow={};aspect={aspect}{tilt}", self.padding, self.radius, self.shadow)
     }
 
     /// Output size and where a `content`-sized capture sits in it. The output is never smaller than the
@@ -347,8 +360,18 @@ impl Style {
             y: ((h - ch) / 2) & !1,
             w: cw,
             h: ch,
-            radius: self.radius as f32 / 100.0 * cw.min(ch) as f32,
+            // a tilted picture has its corners rounded before it is turned, see `Style::tilted`
+            radius: if self.tilt.is_flat() { self.radius_px((cw, ch)) } else { 0.0 },
         }
+    }
+
+    fn radius_px(&self, (cw, ch): (u32, u32)) -> f32 {
+        self.radius as f32 / 100.0 * cw.min(ch) as f32
+    }
+
+    /// The capture turned by the style's tilt, with its corners rounded; `None` when it is flat.
+    pub fn tilted(&self, src: &Img) -> Option<Img> {
+        (!self.tilt.is_flat()).then(|| crate::tilt::warp(src, self.tilt, self.radius_px((src.w, src.h))))
     }
 
     /// The background and shadow at output size, straight alpha, with the capture's area still in place.
@@ -461,6 +484,8 @@ impl Style {
 
     /// Put a captured picture on its styled background.
     pub fn compose(&self, src: &Img, image: Option<&Img>) -> Img {
+        let tilted = self.tilted(src);
+        let src = tilted.as_ref().unwrap_or(src);
         let l = self.layout((src.w, src.h));
         let backdrop = self.backdrop(&l, Some(src), image);
         self.compose_over(&backdrop, &l, src)
@@ -522,6 +547,7 @@ mod tests {
             radius: 9,
             shadow: 30,
             aspect: Aspect::Ratio(16, 9),
+            tilt: Tilt { yaw: -18, pitch: 8, roll: 0 },
         };
         assert_eq!(Style::parse(&s.to_spec()), Some(s));
         let c = Style { background: Background::Color([1, 2, 255]), ..Style::default() };
@@ -565,6 +591,7 @@ mod tests {
             radius: 0,
             shadow: 0,
             aspect: Aspect::Auto,
+            tilt: Tilt::default(),
         };
         let out = s.compose(&solid(100, 100, [0, 0, 255, 255]), None);
         assert_eq!((out.w, out.h), (140, 140));
@@ -575,6 +602,33 @@ mod tests {
     }
 
     #[test]
+    fn a_tilted_picture_keeps_its_size_and_leaves_background_in_the_corners() {
+        let s = Style {
+            background: Background::Color([255, 0, 0]),
+            padding: 10,
+            radius: 6,
+            shadow: 0,
+            aspect: Aspect::Auto,
+            tilt: Tilt { yaw: -35, pitch: 0, roll: 0 },
+        };
+        let flat = Style { tilt: Tilt::default(), ..s.clone() };
+        let out = s.compose(&solid(100, 200, [0, 0, 255, 255]), None);
+        assert_eq!((out.w, out.h), flat.layout((100, 200)).out);
+        let l = s.layout((100, 200));
+        assert_eq!(l.radius, 0.0);
+        let at = |x: u32, y: u32| out.rgba[((y * out.w + x) * 4) as usize..][..4].to_vec();
+        assert_eq!(at(l.x + 50, l.y + 100), vec![0, 0, 255, 255]);
+        let corner = at(l.x + 1, l.y + 1);
+        assert!(corner[0] > 250 && corner[2] < 5, "the turned-away corner shows the background: {corner:?}");
+    }
+
+    #[test]
+    fn spec_leaves_out_a_flat_tilt() {
+        assert!(!Style::default().to_spec().contains("tilt"));
+        assert_eq!(Style::parse("tilt=10,-5,2").unwrap().tilt, Tilt { yaw: 10, pitch: -5, roll: 2 });
+    }
+
+    #[test]
     fn shadow_darkens_below_more_than_above() {
         let s = Style {
             background: Background::Color([255, 255, 255]),
@@ -582,6 +636,7 @@ mod tests {
             radius: 0,
             shadow: 100,
             aspect: Aspect::Auto,
+            tilt: Tilt::default(),
         };
         let out = s.compose(&solid(200, 200, [0, 0, 255, 255]), None);
         let l = s.layout((200, 200));

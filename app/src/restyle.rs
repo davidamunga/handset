@@ -5,6 +5,7 @@
 //! backdrop picture that has a hole cut in it for the capture (see `Style::punch_hole`).
 
 use crate::style::{Background, DARK, Img, Style};
+use crate::tilt::Tilt;
 use crate::trim::Trim;
 use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
@@ -212,8 +213,8 @@ fn parse_size(banner: &str) -> Option<(u32, u32)> {
 /// A video cannot be transparent: styled with no background it sits on a dark colour.
 pub fn video_style(style: &Style) -> Style {
     match style.background {
-        Background::None => Style { background: Background::Color(DARK), ..style.clone() },
-        _ => style.clone(),
+        Background::None => Style { background: Background::Color(DARK), tilt: Tilt::default(), ..style.clone() },
+        _ => Style { tilt: Tilt::default(), ..style.clone() },
     }
 }
 
@@ -247,12 +248,12 @@ fn style_video(
     let info = probe(input)?;
     let size = info.size;
     let matte = load_matte(input, size);
+    let style = &video_style(style);
     let mut layout = style.layout(size);
     if matte.is_some() {
         // the phone's own outline is the shape: no rounded rectangle on top of it
         layout.radius = 0.0;
     }
-    let style = &video_style(style);
     let mut backdrop = style.backdrop(&layout, matte.as_ref(), image);
     style.punch_hole(&mut backdrop, &layout, matte.as_ref());
     let bd_path = scratch("png");

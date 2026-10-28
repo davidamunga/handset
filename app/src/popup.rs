@@ -839,6 +839,7 @@ mod tests {
             muted: false,
             toolbar: true,
             touches: false,
+            tilt: Default::default(),
             update_auto: true,
             update: Some("9.9.9".into()),
             update_command: None,
@@ -916,10 +917,18 @@ mod tests {
             "quit",
         ];
         for id in &all {
-            let prefixed =
-                ["frame:", "app:", "recent:open:", "recent:edit:", "recent:style:", "recent:reveal:", "recent:copy:"]
-                    .iter()
-                    .any(|p| id.starts_with(p));
+            let prefixed = [
+                "frame:",
+                "tilt:",
+                "app:",
+                "recent:open:",
+                "recent:edit:",
+                "recent:style:",
+                "recent:reveal:",
+                "recent:copy:",
+            ]
+            .iter()
+            .any(|p| id.starts_with(p));
             assert!(known.contains(&id.as_str()) || prefixed, "{id}");
         }
         for id in known {

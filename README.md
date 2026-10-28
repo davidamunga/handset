@@ -216,6 +216,12 @@ that is plugged in, or the Wi-Fi and QR options.
   `Esc` is Back, `Home` is Home, `End` is Recents.
 - **Show Touches** (right-click menu, or `--show-touches`) draws a translucent dot where you touch the phone, fading
   when you let go. It is part of screenshots and recordings too, which makes demos easier to follow.
+- **Tilt** (right-click menu, or `--tilt yaw,pitch,roll` in degrees, for example `--tilt -25,10,0`) turns the phone in
+  3D with perspective, and touch still lands where you point. Screenshots and recordings of the live window stay flat;
+  the editor's Tilt sliders turn a saved screenshot.
+
+<p align="center"><img src="docs/images/tilt.png" alt="A phone mirrored with a tilt: turned and leaning back, with perspective" width="300"></p>
+
 - **Drop a file** on the window: an `.apk` is installed, anything else is copied to the phone's Downloads folder.
 - **Move** the window by dragging the bezel. **Resize** by dragging a corner of the phone (it keeps the frame's
   proportions), with Cmd or Ctrl and scroll, or `+`, `-` and `0` (default size), also in the menu.
@@ -297,7 +303,7 @@ With no arguments, `~/.config/handset/args` is used if it exists. `HANDSET_DEBUG
 `HANDSET_LANDING=wifi` or `qr` opens that view of the connect screen first. `ADB` and `FFMPEG` override where the
 tools are found.
 
-Choices made in the menus (frame, toolbar, touches, capture format, audio normalisation, clipboard copy and
+Choices made in the menus (frame, tilt, toolbar, touches, capture format, audio normalisation, clipboard copy and
 sync, mute, styled copies of captures) are remembered in `~/.config/handset/settings`, a plain `key=value` file
 you can edit. Command-line options win for the run they are given and are never saved.
 

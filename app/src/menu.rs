@@ -22,6 +22,8 @@ pub struct State {
     pub toolbar: bool,
     /// Show where the phone is touched, in the window and in captures.
     pub touches: bool,
+    /// How the phone is turned in the window.
+    pub tilt: crate::tilt::Tilt,
     /// Look for newer releases by itself, and the newer version once one was found.
     pub update_auto: bool,
     pub update: Option<String>,
@@ -209,11 +211,17 @@ pub fn build(s: &State) -> Vec<Entry> {
         open_app.push(sub("System Apps", s.apps.iter().filter(|a| a.system).map(app).collect()));
     }
 
+    let tilt = crate::tilt::Tilt::PRESETS
+        .iter()
+        .map(|(name, t)| item(format!("tilt:{}", t.to_spec()), *name).checked(s.tilt == *t).into())
+        .collect();
+
     let mut menu = Vec::new();
     if !s.ios {
         menu.push(sub("Phone", phone));
     }
     menu.push(sub("Frame", frame));
+    menu.push(sub("Tilt", tilt));
     if !s.ios {
         menu.push(sub("Open App", open_app));
     }

@@ -1,6 +1,10 @@
 struct U {
     rect: vec4<f32>, // x, y, w, h in window space (0..1, origin top-left)
     extra: vec4<f32>, // x: 1 = sample the texture rotated 90 degrees clockwise; y: opacity
+    // Rows of a homography on window space (0..1); the identity for layers that stay flat.
+    h0: vec4<f32>,
+    h1: vec4<f32>,
+    h2: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> u: U;
@@ -23,7 +27,12 @@ fn vs(@builtin(vertex_index) i: u32) -> VOut {
     let c = corners[i];
     let p = u.rect.xy + c * u.rect.zw;
     var o: VOut;
-    o.pos = vec4(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0, 0.0, 1.0);
+    let q = vec3(p, 1.0);
+    let x = dot(u.h0.xyz, q);
+    let y = dot(u.h1.xyz, q);
+    let w = dot(u.h2.xyz, q);
+    // homogeneous output keeps the texture mapping perspective-correct
+    o.pos = vec4(x * 2.0 - w, w - y * 2.0, 0.0, w);
     // Source uv of a 90 degree clockwise rotation: dest (x, y) <- src (y, 1 - x)
     o.uv = select(c, vec2(c.y, 1.0 - c.x), u.extra.x > 0.5);
     return o;

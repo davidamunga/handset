@@ -1,6 +1,7 @@
 //! wgpu renderer: YUV video quad (converted on the GPU), then the bezel on top.
 
 use crate::frame::Bezel;
+use crate::tilt::Tilt;
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -86,7 +87,14 @@ pub struct Renderer {
     landscape: bool,
     /// Video rectangle in window space (x, y, w, h), valid after `layout()`.
     pub video_rect: [f32; 4],
+    /// The phone is turned in 3D in the window (captures stay flat). `tilt_h` takes the flat layout to the
+    /// turned one, `tilt_inv` takes a window point back, for the pointer; both in window space (0..1).
+    tilt: Tilt,
+    tilt_h: [f32; 9],
+    tilt_inv: Option<[f32; 9]>,
 }
+
+const IDENTITY: [f32; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 
 fn plane(device: &wgpu::Device, w: u32, h: u32) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
@@ -265,6 +273,9 @@ impl Renderer {
             toolbar_buttons: 1,
             landscape: false,
             video_rect: [0.0, 0.0, 1.0, 1.0],
+            tilt: Tilt::default(),
+            tilt_h: IDENTITY,
+            tilt_inv: Some(IDENTITY),
         };
         if let Some(b) = bezel {
             r.set_bezel(b);
@@ -275,7 +286,7 @@ impl Renderer {
     fn make_layer(&self, views: [&wgpu::TextureView; 3]) -> Layer {
         let ubuf = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
-            size: 32,
+            size: 80,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -520,6 +531,19 @@ impl Renderer {
         self.content_aspect().map(|a| a + self.side_frac())
     }
 
+    pub fn tilt(&self) -> Tilt {
+        self.tilt
+    }
+
+    pub fn set_tilt(&mut self, tilt: Tilt) {
+        self.tilt = tilt;
+    }
+
+    /// A window point (0..1) as it is on the flat layout, undoing the tilt. `None` when it maps nowhere.
+    pub fn untilt(&self, p: (f32, f32)) -> Option<(f32, f32)> {
+        crate::tilt::apply(&self.tilt_inv?, p)
+    }
+
     pub fn landscape(&self) -> bool {
         self.landscape
     }
@@ -616,14 +640,33 @@ impl Renderer {
             self.video_rect = video_rect;
         }
 
-        let write = |buf: &wgpu::Buffer, r: [f32; 4], rot: f32, opacity: f32| {
-            let data = [r[0], r[1], r[2], r[3], rot, opacity, 0.0, 0.0];
+        // only the window is turned; a capture is rendered flat
+        let (h, inv) = if remember && !self.tilt.is_flat() {
+            let (bw, bh) = (br[2] * ww, br[3] * wh);
+            let flat = [(br[0], br[1]), (br[0] + br[2], br[1]), (br[0] + br[2], br[1] + br[3]), (br[0], br[1] + br[3])];
+            let turned = self.tilt.corners(bw, bh).map(|(x, y)| (br[0] + x / ww, br[1] + y / wh));
+            let h = crate::tilt::homography(flat, turned);
+            (h.unwrap_or(IDENTITY), h.and_then(crate::tilt::invert3))
+        } else {
+            (IDENTITY, Some(IDENTITY))
+        };
+        self.tilt_h = h;
+        self.tilt_inv = inv;
+        let flat = IDENTITY;
+        let write_with = |buf: &wgpu::Buffer, r: [f32; 4], rot: f32, opacity: f32, h: &[f32; 9]| {
+            let data = [
+                r[0], r[1], r[2], r[3], rot, opacity, 0.0, 0.0, h[0], h[1], h[2], 0.0, h[3], h[4], h[5], 0.0, h[6],
+                h[7], h[8], 0.0,
+            ];
             self.queue.write_buffer(buf, 0, bytemuck::cast_slice(&data));
         };
-        write(&v.video.ubuf, video_rect, 0.0, 1.0);
-        write(&v.solid.ubuf, hole, 0.0, 1.0);
+        let write = |buf: &wgpu::Buffer, r: [f32; 4], rot: f32, opacity: f32| write_with(buf, r, rot, opacity, &flat);
+        let write_turned =
+            |buf: &wgpu::Buffer, r: [f32; 4], rot: f32, opacity: f32| write_with(buf, r, rot, opacity, &h);
+        write_turned(&v.video.ubuf, video_rect, 0.0, 1.0);
+        write_turned(&v.solid.ubuf, hole, 0.0, 1.0);
         if let Some(b) = &self.bezel {
-            write(&b.layer.ubuf, br, if self.landscape { 1.0 } else { 0.0 }, 1.0);
+            write_turned(&b.layer.ubuf, br, if self.landscape { 1.0 } else { 0.0 }, 1.0);
         }
         // touch indicators follow the video, in the window and in captures
         let size = video_rect[2] * ww * 0.1;
@@ -631,7 +674,7 @@ impl Renderer {
             let (opacity, grow) = Self::dot_look(d);
             let (dw, dh) = (size * grow / ww, size * grow / wh);
             let (cx, cy) = (video_rect[0] + d.u * video_rect[2], video_rect[1] + d.v * video_rect[3]);
-            write(&layer.ubuf, [cx - dw / 2.0, cy - dh / 2.0, dw, dh], 0.0, opacity);
+            write_turned(&layer.ubuf, [cx - dw / 2.0, cy - dh / 2.0, dw, dh], 0.0, opacity);
         }
         // the overlay is only laid out for the window: bottom centre of the screen
         if remember {

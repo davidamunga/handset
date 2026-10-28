@@ -32,6 +32,7 @@ mod server;
 mod settings;
 mod stream;
 mod style;
+mod tilt;
 mod toolbar;
 mod tools;
 mod transfer;
@@ -52,7 +53,7 @@ fn usage() -> ! {
          \x20      handset --edit [png|mp4|gif]\n\
          \x20      handset --verify-release <folder>\n\
          \x20      handset --doctor\n\
-         \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--show-touches] [--style <look>] [--style-captures] [--no-update-check] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
+         \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--show-touches] [--tilt <yaw,pitch,roll>] [--style <look>] [--style-captures] [--no-update-check] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
          built-in frames: {}\n\
          right-click the phone for the menu; keys: Cmd/Ctrl+S screenshot, Cmd/Ctrl+E record, Cmd/Ctrl+R rotate",
         frame::builtin_names().collect::<Vec<_>>().join(", ")
@@ -93,6 +94,7 @@ fn main() {
     let mut frame_given = false;
     let mut update_check = saved.get_bool("update-check").unwrap_or(true);
     let mut touches = saved.get_bool("touches").unwrap_or(false);
+    let mut tilt = saved.get("tilt").and_then(tilt::Tilt::parse).unwrap_or_default();
     let mut sync_clipboard = saved.get_bool("sync-clipboard").unwrap_or(true);
     let mut start_app: Option<String> = None;
     // no arguments: use the saved defaults (and `--audio` inside the app bundle)
@@ -125,6 +127,7 @@ fn main() {
             "--no-clipboard" => cap.clipboard = false,
             "--no-clipboard-sync" => sync_clipboard = false,
             "--show-touches" => touches = true,
+            "--tilt" => tilt = args.next().and_then(|v| tilt::Tilt::parse(&v)).unwrap_or_else(|| usage()),
             "--no-update-check" => update_check = false,
             "--version" => {
                 println!("handset {}", update::CURRENT);
@@ -296,6 +299,7 @@ fn main() {
         start_app,
         toolbar: saved.get_bool("toolbar").unwrap_or(true),
         touches,
+        tilt,
         update_check,
         updated_from,
     });
