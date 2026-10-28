@@ -16,6 +16,8 @@ pub fn find(name: &str) -> PathBuf {
     dirs.extend(
         ["Library/Android/sdk/platform-tools", "Android/Sdk/platform-tools", ".local/bin"].map(|r| home.join(r)),
     );
+    #[cfg(not(any(target_os = "macos", windows)))]
+    dirs.extend(linux_dirs(&home, std::env::var("USER").ok().as_deref()));
     #[cfg(windows)]
     {
         if let Some(local) = std::env::var_os("LOCALAPPDATA").map(PathBuf::from) {
@@ -44,6 +46,18 @@ pub fn find(name: &str) -> PathBuf {
     }
     let file = if cfg!(windows) { format!("{name}.exe") } else { name.to_string() };
     dirs.into_iter().map(|d| d.join(&file)).find(|p| p.is_file()).unwrap_or_else(|| name.into())
+}
+
+/// Where Linux package managers that are not on a bare `PATH` (a launcher entry gets one) put programs:
+/// Nix, Snap and Homebrew.
+#[cfg(any(test, not(any(target_os = "macos", windows))))]
+fn linux_dirs(home: &std::path::Path, user: Option<&str>) -> Vec<PathBuf> {
+    let mut dirs = vec![home.join(".nix-profile/bin"), PathBuf::from("/run/current-system/sw/bin")];
+    if let Some(user) = user {
+        dirs.push(PathBuf::from(format!("/etc/profiles/per-user/{user}/bin")));
+    }
+    dirs.extend(["/snap/bin", "/home/linuxbrew/.linuxbrew/bin"].map(PathBuf::from));
+    dirs
 }
 
 /// Open a web page in the default browser.
@@ -225,5 +239,19 @@ pub mod linux {
         if shown.is_err() {
             let _ = Command::new("kdialog").args(["--title", "Handset", "--error", msg]).status();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn linux_search_dirs_cover_nix_snap_and_homebrew() {
+        let dirs = linux_dirs(std::path::Path::new("/home/me"), Some("me"));
+        for want in ["/home/me/.nix-profile/bin", "/etc/profiles/per-user/me/bin", "/snap/bin"] {
+            assert!(dirs.contains(&PathBuf::from(want)), "{want}");
+        }
+        assert!(!linux_dirs(std::path::Path::new("/home/me"), None).iter().any(|d| d.starts_with("/etc/profiles")));
     }
 }
