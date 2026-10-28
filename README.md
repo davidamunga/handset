@@ -72,8 +72,27 @@ or `FFMPEG` to override. Captures go to `Pictures\handset` and `Videos\handset`;
 ### Linux (experimental)
 
 It builds and passes its tests on Ubuntu 22.04 in CI, but nobody has run the window on a Linux desktop yet, so
-expect problems with the transparent, borderless frame on some compositors. There is no download yet; install it
-from source with Cargo. You need Rust 1.91 or newer, `cmake`, `nasm` and the ALSA headers.
+expect problems with the transparent, borderless frame on some compositors.
+
+Each release has a tarball for x86_64 and one for aarch64 (`Handset-<version>-linux-<arch>.tar.gz`, not code-signed;
+`SHA256SUMS-linux` and its signature cover them). They need glibc 2.35 or newer (Ubuntu 22.04, Debian 12 and newer)
+and ALSA (`libasound2` or `alsa-lib`). Unpack it and put `handset` on your `PATH`:
+
+```sh
+tar -xzf Handset-<version>-linux-x86_64.tar.gz
+install -Dm755 Handset-<version>-linux-x86_64/handset ~/.local/bin/handset
+```
+
+For a launcher entry, also copy the desktop entry and the icon from the same folder:
+
+```sh
+install -Dm644 Handset-<version>-linux-x86_64/handset.desktop ~/.local/share/applications/handset.desktop
+install -Dm644 Handset-<version>-linux-x86_64/handset.png ~/.local/share/icons/hicolor/512x512/apps/handset.png
+```
+
+To update, download the new tarball and do the same again.
+
+Or install it from source with Cargo. You need Rust 1.91 or newer, `cmake`, `nasm` and the ALSA headers.
 
 Arch, Omarchy, EndeavourOS and Manjaro:
 
@@ -104,8 +123,8 @@ Optional helpers (`handset --doctor` lists any that are missing and says what to
 
 - `xdg-open`: open links and captures
 - `wl-clipboard` on Wayland or `xclip`/`xsel` on X11: the clipboard and "copy capture"
-- `zenity` or `kdialog`: the address prompt and error dialogs. A stock Omarchy has no `zenity`, so the address
-  and pairing-code prompts do nothing until you `pacman -S zenity`.
+- `zenity` or `kdialog`: error dialogs, when Handset is started without a terminal to print them in. The address
+  and pairing-code fields are drawn in the window and need neither.
 
 File dialogs go through the desktop portal (`xdg-desktop-portal` with a backend for your desktop), not GTK.
 On a tiling compositor such as Hyprland, float the window or it is tiled to fit. The class is `handset` on Wayland
@@ -114,8 +133,8 @@ and X11, and Hyprland's rule syntax differs by version: `windowrulev2 = float, c
 
 Which systems:
 
-- **Ubuntu 22.04 and newer, Debian 12 and newer, Fedora, and other glibc systems at least that new:** the CI tarball
-  needs glibc 2.35 (`scripts/package-linux.sh` refuses to build one that needs more) and ALSA (`libasound2`). On
+- **Ubuntu 22.04 and newer, Debian 12 and newer, Fedora, and other glibc systems at least that new:** the release
+  tarball needs glibc 2.35 (`scripts/package-linux.sh` refuses to build one that needs more) and ALSA (`libasound2`). On
   older systems (Ubuntu 20.04, Debian 11) build from source.
 - **Arch and its derivatives (Omarchy, EndeavourOS, Manjaro):** besides `cargo install`,
   `app/packaging/linux/PKGBUILD` builds a package from a release tag (`makepkg -si`; not on the AUR yet).
@@ -318,8 +337,8 @@ choose Open (the released app is signed and notarised and does not).
 **Linux:** run `cargo build --release` in `app`; the binary is `app/target/release/handset`.
 `scripts/package-linux.sh` builds `dist/linux/Handset-<version>-linux-<arch>.tar.gz` (the binary, a
 `handset.desktop` entry, the icon and the licences) and, when `appimagetool` is installed, an AppImage; CI
-attaches the tarball to each run. Neither is part of a release yet, and neither bundles ALSA, so it must be
-installed.
+attaches the tarball to each run and each release carries it for x86_64 and aarch64 (the AppImage is not released).
+Neither bundles ALSA, so it must be installed.
 
 ### How it works
 
@@ -343,7 +362,7 @@ Ideas, not promises:
 - A device picker
 - OBS-friendly output (Syphon or a virtual camera)
 - Microphone to phone
-- A Linux release (AppImage)
+- A self-contained Linux bundle (AppImage or Flatpak)
 - Touch control for iPhone and iPad
 
 ## Contributing

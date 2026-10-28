@@ -216,35 +216,6 @@ pub mod linux {
         })
     }
 
-    /// Ask for a line of text with `zenity` or `kdialog`; `None` if cancelled or neither is installed.
-    pub fn ask(prompt: &str, initial: &str) -> Option<String> {
-        let tries = [
-            (
-                "zenity",
-                vec![
-                    "--entry".into(),
-                    "--title=Handset".into(),
-                    format!("--text={prompt}"),
-                    format!("--entry-text={initial}"),
-                ],
-            ),
-            (
-                "kdialog",
-                vec!["--title".into(), "Handset".into(), "--inputbox".into(), prompt.to_string(), initial.to_string()],
-            ),
-        ];
-        for (program, args) in tries {
-            if let Ok(out) = Command::new(program).args(&args).stderr(Stdio::null()).output() {
-                return out
-                    .status
-                    .success()
-                    .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
-                    .filter(|s| !s.is_empty());
-            }
-        }
-        None
-    }
-
     /// Show an error in a window when there is no terminal to print it in.
     pub fn error_dialog(msg: &str) {
         let shown = Command::new("zenity")

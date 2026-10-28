@@ -72,7 +72,7 @@ jobs:
             exit 0
           fi
           scripts/update-key.sh check   # the secret must be the key whose public half is built into the app
-          for sums in release-files/SHA256SUMS release-files/SHA256SUMS-windows; do
+          for sums in release-files/SHA256SUMS release-files/SHA256SUMS-windows release-files/SHA256SUMS-linux; do
             [ -f "$sums" ] && scripts/update-key.sh sign "$sums"
           done
           ls -l release-files
@@ -80,6 +80,7 @@ jobs:
         run: |
           awk -v v="$VERSION" '$0 == "## " v { found = 1; next } /^## / { found = 0 } found' CHANGELOG.md > notes.md
           printf '\n**Windows:** `Handset-%s-windows.zip` is not code-signed yet. SmartScreen warns on first run (More info, Run anyway), and a PC with Smart App Control on blocks unsigned apps entirely. Install `adb` (and `ffmpeg` for recording) and put them on `PATH`, or next to `handset.exe`.\n' "$VERSION" >> notes.md
+          printf '\n**Linux (experimental):** `Handset-%s-linux-x86_64.tar.gz` and `-linux-aarch64.tar.gz` need glibc 2.35 or newer (Ubuntu 22.04, Debian 12 and newer) and ALSA. Unpack, put `handset` on `PATH`, and install `adb` (and `ffmpeg` for recording). Not code-signed; `SHA256SUMS-linux` and its signature cover them.\n' "$VERSION" >> notes.md
           # only a release from main is "latest": a patch to an older line must not take that place
           latest=--latest=false
           [ "$GITHUB_REF" = "refs/heads/main" ] && latest=--latest
