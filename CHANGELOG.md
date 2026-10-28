@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.0
+
+### Minor Changes
+
+- [#110](https://github.com/davidamunga/handset/pull/110) [`7b1d078`](https://github.com/davidamunga/handset/commit/7b1d07885371c949e38a0f66155ecfb884979de3) - Added Tilt. The right-click Tilt menu (or `--tilt yaw,pitch,roll`) turns the phone in 3D with perspective while you mirror, and touch still lands where you point. The editor has Turn, Lean and Roll sliders for saved screenshots; recordings stay flat for now.
+
 ## 0.10.0
 
 ### Minor Changes
