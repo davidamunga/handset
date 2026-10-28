@@ -70,7 +70,7 @@ fn main() {
         Some(spec) => Some(spec.to_string()),
         None => Some("obsidian".to_string()),
     };
-    let mut opts = server::Options::default();
+    let mut opts = server::Options { audio: saved.get_bool("audio").unwrap_or(false), ..Default::default() };
     let mut serial = None;
     let mut cap = capture::Settings::default();
     if let Some(f) = saved.get("format").and_then(capture::Format::parse) {

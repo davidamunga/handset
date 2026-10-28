@@ -1243,6 +1243,14 @@ impl App {
                 audio::set_muted(!audio::is_muted());
                 settings::save_bool("mute", audio::is_muted());
             }
+            // audio is chosen when the server starts, so turning it on restarts the session
+            "audio:on" => {
+                self.opts.audio = true;
+                settings::save_bool("audio", true);
+                if let Some(serial) = self.leave_session(View::Home) {
+                    self.on_action(Action::Mirror(serial));
+                }
+            }
             "conn:disconnect" => {
                 self.leave_session(View::Home);
             }

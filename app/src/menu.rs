@@ -223,8 +223,13 @@ pub fn build(s: &State) -> Vec<Entry> {
     menu.push(sub("Recent Captures", recent));
     menu.push(sub("Recording", record));
     menu.push(Entry::Separator);
-    let audio_label = if s.audio { "Mute playback" } else { "Audio off (start with --audio)" };
-    menu.push(item("mute", audio_label).enabled(s.audio).checked(s.audio && s.muted).into());
+    if s.audio {
+        menu.push(item("mute", "Mute playback").checked(s.muted).into());
+    } else if s.ios {
+        menu.push(item("mute", "Audio off (start with --audio)").enabled(false).into());
+    } else {
+        menu.push(item("audio:on", "Turn On Audio").into());
+    }
     if !s.ios {
         menu.push(item("rotate", "Rotate Device").key("R").into());
         menu.push(item("sync", "Share Clipboard With Phone").checked(s.sync).into());
