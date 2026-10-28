@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.1
+
+### Patch Changes
+
+- [#97](https://github.com/davidamunga/handset/pull/97) [`1416ce2`](https://github.com/davidamunga/handset/commit/1416ce29c145c4923cf53574236d044e5ca644f3) - On Linux, "copy capture" for a recording now pastes into Nautilus, Nemo and Caja, not only into file managers that read a URI list.
+
+- [#95](https://github.com/davidamunga/handset/pull/95) [`0164810`](https://github.com/davidamunga/handset/commit/0164810da7574df8df1c95743beee104d8688f6d) - `handset --doctor` now tells you how to install ffmpeg on your own system, with `pacman`, `apt` and `dnf` commands on Linux instead of Homebrew and winget.
+
 ## 0.9.0
 
 ### Minor Changes
