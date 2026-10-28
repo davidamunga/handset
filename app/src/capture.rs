@@ -201,10 +201,35 @@ pub fn copy_to_clipboard(path: &std::path::Path) -> bool {
         if path.extension().is_some_and(|e| e == "png") {
             std::fs::read(&path).is_ok_and(|png| crate::tools::linux::copy(&png, Some("image/png")))
         } else {
-            let uri = format!("file://{}\r\n", path.display());
-            crate::tools::linux::copy(uri.as_bytes(), Some("text/uri-list"))
+            let (data, mime) = file_clip(&path, &default_file_manager());
+            crate::tools::linux::copy(data.as_bytes(), Some(mime))
         }
     }
+}
+
+/// The clipboard payload that makes a file paste into the file manager. Nautilus, Nemo and Caja read their own
+/// type; the others (Dolphin, Thunar, ...) read a URI list. `file_manager` is its `.desktop` name.
+#[cfg(any(test, not(any(target_os = "macos", windows))))]
+fn file_clip(path: &std::path::Path, file_manager: &str) -> (String, &'static str) {
+    let uri = format!("file://{}", path.display());
+    let fm = file_manager.to_ascii_lowercase();
+    if ["nautilus", "nemo", "caja"].iter().any(|n| fm.contains(n)) {
+        (format!("copy\n{uri}"), "x-special/gnome-copied-files")
+    } else {
+        (format!("{uri}\r\n"), "text/uri-list")
+    }
+}
+
+/// The `.desktop` name of the app that opens folders, empty if it cannot be found.
+#[cfg(not(any(target_os = "macos", windows)))]
+fn default_file_manager() -> String {
+    Command::new("xdg-mime")
+        .args(["query", "default", "inode/directory"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default()
 }
 
 /// A path that does not exist yet, `<stem>[-N].<ext>`.
@@ -428,6 +453,20 @@ mod tests {
             recent_captures(3).iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
         assert_eq!(names, ["newest.mp4", "middle.png", "clip.gif"]);
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn file_clip_matches_the_file_manager() {
+        let p = std::path::Path::new("/home/me/Videos/handset/a.mp4");
+        let (data, mime) = file_clip(p, "org.gnome.Nautilus.desktop");
+        assert_eq!(
+            (data.as_str(), mime),
+            ("copy\nfile:///home/me/Videos/handset/a.mp4", "x-special/gnome-copied-files")
+        );
+        assert_eq!(file_clip(p, "nemo.desktop").1, "x-special/gnome-copied-files");
+        let (data, mime) = file_clip(p, "org.kde.dolphin.desktop");
+        assert_eq!((data.as_str(), mime), ("file:///home/me/Videos/handset/a.mp4\r\n", "text/uri-list"));
+        assert_eq!(file_clip(p, "").1, "text/uri-list");
     }
 
     #[test]
