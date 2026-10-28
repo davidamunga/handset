@@ -1,7 +1,7 @@
 name: build release files
 
-# Builds the files a release attaches: the signed and notarised macOS app and command line tool, and the
-# Windows zip. Called by `release` (which then publishes them) and by `release-dry-run` (which only keeps
+# Builds the files a release attaches: the signed and notarised macOS app and command line tool, the
+# Windows zip and the Linux tarballs (x86_64 and aarch64). Called by `release` (which then publishes them) and by `release-dry-run` (which only keeps
 # them as artifacts). It does not run by itself. See docs/runbooks/release.md.
 
 on:
@@ -98,3 +98,58 @@ jobs:
           name: release-files-windows
           path: dist/windows/*
 
+
+  build-linux:
+    name: build the files (Linux ${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          # Ubuntu 22.04 keeps the glibc floor at 2.35; package-linux.sh refuses a binary that needs more (ADR 0032)
+          - arch: x86_64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake nasm binutils libasound2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+      - name: Build the tarball
+        run: |
+          scripts/package-linux.sh
+          test "$(uname -m)" = "${{ matrix.arch }}"
+      - name: Keep the files for the next job
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/linux/*
+          retention-days: 1
+
+  linux-sums:
+    name: list the Linux files in one checksum file
+    needs: build-linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: linux-*
+          path: linux
+      - name: Write SHA256SUMS-linux
+        run: |
+          # one list for both architectures, so the release has one Linux signature, like Windows
+          mkdir out
+          for dir in linux/linux-*; do
+            (cd "$dir" && sha256sum -c SHA256SUMS >&2)
+            cat "$dir/SHA256SUMS" >> out/SHA256SUMS-linux
+            cp "$dir"/*.tar.gz out/
+          done
+          cat out/SHA256SUMS-linux
+          test "$(wc -l < out/SHA256SUMS-linux)" -eq 2
+      - name: Keep the files for the next job
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-files-linux
+          path: out/*

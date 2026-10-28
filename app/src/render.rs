@@ -73,6 +73,8 @@ pub struct Renderer {
     banner: Option<OverlayGpu>,
     /// The toolbar beside the phone (window only).
     toolbar: Option<OverlayGpu>,
+    /// The drawn menu's open panels (window only), each with its rectangle in window pixels.
+    menu: Vec<(OverlayGpu, [f32; 4])>,
     /// Touch indicators (window and captures), when switched on: one layer per dot that can show at once.
     dot_layers: Vec<Layer>,
     dots: Vec<Dot>,
@@ -244,6 +246,7 @@ impl Renderer {
             bezel: None,
             overlay: None,
             banner: None,
+            menu: Vec::new(),
             dot_layers: Vec::new(),
             dots: Vec::new(),
             show_touches: false,
@@ -446,6 +449,11 @@ impl Renderer {
         self.banner = pill.map(|p| self.build_overlay(p, 1.0));
     }
 
+    /// Replace the drawn menu's panels (none when it is closed).
+    pub fn set_menu(&mut self, panels: &[(crate::overlay::Pill, [f32; 4])]) {
+        self.menu = panels.iter().map(|(p, r)| (self.build_overlay(p, 1.0), *r)).collect();
+    }
+
     /// Where on the banner this window-pixel point is, in the banner's own pixels, if it is on it.
     pub fn banner_point(&self, x: f32, y: f32) -> Option<(f32, f32)> {
         let b = self.banner.as_ref()?;
@@ -627,6 +635,9 @@ impl Renderer {
             if let Some(o) = &self.overlay {
                 write(&o.layer.ubuf, self.overlay_rect(video_rect, o, ww, wh), 0.0, o.opacity);
             }
+            for (m, r) in &self.menu {
+                write(&m.layer.ubuf, [r[0] / ww, r[1] / wh, r[2] / ww, r[3] / wh], 0.0, 1.0);
+            }
         }
     }
 
@@ -671,7 +682,7 @@ impl Renderer {
                     }
                 }
             }
-            // window only: captures must not contain the toolbar or overlay
+            // window only: captures must not contain the toolbar, overlay or menu
             if remember {
                 if let Some(t) = &self.toolbar {
                     pass.set_pipeline(&self.p_bezel);
@@ -686,6 +697,11 @@ impl Renderer {
                 if let Some(o) = self.overlay.as_ref().filter(|o| o.opacity > 0.0) {
                     pass.set_pipeline(&self.p_bezel);
                     pass.set_bind_group(0, &o.layer.bind, &[]);
+                    pass.draw(0..6, 0..1);
+                }
+                for (m, _) in &self.menu {
+                    pass.set_pipeline(&self.p_bezel);
+                    pass.set_bind_group(0, &m.layer.bind, &[]);
                     pass.draw(0..6, 0..1);
                 }
             }

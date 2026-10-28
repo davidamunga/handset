@@ -36,7 +36,10 @@ A release happens only when you start it. Merging a version pull request does no
    for it, then builds the release files on macOS with `scripts/package-release.sh`
    (`Handset-X.Y.Z-macos.zip`, the universal app bundle; `handset-X.Y.Z-macos.tar.gz`, the command line
    tool with the licence and notice; and `SHA256SUMS`) and, on Windows, `scripts/package-windows.ps1`
-   (`Handset-X.Y.Z-windows.zip`, unsigned, and `SHA256SUMS-windows`). It then tags `vX.Y.Z`, creates the branch `release/X.Y.Z` at the tagged commit, creates a normal GitHub
+   (`Handset-X.Y.Z-windows.zip`, unsigned, and `SHA256SUMS-windows`) and, on Ubuntu 22.04 for x86_64 and
+   aarch64, `scripts/package-linux.sh` (`Handset-X.Y.Z-linux-x86_64.tar.gz` and
+   `Handset-X.Y.Z-linux-aarch64.tar.gz`, unsigned, listed together in `SHA256SUMS-linux`). It then tags `vX.Y.Z`,
+   creates the branch `release/X.Y.Z` at the tagged commit, creates a normal GitHub
    release with the changelog section as its notes and the files attached, bumps the Homebrew cask, and
    opens a pull request that points `bucket/handset.json` (the Scoop manifest, this repository is the bucket) at the
    new Windows zip. `main` only takes pull requests, so merge that one; Scoop users get the release once you do.
@@ -48,8 +51,10 @@ A release happens only when you start it. Merging a version pull request does no
 ## Update signing
 
 Handset only installs an update whose `SHA256SUMS` file carries an Ed25519 signature that verifies against a public
-key built into the app (`app/src/verify.rs`, ADR 0024). The release workflow signs `SHA256SUMS` and
-`SHA256SUMS-windows` and attaches `SHA256SUMS.sig` and `SHA256SUMS-windows.sig` (the raw 64-byte signatures).
+key built into the app (`app/src/verify.rs`, ADR 0024). The release workflow signs `SHA256SUMS`,
+`SHA256SUMS-windows` and `SHA256SUMS-linux` and attaches `SHA256SUMS.sig`, `SHA256SUMS-windows.sig` and
+`SHA256SUMS-linux.sig` (the raw 64-byte signatures). Nothing installs the Linux files in place yet; the signature
+is there so a download can be checked.
 
 - **The key.** `scripts/update-key.sh generate` makes it once, in `~/.config/handset/update-signing-key.pem`, and
   prints the public half. **Back that file up**: it cannot be recovered. Store it for the workflow with
@@ -100,8 +105,8 @@ pull request.
 
 Releases are normal releases, not pre-releases. To rehearse one first, run the separate `release-dry-run`
 workflow (Actions > release-dry-run > Run workflow, or `gh workflow run release-dry-run.yml`, optionally with
-`--ref <branch>`): it builds, signs and notarises the macOS files and builds the Windows zip, and keeps them as the
-`release-files` and `release-files-windows` artifacts. It tags, publishes and changes nothing else. Both workflows
+`--ref <branch>`): it builds, signs and notarises the macOS files and builds the Windows zip and the Linux
+tarballs, and keeps them as the `release-files`, `release-files-windows` and `release-files-linux` artifacts. It tags, publishes and changes nothing else. Both workflows
 build through the shared `build-release-files.yml`, so a rehearsal builds exactly what a release would.
 
 ## One-time repository settings
@@ -164,6 +169,21 @@ and `xcrun stapler validate Handset.app`.
 
 `scripts/package-release.sh` writes the same files to `dist/release/` (needs both Rust targets,
 `rustup target add aarch64-apple-darwin x86_64-apple-darwin`).
+
+On Linux, `scripts/package-linux.sh` writes the tarball for the machine's architecture and its `SHA256SUMS` to
+`dist/linux/` (needs `cmake nasm binutils libasound2-dev`). It refuses a binary that needs a glibc newer than
+`MAX_GLIBC` (2.35, ADR 0032), so build on Ubuntu 22.04 or an equally old system. The release job builds each
+architecture on its own runner and joins the two lists into `SHA256SUMS-linux`.
+
+To install a Linux tarball:
+
+```sh
+tar -xzf Handset-X.Y.Z-linux-x86_64.tar.gz
+install -Dm755 Handset-X.Y.Z-linux-x86_64/handset ~/.local/bin/handset
+# optional: a desktop entry and icon, so it shows in the app launcher
+install -Dm644 Handset-X.Y.Z-linux-x86_64/handset.desktop ~/.local/share/applications/handset.desktop
+install -Dm644 Handset-X.Y.Z-linux-x86_64/handset.png ~/.local/share/icons/hicolor/512x512/apps/handset.png
+```
 
 ## If something goes wrong
 

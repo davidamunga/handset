@@ -1,10 +1,13 @@
 import { CopyBlock } from '../components/CopyBlock'
 import { BREW, LINUX_GUIDE, LINUX_INSTALL, RELEASES, REPO, SCOOP } from '../links'
 import { useReleaseInfo } from '../release'
-import type { Download } from '../useRelease'
+import { useLinuxArch, type Download } from '../useRelease'
 
 export function DownloadSection() {
   const { release, platform } = useReleaseInfo()
+  const arch = useLinuxArch()
+  const other = arch === 'x86_64' ? 'aarch64' : 'x86_64'
+  const linux = release?.linux[arch]
   const order: ('mac' | 'windows' | 'linux')[] =
     platform === 'windows' ? ['windows', 'mac', 'linux'] : platform === 'linux' ? ['linux', 'mac', 'windows'] : ['mac', 'windows', 'linux']
   return (
@@ -33,11 +36,21 @@ export function DownloadSection() {
               <Card
                 key="linux"
                 title="Linux"
-                note="Experimental: there is no download yet, so it installs from source with Cargo. Works on Ubuntu 22.04 or Debian 12 and newer, Fedora, Arch (and Omarchy), Alpine and NixOS. It has not run on a real Linux desktop yet."
+                note={
+                  linux
+                    ? 'Experimental: it has not run on a real Linux desktop yet. A tarball for Ubuntu 22.04 or Debian 12 and newer, Fedora and Arch (and Omarchy); unpack it and put handset on your PATH. Needs ALSA. Alpine and NixOS build from source.'
+                    : 'Experimental: there is no download yet, so it installs from source with Cargo. Works on Ubuntu 22.04 or Debian 12 and newer, Fedora, Arch (and Omarchy), Alpine and NixOS. It has not run on a real Linux desktop yet.'
+                }
+                file={linux}
                 fallback={LINUX_GUIDE}
-                cta="Read the Linux guide"
+                cta={linux ? `Download for Linux (${arch})` : 'Read the Linux guide'}
+                alt={release?.linux[other] && { label: `${other} instead`, url: release.linux[other].url }}
                 command={LINUX_INSTALL}
-                commandLabel="Install with Cargo (needs Rust 1.91 or newer, cmake, nasm and ALSA headers)"
+                commandLabel={
+                  linux
+                    ? 'Or build it with Cargo (needs Rust 1.91 or newer, cmake, nasm and ALSA headers)'
+                    : 'Install with Cargo (needs Rust 1.91 or newer, cmake, nasm and ALSA headers)'
+                }
                 featured={platform === 'linux'}
               />
             ) : os === 'mac' ? (
@@ -88,6 +101,7 @@ function Card(props: {
   file?: Download
   fallback: string
   cta: string
+  alt?: { label: string; url: string }
   command: string
   commandLabel: string
   featured: boolean
@@ -105,6 +119,11 @@ function Card(props: {
       >
         {props.cta}
       </a>
+      {props.alt && (
+        <a href={props.alt.url} className="ml-4 text-sm text-stage-text underline underline-offset-4 hover:text-paper">
+          {props.alt.label}
+        </a>
+      )}
       <p className="mt-7 text-sm text-stage-text">{props.commandLabel}</p>
       <CopyBlock text={props.command} />
     </div>

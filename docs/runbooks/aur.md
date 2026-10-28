@@ -42,10 +42,10 @@ Once the release is published on GitHub (both packages download from it):
 
    ```sh
    curl -sL https://github.com/davidamunga/handset/archive/refs/tags/v<version>.tar.gz | sha256sum
-   curl -sL https://github.com/davidamunga/handset/releases/download/v<version>/SHA256SUMS
+   curl -sL https://github.com/davidamunga/handset/releases/download/v<version>/SHA256SUMS-linux
    ```
 
-   Check that `SHA256SUMS` lists both Linux tarballs and that the hashes match what you downloaded.
+   Check that `SHA256SUMS-linux` lists both Linux tarballs and that the hashes match what you downloaded.
 3. Regenerate `.SRCINFO` in each folder: `makepkg --printsrcinfo > .SRCINFO`.
 4. Build and lint: `makepkg -f && namcap PKGBUILD *.pkg.tar.zst`.
 5. Commit both folders to this repository (`chore(packaging): update the AUR packages to <version>`).
