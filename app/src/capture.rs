@@ -191,9 +191,38 @@ pub fn reveal(path: &std::path::Path) {
     let _ = Command::new("explorer").arg(format!("/select,{}", path.display())).spawn();
     #[cfg(not(any(target_os = "macos", windows)))]
     {
-        // no portable "select this file": open the folder that holds it
-        let _ = Command::new("xdg-open").arg(path.parent().unwrap_or(path)).spawn();
+        // the freedesktop file manager service selects the file; without one, open the folder that holds it
+        let uri = file_uri(path);
+        let folder = path.parent().unwrap_or(path).to_path_buf();
+        std::thread::spawn(move || {
+            let shown = Command::new("dbus-send")
+                .args(["--session", "--print-reply", "--dest=org.freedesktop.FileManager1"])
+                .args(["/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems"])
+                .arg(format!("array:string:{uri}"))
+                .arg("string:")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+            if !shown.is_ok_and(|s| s.success()) {
+                let _ = Command::new("xdg-open").arg(folder).spawn();
+            }
+        });
     }
+}
+
+/// `file://` URI for a path, with everything but unreserved characters and `/` percent-encoded.
+#[cfg(all(unix, any(test, not(target_os = "macos"))))]
+fn file_uri(path: &std::path::Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    let mut uri = String::from("file://");
+    for &b in path.as_os_str().as_bytes() {
+        if b.is_ascii_alphanumeric() || b"-._~/".contains(&b) {
+            uri.push(b as char);
+        } else {
+            uri.push_str(&format!("%{b:02X}"));
+        }
+    }
+    uri
 }
 
 /// Open the file in its default app.
@@ -509,6 +538,15 @@ mod tests {
         assert_eq!(parse_user_dir(text, "VIDEOS", home), Some("/mnt/media/Videos".into()));
         assert_eq!(parse_user_dir(text, "MUSIC", home), None, "$HOME means the folder is turned off");
         assert_eq!(parse_user_dir(text, "DOCUMENTS", home), None);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn file_uris_are_percent_encoded() {
+        assert_eq!(
+            file_uri(std::path::Path::new("/home/me/My Videos/a#1.mp4")),
+            "file:///home/me/My%20Videos/a%231.mp4"
+        );
     }
 
     #[test]
