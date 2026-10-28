@@ -92,7 +92,7 @@ The packages are not on the AUR yet. Once they are, `yay -S handset` will build 
 
 Other distributions: each release has a tarball for x86_64 and one for aarch64
 (`Handset-<version>-linux-<arch>.tar.gz`, not code-signed; `SHA256SUMS-linux` and its signature cover them). They need glibc 2.35 or newer (Ubuntu 22.04, Debian 12 and newer)
-and ALSA (`libasound2` or `alsa-lib`). Unpack it and put `handset` on your `PATH`:
+and ALSA (`libasound2` or `alsa-lib`); install `ffmpeg` too if you want recordings. Unpack it and put `handset` on your `PATH`:
 
 ```sh
 tar -xzf Handset-<version>-linux-x86_64.tar.gz
@@ -113,7 +113,7 @@ Or install it from source with Cargo. You need Rust 1.91 or newer, `cmake`, `nas
 Debian and Ubuntu (install Rust with [rustup](https://rustup.rs): the Rust in Ubuntu 22.04 and Debian 12 is too old):
 
 ```sh
-sudo apt install build-essential pkg-config cmake nasm libasound2-dev adb zenity
+sudo apt install build-essential pkg-config cmake nasm libasound2-dev adb ffmpeg zenity
 cargo install --git https://github.com/davidamunga/handset --locked handset
 ```
 

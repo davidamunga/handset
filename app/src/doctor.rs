@@ -177,14 +177,17 @@ fn tools() -> Vec<Check> {
     out.push(if found {
         check(Level::Ok, format!("ffmpeg ({})", ffmpeg.display()), None)
     } else {
-        check(
-            Level::Warn,
-            "ffmpeg was not found, so recording is unavailable",
-            Some("install it (`brew install ffmpeg`, or winget install Gyan.FFmpeg), or set the FFMPEG environment variable"),
-        )
+        check(Level::Warn, "ffmpeg was not found, so recording is unavailable", Some(FFMPEG_HINT))
     });
     out
 }
+
+#[cfg(target_os = "macos")]
+const FFMPEG_HINT: &str = "install it (`brew install ffmpeg`), or set the FFMPEG environment variable";
+#[cfg(windows)]
+const FFMPEG_HINT: &str = "install it (`winget install Gyan.FFmpeg`), or set the FFMPEG environment variable";
+#[cfg(not(any(target_os = "macos", windows)))]
+const FFMPEG_HINT: &str = "install it (`sudo pacman -S ffmpeg`, `sudo apt install ffmpeg` or `sudo dnf install ffmpeg`), or set the FFMPEG environment variable";
 
 /// Is `name` an executable on `PATH`?
 #[cfg(not(any(target_os = "macos", windows)))]
