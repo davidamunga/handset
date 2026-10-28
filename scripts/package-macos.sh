@@ -55,7 +55,8 @@ if [ "$identity" = "-" ]; then
   # ad-hoc signature: enough to run on this Mac (not for distribution)
   codesign --force --deep --sign - "$app"
 else
-  codesign --force --options runtime --timestamp --sign "$identity" "$app"
+  # hardened runtime blocks the camera (how an iPhone screen is captured) unless entitled
+  codesign --force --options runtime --timestamp --entitlements "$root/app/packaging/macos.entitlements" --sign "$identity" "$app"
   codesign --verify --strict --verbose=2 "$app"
 fi
 plutil -lint "$app/Contents/Info.plist" >/dev/null

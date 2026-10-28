@@ -406,7 +406,8 @@ impl App {
                 None => {
                     wt.failed = None; // the phone went away; a replug gets a fresh try
                     let found = connect::status_from(&list, wt.want.as_deref());
-                    if found == Status::Looking && matches!(wt.status, Status::Lost(_)) {
+                    // an iPhone that could not be mirrored: keep saying why rather than going back to "Looking"
+                    if found == Status::Looking && matches!(wt.status, Status::Lost(_) | Status::Failed(_)) {
                         wt.status.clone()
                     } else {
                         found
