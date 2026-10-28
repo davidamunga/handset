@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.3
+
+### Patch Changes
+
+- [#120](https://github.com/davidamunga/handset/pull/120) [`2d3e550`](https://github.com/davidamunga/handset/commit/2d3e550a6b2ec3e36bec395a13d3658ff5c473fc) - Recording no longer hangs on a phone that cannot send audio (Android 10 and older). Handset checks when it connects and records video only.
+
 ## 0.11.2
 
 ### Patch Changes
