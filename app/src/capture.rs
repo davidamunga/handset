@@ -113,7 +113,35 @@ fn timestamp() -> String {
     })
 }
 
+/// `XDG_<key>_DIR` from the user-dirs file, which is where Linux desktops keep a moved or renamed Pictures
+/// and Videos folder. `None` when unset, relative, or pointing at the home folder (how a desktop turns one off).
+#[cfg(any(all(test, not(windows)), not(any(target_os = "macos", windows))))]
+fn parse_user_dir(text: &str, key: &str, home: &std::path::Path) -> Option<PathBuf> {
+    let prefix = format!("XDG_{key}_DIR=");
+    let value = text.lines().find_map(|l| l.trim().strip_prefix(prefix.as_str()))?.trim().trim_matches('"');
+    let path = match value.strip_prefix("$HOME") {
+        Some(rest) => home.join(rest.trim_start_matches('/')),
+        None => PathBuf::from(value),
+    };
+    (path.is_absolute() && path != home).then_some(path)
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+fn xdg_user_dir(key: &str) -> Option<PathBuf> {
+    let home = crate::tools::home();
+    let config = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
+    let text = std::fs::read_to_string(config.join("user-dirs.dirs")).ok()?;
+    parse_user_dir(&text, key, &home).filter(|p| p.is_dir())
+}
+
 fn dir_path(candidates: &[&str]) -> PathBuf {
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        let key = if candidates.contains(&"Pictures") { "PICTURES" } else { "VIDEOS" };
+        if let Some(dir) = xdg_user_dir(key) {
+            return dir.join("handset");
+        }
+    }
     let home = crate::tools::home();
     let base = candidates.iter().map(|c| home.join(c)).find(|p| p.is_dir()).unwrap_or(home);
     base.join("handset")
@@ -447,7 +475,10 @@ mod tests {
         touch(&movs.join("notes.txt"), 1); // not a capture
         touch(&movs.join("clip.gif"), 300);
         // SAFETY: this is the only test that touches the environment
-        unsafe { std::env::set_var("HOME", &home) };
+        unsafe {
+            std::env::set_var("HOME", &home);
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
 
         let names: Vec<String> =
             recent_captures(3).iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
@@ -467,6 +498,17 @@ mod tests {
         let (data, mime) = file_clip(p, "org.kde.dolphin.desktop");
         assert_eq!((data.as_str(), mime), ("file:///home/me/Videos/handset/a.mp4\r\n", "text/uri-list"));
         assert_eq!(file_clip(p, "").1, "text/uri-list");
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn user_dirs_file_is_read() {
+        let home = std::path::Path::new("/home/me");
+        let text = "# comment\nXDG_PICTURES_DIR=\"$HOME/Bilder\"\nXDG_VIDEOS_DIR=\"/mnt/media/Videos\"\nXDG_MUSIC_DIR=\"$HOME/\"\n";
+        assert_eq!(parse_user_dir(text, "PICTURES", home), Some("/home/me/Bilder".into()));
+        assert_eq!(parse_user_dir(text, "VIDEOS", home), Some("/mnt/media/Videos".into()));
+        assert_eq!(parse_user_dir(text, "MUSIC", home), None, "$HOME means the folder is turned off");
+        assert_eq!(parse_user_dir(text, "DOCUMENTS", home), None);
     }
 
     #[test]

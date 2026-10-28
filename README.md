@@ -125,7 +125,8 @@ Run `handset --doctor` to check your setup, then `handset --audio`.
 
 At run time, `adb` and `ffmpeg` are found on `PATH`, in `~/.local/bin` or in `~/Android/Sdk/platform-tools`.
 Your user needs USB access to the phone (udev rules for Android, usually the `plugdev` group or the
-`android-udev-rules` package). Captures go to `~/Pictures/handset` and `~/Videos/handset`. The right-click menu
+`android-udev-rules` package). Captures go to `handset` inside your Pictures and Videos folders (`~/Pictures` and `~/Videos`, or wherever
+`~/.config/user-dirs.dirs` points them). The right-click menu
 is drawn by Handset in its window (right-click, or the toolbar's **…** button), since there is no native one here;
 **About Handset** shows the version in a toast.
 
