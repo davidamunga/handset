@@ -23,6 +23,7 @@ mod ios;
 mod menu;
 mod mirror;
 mod overlay;
+mod popup;
 mod presets;
 mod recent;
 mod render;

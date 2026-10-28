@@ -1,12 +1,12 @@
-//! Native right-click menu (macOS). Selections come back as
-//! `UserEvent::Menu(id)` through the event-loop proxy.
+//! The right-click menu. Its content is built once as plain data (`build`); macOS and Windows show it as a
+//! native menu whose selections come back as `UserEvent::Menu(id)` through the event-loop proxy, and Linux
+//! draws it in the window (`popup.rs`).
 
 use crate::stream::UserEvent;
 use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 
 /// What the menu needs to show its current state.
-#[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
 pub struct State {
     /// An iOS device is mirrored: view only, so the phone's own controls are left out.
     pub ios: bool,
@@ -47,12 +47,223 @@ pub struct State {
 
 #[cfg(target_os = "macos")]
 const MOD: &str = "\u{2318}";
-#[cfg(windows)]
+#[cfg(not(target_os = "macos"))]
 const MOD: &str = "Ctrl+";
 #[cfg(target_os = "macos")]
 const FILE_MANAGER: &str = "Finder";
 #[cfg(windows)]
 const FILE_MANAGER: &str = "Explorer";
+#[cfg(not(any(target_os = "macos", windows)))]
+const FILE_MANAGER: &str = "Folder";
+
+/// One line of the menu, as plain data: the native menu and the drawn one are both built from it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Entry {
+    Item(Item),
+    Submenu {
+        label: String,
+        items: Vec<Entry>,
+    },
+    Separator,
+    /// The About window on macOS and Windows; the drawn menu sends `about` instead.
+    About,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Item {
+    /// What a selection sends to `App::on_menu`; `None` for a line that only informs.
+    pub id: Option<String>,
+    pub label: String,
+    /// The key that goes with the platform's modifier, shown after the label.
+    pub shortcut: Option<&'static str>,
+    pub enabled: bool,
+    /// `Some` for an item with a check mark, ticked or not.
+    pub check: Option<bool>,
+}
+
+impl Item {
+    /// The label with its shortcut, as the native menu shows it.
+    #[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
+    pub fn full_label(&self) -> String {
+        match self.shortcut {
+            Some(key) => format!("{}    {MOD}{key}", self.label),
+            None => self.label.clone(),
+        }
+    }
+
+    /// The shortcut as it is written, modifier included.
+    pub fn shortcut_text(&self) -> Option<String> {
+        self.shortcut.map(|key| format!("{MOD}{key}"))
+    }
+}
+
+fn item(id: impl Into<String>, label: impl Into<String>) -> Item {
+    Item { id: Some(id.into()), label: label.into(), shortcut: None, enabled: true, check: None }
+}
+
+/// A line that cannot be chosen.
+fn note(label: impl Into<String>) -> Item {
+    Item { id: None, label: label.into(), shortcut: None, enabled: false, check: None }
+}
+
+impl Item {
+    fn enabled(mut self, on: bool) -> Self {
+        self.enabled = on;
+        self
+    }
+    fn checked(mut self, on: bool) -> Self {
+        self.check = Some(on);
+        self
+    }
+    fn key(mut self, key: &'static str) -> Self {
+        self.shortcut = Some(key);
+        self
+    }
+}
+
+impl From<Item> for Entry {
+    fn from(i: Item) -> Self {
+        Entry::Item(i)
+    }
+}
+
+fn sub(label: impl Into<String>, items: Vec<Entry>) -> Entry {
+    Entry::Submenu { label: label.into(), items }
+}
+
+/// The whole menu for this state.
+pub fn build(s: &State) -> Vec<Entry> {
+    let mut frame = vec![item("frame:none", "None").checked(s.frame.is_none() && !s.custom_frame).into()];
+    // one submenu per device type (the part of the name before the colour), the original three on top
+    let titled = |name: &str| -> String {
+        name.chars().enumerate().map(|(i, c)| if i == 0 { c.to_ascii_uppercase() } else { c }).collect()
+    };
+    let choice = |name: &str, label: String| -> Entry {
+        item(format!("frame:{name}"), label).checked(s.frame.as_deref() == Some(name)).into()
+    };
+    let mut groups: Vec<(String, Vec<Entry>)> = Vec::new();
+    for name in &s.frames {
+        match name.split_once('-') {
+            None => frame.push(choice(name, titled(name))),
+            Some((device, colour)) => {
+                let idx = match groups.iter().position(|(d, _)| d == device) {
+                    Some(i) => i,
+                    None => {
+                        groups.push((device.to_string(), Vec::new()));
+                        groups.len() - 1
+                    }
+                };
+                groups[idx].1.push(choice(name, titled(colour)));
+            }
+        }
+    }
+    if !groups.is_empty() {
+        frame.push(Entry::Separator);
+    }
+    for (device, items) in groups {
+        frame.push(sub(titled(&device), items));
+    }
+    if s.custom_frame {
+        frame.push(note("Custom (from --frame)").checked(true).into());
+    }
+
+    let record = vec![
+        item("fmt:mp4", "MP4").checked(!s.gif).into(),
+        item("fmt:gif", "GIF (no audio)").checked(s.gif).into(),
+        Entry::Separator,
+        item("norm", "Normalize audio").enabled(s.audio).checked(s.normalize).into(),
+        item("clip", "Copy captures to clipboard").checked(s.clipboard).into(),
+        item("style", "Save a styled copy of each capture").checked(s.auto_style).into(),
+    ];
+
+    let mut recent = Vec::new();
+    if s.recent.is_empty() {
+        recent.push(note("No captures yet").into());
+    }
+    for path in &s.recent {
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let p = path.to_string_lossy();
+        let mut items = vec![item(format!("recent:open:{p}"), "Open").into()];
+        if matches!(path.extension().and_then(|e| e.to_str()), Some("png" | "mp4" | "gif")) {
+            items.push(item(format!("recent:edit:{p}"), "Edit Style...").into());
+            items.push(item(format!("recent:style:{p}"), "Save Styled Copy").into());
+        }
+        items.push(item(format!("recent:reveal:{p}"), format!("Show in {FILE_MANAGER}")).into());
+        items.push(item(format!("recent:copy:{p}"), "Copy").into());
+        recent.push(sub(name, items));
+    }
+
+    let phone = vec![
+        item("conn:wifi", "Switch to Wi-Fi").enabled(s.mirroring && s.usb).into(),
+        item("conn:another", "Connect Another Phone\u{2026}").into(),
+        item("conn:disconnect", "Disconnect").enabled(s.mirroring).into(),
+    ];
+    let mut open_app = Vec::new();
+    if s.apps.is_empty() {
+        open_app.push(note(if s.apps_loading { "Loading apps\u{2026}" } else { "No apps found" }).into());
+    }
+    let app = |a: &crate::apps::AppEntry| -> Entry { item(format!("app:{}", a.package), &a.name).into() };
+    open_app.extend(s.apps.iter().filter(|a| !a.system).take(80).map(app));
+    if s.apps.iter().any(|a| a.system) {
+        open_app.push(Entry::Separator);
+        open_app.push(sub("System Apps", s.apps.iter().filter(|a| a.system).map(app).collect()));
+    }
+
+    let mut menu = Vec::new();
+    if !s.ios {
+        menu.push(sub("Phone", phone));
+    }
+    menu.push(sub("Frame", frame));
+    if !s.ios {
+        menu.push(sub("Open App", open_app));
+    }
+    menu.push(Entry::Separator);
+    menu.push(item("shot", "Take Screenshot").key("S").into());
+    menu.push(item("rec", format!("{} Recording", if s.recording { "Stop" } else { "Start" })).key("E").into());
+    menu.push(sub("Recent Captures", recent));
+    menu.push(sub("Recording", record));
+    menu.push(Entry::Separator);
+    let audio_label = if s.audio { "Mute playback" } else { "Audio off (start with --audio)" };
+    menu.push(item("mute", audio_label).enabled(s.audio).checked(s.audio && s.muted).into());
+    if !s.ios {
+        menu.push(item("rotate", "Rotate Device").key("R").into());
+        menu.push(item("sync", "Share Clipboard With Phone").checked(s.sync).into());
+    }
+    menu.push(item("toolbar", "Show Toolbar").checked(s.toolbar).into());
+    if !s.ios {
+        menu.push(item("touches", "Show Touches").checked(s.touches).into());
+    }
+    menu.push(item("zoom:in", "Larger").key("+").into());
+    menu.push(item("zoom:out", "Smaller").key("-").into());
+    menu.push(item("zoom:reset", "Default Size").key("0").into());
+    menu.push(Entry::Separator);
+    if let Some(v) = &s.update {
+        if s.update_install {
+            menu.push(item("update-install", format!("Install Handset {v} and Restart")).into());
+        }
+        let open = match s.update_command {
+            Some(cmd) => format!("Copy \"{cmd}\" to Update to {v}"),
+            None => format!("Download Handset {v}..."),
+        };
+        menu.push(item("update-open", open).into());
+        menu.push(item("update-notes", format!("What's New in {v}...")).into());
+        menu.push(item("update-skip", format!("Skip {v}")).into());
+        menu.push(item("update-later", "Remind Me in 3 Days").into());
+        menu.push(Entry::Separator);
+    }
+    menu.push(item("update", "Check for Updates...").into());
+    menu.push(item("update-auto", "Check for Updates on Start").checked(s.update_auto).into());
+    menu.push(Entry::Separator);
+    menu.push(Entry::About);
+    menu.push(item("quit", "Quit").into());
+    menu
+}
+
+/// Draw the menu ourselves: always on Linux, where muda needs a GTK window winit does not have, and on
+/// macOS and Windows when `HANDSET_DRAWN_MENU=1` asks for it.
+pub fn drawn() -> bool {
+    cfg!(not(any(target_os = "macos", windows))) || std::env::var_os("HANDSET_DRAWN_MENU").is_some_and(|v| v == "1")
+}
 
 #[cfg(any(target_os = "macos", windows))]
 pub fn install(proxy: EventLoopProxy<UserEvent>) {
@@ -64,9 +275,10 @@ pub fn install(proxy: EventLoopProxy<UserEvent>) {
 #[cfg(not(any(target_os = "macos", windows)))]
 pub fn install(_proxy: EventLoopProxy<UserEvent>) {}
 
+/// Show the native menu at the pointer.
 #[cfg(any(target_os = "macos", windows))]
 pub fn show(window: &Window, s: &State) {
-    use muda::{CheckMenuItem, ContextMenu, Menu, MenuItem, PredefinedMenuItem, Submenu};
+    use muda::ContextMenu;
     use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
     let Ok(handle) = window.window_handle() else { return };
@@ -75,158 +287,41 @@ pub fn show(window: &Window, s: &State) {
     #[cfg(windows)]
     let RawWindowHandle::Win32(h) = handle.as_raw() else { return };
 
-    let menu = Menu::new();
-
-    let frame = Submenu::new("Frame", true);
-    let _ =
-        frame.append(&CheckMenuItem::with_id("frame:none", "None", true, s.frame.is_none() && !s.custom_frame, None));
-    // one submenu per device type (the part of the name before the colour), the original three on top
-    let titled = |name: &str| -> String {
-        name.chars().enumerate().map(|(i, c)| if i == 0 { c.to_ascii_uppercase() } else { c }).collect()
-    };
-    let item = |name: &str, label: String| {
-        CheckMenuItem::with_id(format!("frame:{name}"), label, true, s.frame.as_deref() == Some(name), None)
-    };
-    let mut groups: Vec<(String, Submenu)> = Vec::new();
-    for name in &s.frames {
-        match name.split_once('-') {
-            None => {
-                let _ = frame.append(&item(name, titled(name)));
-            }
-            Some((device, colour)) => {
-                let idx = match groups.iter().position(|(d, _)| d == device) {
-                    Some(i) => i,
-                    None => {
-                        groups.push((device.to_string(), Submenu::new(titled(device), true)));
-                        groups.len() - 1
-                    }
-                };
-                let _ = groups[idx].1.append(&item(name, titled(colour)));
-            }
-        }
+    let menu = muda::Menu::new();
+    for e in &build(s) {
+        let _ = menu.append(native(e).as_ref());
     }
-    if !groups.is_empty() {
-        let _ = frame.append(&PredefinedMenuItem::separator());
-    }
-    for (_, sub) in &groups {
-        let _ = frame.append(sub);
-    }
-    if s.custom_frame {
-        let _ = frame.append(&CheckMenuItem::new("Custom (from --frame)", false, true, None));
-    }
-
-    let record = Submenu::new("Recording", true);
-    let _ = record.append(&CheckMenuItem::with_id("fmt:mp4", "MP4", true, !s.gif, None));
-    let _ = record.append(&CheckMenuItem::with_id("fmt:gif", "GIF (no audio)", true, s.gif, None));
-    let _ = record.append(&PredefinedMenuItem::separator());
-    let _ = record.append(&CheckMenuItem::with_id("norm", "Normalize audio", s.audio, s.normalize, None));
-    let _ = record.append(&CheckMenuItem::with_id("clip", "Copy captures to clipboard", true, s.clipboard, None));
-    let _ =
-        record.append(&CheckMenuItem::with_id("style", "Save a styled copy of each capture", true, s.auto_style, None));
-
-    let recent = Submenu::new("Recent Captures", true);
-    if s.recent.is_empty() {
-        let _ = recent.append(&MenuItem::new("No captures yet", false, None));
-    }
-    for path in &s.recent {
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let item = Submenu::new(name, true);
-        let p = path.to_string_lossy();
-        let _ = item.append(&MenuItem::with_id(format!("recent:open:{p}"), "Open", true, None));
-        if matches!(path.extension().and_then(|e| e.to_str()), Some("png" | "mp4" | "gif")) {
-            let _ = item.append(&MenuItem::with_id(format!("recent:edit:{p}"), "Edit Style...", true, None));
-            let _ = item.append(&MenuItem::with_id(format!("recent:style:{p}"), "Save Styled Copy", true, None));
-        }
-        let _ = item.append(&MenuItem::with_id(
-            format!("recent:reveal:{p}"),
-            format!("Show in {FILE_MANAGER}"),
-            true,
-            None,
-        ));
-        let _ = item.append(&MenuItem::with_id(format!("recent:copy:{p}"), "Copy", true, None));
-        let _ = recent.append(&item);
-    }
-
-    let phone = Submenu::new("Phone", true);
-    let _ = phone.append(&MenuItem::with_id("conn:wifi", "Switch to Wi-Fi", s.mirroring && s.usb, None));
-    let _ = phone.append(&MenuItem::with_id("conn:another", "Connect Another Phone\u{2026}", true, None));
-    let _ = phone.append(&MenuItem::with_id("conn:disconnect", "Disconnect", s.mirroring, None));
-    let open_app = Submenu::new("Open App", true);
-    if s.apps.is_empty() {
-        let label = if s.apps_loading { "Loading apps\u{2026}" } else { "No apps found" };
-        let _ = open_app.append(&MenuItem::new(label, false, None));
-    }
-    for app in s.apps.iter().filter(|a| !a.system).take(80) {
-        let _ = open_app.append(&MenuItem::with_id(format!("app:{}", app.package), &app.name, true, None));
-    }
-    if s.apps.iter().any(|a| a.system) {
-        let system = Submenu::new("System Apps", true);
-        for app in s.apps.iter().filter(|a| a.system) {
-            let _ = system.append(&MenuItem::with_id(format!("app:{}", app.package), &app.name, true, None));
-        }
-        let _ = open_app.append(&PredefinedMenuItem::separator());
-        let _ = open_app.append(&system);
-    }
-
-    let audio_label = if s.audio { "Mute playback" } else { "Audio off (start with --audio)" };
-    if !s.ios {
-        let _ = menu.append(&phone);
-    }
-    let _ = menu.append(&frame);
-    if !s.ios {
-        let _ = menu.append(&open_app);
-    }
-    let _ = menu.append(&PredefinedMenuItem::separator());
-    let _ = menu.append(&MenuItem::with_id("shot", format!("Take Screenshot    {MOD}S"), true, None));
-    let rec_label = format!("{} Recording    {MOD}E", if s.recording { "Stop" } else { "Start" });
-    let _ = menu.append(&MenuItem::with_id("rec", &rec_label, true, None));
-    let _ = menu.append(&recent);
-    let _ = menu.append(&record);
-    let _ = menu.append(&PredefinedMenuItem::separator());
-    let _ = menu.append(&CheckMenuItem::with_id("mute", audio_label, s.audio, s.audio && s.muted, None));
-    if !s.ios {
-        let _ = menu.append(&MenuItem::with_id("rotate", format!("Rotate Device    {MOD}R"), true, None));
-        let _ = menu.append(&CheckMenuItem::with_id("sync", "Share Clipboard With Phone", true, s.sync, None));
-    }
-    let _ = menu.append(&CheckMenuItem::with_id("toolbar", "Show Toolbar", true, s.toolbar, None));
-    if !s.ios {
-        let _ = menu.append(&CheckMenuItem::with_id("touches", "Show Touches", true, s.touches, None));
-    }
-    let _ = menu.append(&MenuItem::with_id("zoom:in", format!("Larger    {MOD}+"), true, None));
-    let _ = menu.append(&MenuItem::with_id("zoom:out", format!("Smaller    {MOD}-"), true, None));
-    let _ = menu.append(&MenuItem::with_id("zoom:reset", format!("Default Size    {MOD}0"), true, None));
-    let _ = menu.append(&PredefinedMenuItem::separator());
-    if let Some(v) = &s.update {
-        if s.update_install {
-            let _ = menu.append(&MenuItem::with_id(
-                "update-install",
-                format!("Install Handset {v} and Restart"),
-                true,
-                None,
-            ));
-        }
-        let open = match s.update_command {
-            Some(cmd) => format!("Copy \"{cmd}\" to Update to {v}"),
-            None => format!("Download Handset {v}..."),
-        };
-        let _ = menu.append(&MenuItem::with_id("update-open", open, true, None));
-        let _ = menu.append(&MenuItem::with_id("update-notes", format!("What's New in {v}..."), true, None));
-        let _ = menu.append(&MenuItem::with_id("update-skip", format!("Skip {v}"), true, None));
-        let _ = menu.append(&MenuItem::with_id("update-later", "Remind Me in 3 Days", true, None));
-        let _ = menu.append(&PredefinedMenuItem::separator());
-    }
-    let _ = menu.append(&MenuItem::with_id("update", "Check for Updates...", true, None));
-    let _ =
-        menu.append(&CheckMenuItem::with_id("update-auto", "Check for Updates on Start", true, s.update_auto, None));
-    let _ = menu.append(&PredefinedMenuItem::separator());
-    let _ = menu.append(&PredefinedMenuItem::about(Some("About Handset"), Some(about())));
-    let _ = menu.append(&MenuItem::with_id("quit", "Quit", true, None));
-
     unsafe {
         #[cfg(target_os = "macos")]
         menu.show_context_menu_for_nsview(h.ns_view.as_ptr() as *const std::ffi::c_void, None);
         #[cfg(windows)]
         menu.show_context_menu_for_hwnd(h.hwnd.get(), None);
+    }
+}
+
+/// The native item for one entry, with everything under it.
+#[cfg(any(target_os = "macos", windows))]
+fn native(e: &Entry) -> Box<dyn muda::IsMenuItem> {
+    use muda::{CheckMenuItem, MenuItem, PredefinedMenuItem, Submenu};
+    match e {
+        Entry::Separator => Box::new(PredefinedMenuItem::separator()),
+        Entry::About => Box::new(PredefinedMenuItem::about(Some("About Handset"), Some(about()))),
+        Entry::Submenu { label, items } => {
+            let s = Submenu::new(label, true);
+            for e in items {
+                let _ = s.append(native(e).as_ref());
+            }
+            Box::new(s)
+        }
+        Entry::Item(i) => {
+            let label = i.full_label();
+            match (&i.id, i.check) {
+                (Some(id), Some(c)) => Box::new(CheckMenuItem::with_id(id.as_str(), label, i.enabled, c, None)),
+                (None, Some(c)) => Box::new(CheckMenuItem::new(label, i.enabled, c, None)),
+                (Some(id), None) => Box::new(MenuItem::with_id(id.as_str(), label, i.enabled, None)),
+                (None, None) => Box::new(MenuItem::new(label, i.enabled, None)),
+            }
+        }
     }
 }
 

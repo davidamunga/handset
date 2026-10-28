@@ -96,8 +96,9 @@ entry: copy `app/packaging/linux/handset.desktop` and `app/packaging/icon/handse
 
 At run time, `adb` and `ffmpeg` are found on `PATH`, in `~/.local/bin` or in `~/Android/Sdk/platform-tools`.
 Your user needs USB access to the phone (udev rules for Android, usually the `plugdev` group or the
-`android-udev-rules` package). Captures go to `~/Pictures/handset` and `~/Videos/handset`. There is no
-right-click menu yet; the toolbar and the keyboard shortcuts work.
+`android-udev-rules` package). Captures go to `~/Pictures/handset` and `~/Videos/handset`. The right-click menu
+is drawn by Handset in its window (right-click, or the toolbar's **…** button), since there is no native one here;
+**About Handset** shows the version in a toast.
 
 Optional helpers (`handset --doctor` lists any that are missing and says what to install):
 
@@ -342,7 +343,7 @@ Ideas, not promises:
 - A device picker
 - OBS-friendly output (Syphon or a virtual camera)
 - Microphone to phone
-- A Linux release (AppImage) and a right-click menu there
+- A Linux release (AppImage)
 - Touch control for iPhone and iPad
 
 ## Contributing

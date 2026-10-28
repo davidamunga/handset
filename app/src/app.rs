@@ -9,6 +9,7 @@ use crate::frame::{self, Bezel};
 use crate::menu;
 use crate::mirror::Mirror;
 use crate::overlay;
+use crate::popup::{self, Anchor, Outcome, Popup};
 use crate::render::Renderer;
 use crate::restyle;
 use crate::server;
@@ -173,6 +174,8 @@ pub struct App {
     occluded: bool,
     toolbar_key: Option<(u32, Option<Button>, bool, bool, bool)>,
     toast: Option<Toast>,
+    /// The menu drawn in the window, while it is open.
+    popup: Option<Popup>,
     /// What the renderer's overlay currently shows (text, dot colour).
     overlay_key: Option<(String, Option<[u8; 3]>)>,
     overlay_opacity: f32,
@@ -268,6 +271,7 @@ impl App {
             occluded: false,
             toolbar_key: None,
             toast: None,
+            popup: None,
             overlay_key: None,
             overlay_opacity: 1.0,
             overlay_layout: None,
@@ -886,7 +890,18 @@ impl App {
             Button::Record => self.on_menu(el, "rec"),
             Button::Rotate => self.on_menu(el, "rotate"),
             Button::Update => self.act_on_update(),
-            Button::More => self.show_menu(),
+            Button::More => {
+                let (ww, wh) = self
+                    .window
+                    .as_ref()
+                    .map(|w| w.inner_size())
+                    .map_or((0.0, 0.0), |s| (s.width as f32, s.height as f32));
+                let order = toolbar::order(self.is_ios(), self.update.is_some());
+                match toolbar::button_rect(ww, wh, &order, Button::More) {
+                    Some(r) => self.show_menu(Anchor::Beside(r)),
+                    None => self.show_menu(Anchor::Point(self.cursor.0 as f32, self.cursor.1 as f32)),
+                }
+            }
             Button::Quit => el.exit(),
             Button::NextFrame => {
                 // None -> each built-in frame (only the iOS ones for an iOS device) -> back to None
@@ -907,7 +922,8 @@ impl App {
         Some(winit::dpi::PhysicalSize::new((height as f32 * aspect).round() as u32, height))
     }
 
-    fn show_menu(&mut self) {
+    /// Open the menu: the native one at the pointer, or the drawn one at `anchor`.
+    fn show_menu(&mut self, anchor: Anchor) {
         let Some(w) = self.window.clone() else { return };
         let ios = self.is_ios();
         let frames = frame::names_for(ios);
@@ -937,7 +953,108 @@ impl App {
             apps_loading: self.apps_loading,
             recent: capture::recent_captures(5),
         };
-        menu::show(&w, &state);
+        if !menu::drawn() {
+            menu::show(&w, &state);
+            return;
+        }
+        let s = w.inner_size();
+        self.popup =
+            Some(Popup::new(menu::build(&state), anchor, (s.width as f32, s.height as f32), w.scale_factor() as f32));
+        // the menu covers the toolbar's hint
+        if self.hover.take().is_some() {
+            self.refresh_toolbar();
+            self.refresh_overlay();
+        }
+        if let Some(p) = self.popup.as_mut() {
+            p.pointer_moved(self.cursor.0 as f32, self.cursor.1 as f32);
+        }
+        self.refresh_popup();
+    }
+
+    /// Show the drawn menu as it is now, or take it away once it is closed.
+    fn refresh_popup(&mut self) {
+        let panels = self.popup.as_ref().map(|p| p.raster()).unwrap_or_default();
+        if let Some(r) = self.renderer.as_mut() {
+            r.set_menu(&panels);
+        }
+        if let Some(w) = &self.window {
+            w.request_redraw();
+        }
+    }
+
+    fn close_popup(&mut self) {
+        if self.popup.take().is_some() {
+            self.refresh_popup();
+        }
+    }
+
+    /// While the drawn menu is open it takes the pointer and the keyboard. True when it used `event`.
+    fn popup_event(&mut self, el: &ActiveEventLoop, event: &WindowEvent) -> bool {
+        let Some(p) = self.popup.as_mut() else { return false };
+        let (x, y) = (self.cursor.0 as f32, self.cursor.1 as f32);
+        let outcome = match event {
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor = (position.x, position.y);
+                let changed = p.pointer_moved(position.x as f32, position.y as f32);
+                if let Some(w) = &self.window {
+                    w.set_cursor(Cursor::Icon(CursorIcon::Default));
+                }
+                if changed {
+                    self.refresh_popup();
+                }
+                return true;
+            }
+            WindowEvent::MouseInput { state: ElementState::Pressed, button, .. } => match p.click(x, y) {
+                // a right-click elsewhere opens the menu again there
+                Outcome::Closed if *button == MouseButton::Right => {
+                    self.close_popup();
+                    return false;
+                }
+                o => o,
+            },
+            WindowEvent::MouseInput { .. } => return true,
+            WindowEvent::MouseWheel { delta, .. } => {
+                let dy = match delta {
+                    MouseScrollDelta::LineDelta(_, dy) => -dy * 3.0 * p.row_height(),
+                    MouseScrollDelta::PixelDelta(d) => -d.y as f32,
+                };
+                if p.scroll(x, y, dy) {
+                    self.refresh_popup();
+                }
+                return true;
+            }
+            WindowEvent::KeyboardInput { event, .. } => {
+                if event.state != ElementState::Pressed {
+                    return true;
+                }
+                let key = match &event.logical_key {
+                    Key::Named(NamedKey::Escape) => popup::Key::Escape,
+                    Key::Named(NamedKey::ArrowUp) => popup::Key::Up,
+                    Key::Named(NamedKey::ArrowDown) => popup::Key::Down,
+                    Key::Named(NamedKey::ArrowLeft) => popup::Key::Left,
+                    Key::Named(NamedKey::ArrowRight) => popup::Key::Right,
+                    Key::Named(NamedKey::Enter | NamedKey::Space) => popup::Key::Enter,
+                    // nothing reaches the phone while the menu is open
+                    _ => return true,
+                };
+                p.key(key)
+            }
+            // the menu was laid out for the window as it was
+            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Focused(false) => {
+                self.close_popup();
+                return false;
+            }
+            _ => return false,
+        };
+        match outcome {
+            Outcome::Open => self.refresh_popup(),
+            Outcome::Closed => self.close_popup(),
+            Outcome::Chose(id) => {
+                self.close_popup();
+                self.on_menu(el, &id);
+            }
+        }
+        true
     }
 
     /// Switch the frame while running (`None` = no frame).
@@ -1101,6 +1218,14 @@ impl App {
                 let _ = self.control.rotate_device();
             }
             "quit" => el.exit(),
+            // the drawn menu's About: there is no About window to open
+            "about" => {
+                self.show_toast(&format!("HANDSET {} - GITHUB.COM/DAVIDAMUNGA/HANDSET", env!("CARGO_PKG_VERSION")));
+                if let Some(t) = self.toast.as_mut() {
+                    t.url = Some("https://github.com/davidamunga/handset".into());
+                    t.ttl = TOAST_SAVED;
+                }
+            }
             "frame:none" => self.set_frame(None),
             other if other.starts_with("recent:") => {
                 // recent:<action>:<absolute path>
@@ -1858,6 +1983,9 @@ impl ApplicationHandler<UserEvent> for App {
     }
 
     fn window_event(&mut self, el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        if self.popup_event(el, &event) {
+            return;
+        }
         match event {
             WindowEvent::CloseRequested => el.exit(),
             WindowEvent::Resized(s) => {
@@ -1958,7 +2086,7 @@ impl ApplicationHandler<UserEvent> for App {
                     let _ = self.control.touch(Touch::Up, 0, 0, self.device.0, self.device.1);
                     self.show_touch(Touch::Up, 0, 0);
                 }
-                self.show_menu();
+                self.show_menu(Anchor::Point(self.cursor.0 as f32, self.cursor.1 as f32));
             }
             WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. }
                 if self.resizing.is_some() =>

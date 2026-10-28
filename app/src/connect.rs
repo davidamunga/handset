@@ -312,12 +312,12 @@ static LOGO_PNG: &[u8] = include_bytes!("../packaging/icon/handset-mark-512.png"
 struct Style(Weight, f32, [u8; 3]);
 
 #[derive(Clone, Copy, PartialEq)]
-enum Weight {
+pub(crate) enum Weight {
     Regular,
     Semibold,
 }
 
-fn font(weight: Weight) -> &'static FontRef<'static> {
+pub(crate) fn font(weight: Weight) -> &'static FontRef<'static> {
     static FONTS: OnceLock<[FontRef<'static>; 2]> = OnceLock::new();
     let fonts = FONTS.get_or_init(|| {
         [
@@ -341,7 +341,7 @@ fn logo() -> &'static (u32, u32, Vec<u8>) {
 }
 
 /// Width of `text` in pixels at `px` size.
-fn measure(weight: Weight, px: f32, text: &str) -> f32 {
+pub(crate) fn measure(weight: Weight, px: f32, text: &str) -> f32 {
     let scaled = font(weight).as_scaled(PxScale::from(px));
     let mut width = 0.0;
     let mut prev = None;
