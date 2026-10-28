@@ -146,6 +146,7 @@ pub fn start(serial: &str, opts: &Options) -> io::Result<Session> {
     };
     // the server accepts the sockets in order: video, audio, control
     let audio = if opts.audio { Some(TcpStream::connect(format!("127.0.0.1:{port}"))?) } else { None };
+    let audio = audio.filter(can_send_audio);
     let control = TcpStream::connect(format!("127.0.0.1:{port}"))?;
     control.set_nodelay(true)?;
 
@@ -163,6 +164,29 @@ pub fn start(serial: &str, opts: &Options) -> io::Result<Session> {
     }
 
     Ok(Session { serial: serial.to_string(), port, child: session_parts.0, video, audio, control, device_name })
+}
+
+/// Peek at the audio socket's codec id without consuming it. A phone that cannot capture audio
+/// (Android 10 and older, or a capture error) announces codec 0 or 1; keeping that socket around would
+/// make a recording wait forever for audio that never comes.
+fn can_send_audio(stream: &TcpStream) -> bool {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    let mut id = [0u8; 4];
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(250)));
+    let ok = loop {
+        match stream.peek(&mut id) {
+            Ok(4) => break u32::from_be_bytes(id) > 1,
+            Ok(0) => break false,
+            Ok(_) => std::thread::sleep(std::time::Duration::from_millis(10)),
+            Err(_) if std::time::Instant::now() < deadline => {}
+            Err(_) => break true, // no word yet: let the audio thread decide
+        }
+    };
+    let _ = stream.set_read_timeout(None);
+    if !ok {
+        eprintln!("this phone cannot send audio: mirroring and recording video only");
+    }
+    ok
 }
 
 #[derive(Debug)]
