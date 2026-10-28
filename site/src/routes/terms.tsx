@@ -55,7 +55,7 @@ function Terms() {
       <h2>Downloads</h2>
       <p>
         Releases are published on <a href={`${REPO}/releases`}>GitHub</a>, with a checksum and a signature for each file. The macOS
-        app is signed and notarised. The Windows build is not code-signed yet, so Windows may warn you the first time you open it. Linux has no release file yet: you build it from source.
+        app is signed and notarised. The Windows build is not code-signed yet, so Windows may warn you the first time you open it. Releases after 0.8.1 include a Linux tarball, which is not code-signed either; you can also build Linux from source.
         Download Handset from the project&apos;s GitHub page, the Homebrew tap or the Scoop bucket named on this site, and check
         the checksum if you want to be sure.
       </p>
