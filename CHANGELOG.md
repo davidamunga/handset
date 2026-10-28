@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.0
+
+### Minor Changes
+
+- [#88](https://github.com/davidamunga/handset/pull/88) [`bd9c727`](https://github.com/davidamunga/handset/commit/bd9c7272c9e7e56f7386ab67149c27e5493bf1de) - Each release now includes a Linux download for x86_64 and aarch64 (`Handset-<version>-linux-<arch>.tar.gz`, experimental, for glibc 2.35 or newer such as Ubuntu 22.04 and Debian 12), listed in a signed `SHA256SUMS-linux` that `handset --verify-release` checks. The website's Linux card links to the file for your computer.
+
+- [#90](https://github.com/davidamunga/handset/pull/90) [`0f43f9b`](https://github.com/davidamunga/handset/commit/0f43f9b5bbd9eebd633117bbcf875be1c264b10e) - The update banner on Linux now knows how Handset was installed. An Arch package copies `yay -S`, `paru -S` or the AUR's `makepkg` steps, a `cargo install` copies the `cargo install ... --force` command (on macOS too), the Nix package is told to update through Nix, and an unpacked release tarball (next to its `handset.desktop`, or in `~/.local/bin`) installs the update itself: it checks the signed `SHA256SUMS-linux`, swaps only the `handset` program and puts the old one back if the new one does not start. A `cargo install` on Windows is no longer mistaken for an unzipped release.
+
+### Patch Changes
+
+- [#93](https://github.com/davidamunga/handset/pull/93) [`a48fc3d`](https://github.com/davidamunga/handset/commit/a48fc3d6187e4426708660c34554683a5e00c17b) - Arch Linux and its derivatives can install Handset as a package with `makepkg -si` from `app/packaging/linux`, which builds the latest release and adds a launcher entry and icon. A `handset-bin` package for the prebuilt Linux release is ready for the AUR.
+
+- [#87](https://github.com/davidamunga/handset/pull/87) [`890c52a`](https://github.com/davidamunga/handset/commit/890c52a1b03266e9431f284f974d79b9f7ad2146) - "Type an address" and "Pair with a code" on the connect screen now open a text field drawn in Handset's window, with Cancel and Connect (or Pair) buttons, instead of a system dialog. They now work on Linux desktops without `zenity` or `kdialog`, such as a stock Omarchy. Type, use Backspace, press Enter to connect or Escape to cancel, and paste with Cmd-V or Ctrl-V; the pairing code field takes six digits.
+
+- [#89](https://github.com/davidamunga/handset/pull/89) [`592b0c0`](https://github.com/davidamunga/handset/commit/592b0c0f8868cddb38bbb8c68cba8c0e1054d957) - Linux now has the right-click menu. Handset draws it in its window, in the same dark style as the toolbar, because there is no native menu to use there: right-click the phone or click the toolbar's "…" button to reach frames, recording settings, recent captures, apps, the connection and updates (including Skip and Remind Me). Submenus open beside their item, long lists such as the apps scroll, the arrow keys, Enter and Escape work, and the menu never shows in screenshots or recordings. On macOS and Windows the native menu is unchanged; set `HANDSET_DRAWN_MENU=1` to try the drawn one there.
+
 ## 0.8.1
 
 ### Patch Changes
