@@ -101,6 +101,17 @@ fn plane(device: &wgpu::Device, w: u32, h: u32) -> wgpu::Texture {
     })
 }
 
+/// The surface format to draw in. Video is already gamma-encoded, so not sRGB, and capture reads the pixels
+/// back as 8 bits per channel, so an 8-bit one: some Wayland drivers list a 16-bit float format first.
+fn pick_format(formats: &[wgpu::TextureFormat]) -> wgpu::TextureFormat {
+    use wgpu::TextureFormat::{Bgra8Unorm, Rgba8Unorm};
+    [Bgra8Unorm, Rgba8Unorm]
+        .into_iter()
+        .find(|f| formats.contains(f))
+        .or_else(|| formats.iter().copied().find(|f| !f.is_srgb()))
+        .unwrap_or(formats[0])
+}
+
 impl Renderer {
     pub fn new(window: Arc<Window>, bezel: Option<&Bezel>) -> Result<Self, String> {
         let mut desc = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
@@ -131,8 +142,7 @@ impl Renderer {
         .map_err(|e| format!("device: {e}"))?;
 
         let caps = surface.get_capabilities(&adapter);
-        // Video is already gamma-encoded, so avoid an sRGB surface.
-        let format = caps.formats.iter().copied().find(|f| !f.is_srgb()).unwrap_or(caps.formats[0]);
+        let format = pick_format(&caps.formats);
         let alpha_mode = [wgpu::CompositeAlphaMode::PreMultiplied, wgpu::CompositeAlphaMode::PostMultiplied]
             .into_iter()
             .find(|m| caps.alpha_modes.contains(m))
@@ -745,6 +755,10 @@ impl Renderer {
     /// transparent surroundings.
     pub fn capture(&mut self, (w, h): (u32, u32), bg: Option<[f32; 3]>) -> Option<Vec<u8>> {
         self.video.as_ref()?;
+        // the row maths and the conversion below are for 4 bytes a pixel; a wider format would fail validation
+        if self.config.format.block_copy_size(None) != Some(4) {
+            return None;
+        }
         let tex = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("capture"),
             size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
@@ -804,5 +818,20 @@ impl Renderer {
         }
         buf.unmap();
         Some(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wgpu::TextureFormat::*;
+
+    #[test]
+    fn the_surface_format_is_8_bit_and_not_srgb() {
+        // a driver that lists a 16-bit float format first must not get it
+        assert_eq!(pick_format(&[Rgba16Float, Bgra8UnormSrgb, Bgra8Unorm]), Bgra8Unorm);
+        assert_eq!(pick_format(&[Rgba16Float, Rgba8Unorm]), Rgba8Unorm);
+        assert_eq!(pick_format(&[Bgra8UnormSrgb, Rgba16Float]), Rgba16Float);
+        assert_eq!(pick_format(&[Bgra8UnormSrgb]), Bgra8UnormSrgb);
     }
 }
