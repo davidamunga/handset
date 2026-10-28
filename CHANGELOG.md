@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.2
+
+### Patch Changes
+
+- [#96](https://github.com/davidamunga/handset/pull/96) [`539253f`](https://github.com/davidamunga/handset/commit/539253f55dddf180efd7734ea50fff92ad464ac1) - On Linux, screenshots and recordings now go to your Pictures and Videos folders even when your desktop has moved or renamed them.
+
 ## 0.9.1
 
 ### Patch Changes
