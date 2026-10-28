@@ -72,7 +72,8 @@ pub fn no_phone(found_on_wifi: bool) -> Check {
             "no phone connected",
             Some(
                 "plug it in with a data cable (some cables only charge), unlock it, and turn on USB debugging in \
-                 Settings > Developer options; or pair over Wi-Fi with `handset --pair <ip:port> <code>`",
+                 Settings > Developer options; or pair over Wi-Fi with `handset --pair <ip:port> <code>`. On Linux, \
+                 also check that you have USB access to Android phones (the android-udev-rules package)",
             ),
         )
     }
@@ -230,11 +231,52 @@ fn helper_checks(have: &dyn Fn(&str) -> bool, wayland: bool) -> Vec<Check> {
     out
 }
 
+/// Can wgpu find a GPU (or a software renderer)? Without one the window cannot draw, and neither can the
+/// offscreen render behind screenshots and recordings.
+#[cfg(any(test, not(any(target_os = "macos", windows))))]
+fn gpu_check() -> Check {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::LowPower,
+        ..Default::default()
+    }));
+    match adapter {
+        Ok(a) => check(Level::Ok, format!("graphics adapter: {}", a.get_info().name), None),
+        Err(_) => check(
+            Level::Fail,
+            "no graphics adapter was found, so Handset cannot draw its window or capture",
+            Some(
+                "install a Vulkan driver (mesa's vulkan-radeon, vulkan-intel or vulkan-nouveau, or nvidia-utils); \
+                 `vulkaninfo --summary` should list a device",
+            ),
+        ),
+    }
+}
+
+/// Is there a sound output? `--audio` and recordings with sound go through ALSA, which on PipeWire or
+/// PulseAudio desktops needs their ALSA plugin.
+#[cfg(any(test, not(any(target_os = "macos", windows))))]
+fn audio_check() -> Check {
+    use cpal::traits::HostTrait as _;
+    match cpal::default_host().default_output_device() {
+        Some(_) => check(Level::Ok, "audio output device", None),
+        None => check(
+            Level::Warn,
+            "no audio output device was found, so phone sound cannot be played or recorded",
+            Some("install pipewire-alsa (PipeWire) or pulseaudio-alsa (PulseAudio), and check `aplay -l`"),
+        ),
+    }
+}
+
 /// Run every check (slow: it talks to adb and the phones).
 pub fn checks() -> Vec<Check> {
     let mut checks = tools();
     #[cfg(not(any(target_os = "macos", windows)))]
-    checks.extend(helper_checks(&on_path, std::env::var_os("WAYLAND_DISPLAY").is_some()));
+    {
+        checks.extend(helper_checks(&on_path, std::env::var_os("WAYLAND_DISPLAY").is_some()));
+        checks.push(gpu_check());
+        checks.push(audio_check());
+    }
     if checks[0].level == Level::Ok {
         match adb::list() {
             Err(e) => checks.push(check(Level::Fail, format!("could not run `adb devices`: {e}"), None)),
@@ -322,6 +364,13 @@ mod tests {
         assert_eq!(wl.len(), 1);
         assert!(wl[0].hint.as_deref().unwrap().contains("wl-clipboard"));
         assert!(helper_checks(&|n| n != "kdialog" && n != "xsel", false).is_empty());
+    }
+
+    /// Runs the real probes. Whatever the machine has, they must answer and not panic.
+    #[test]
+    fn gpu_and_audio_probes_answer() {
+        assert!(!gpu_check().title.is_empty());
+        assert!(!audio_check().title.is_empty());
     }
 
     #[test]
