@@ -1,0 +1,40 @@
+# Maintainer: David Amunga
+# Install the prebuilt binary from a GitHub release on Arch Linux and its derivatives (Omarchy, EndeavourOS, Manjaro):
+#   cd app/packaging/linux/handset-bin && makepkg -si
+# No release has the Linux tarballs yet. For the first one that does, set pkgver, then fill in
+# sha256sums_x86_64 and sha256sums_aarch64 with the hashes of Handset-<pkgver>-linux-x86_64.tar.gz and
+# Handset-<pkgver>-linux-aarch64.tar.gz (`updpkgsums` does both); docs/runbooks/aur.md has the steps.
+pkgname=handset-bin
+_pkgname=handset
+pkgver=0.8.1
+pkgrel=1
+pkgdesc='Mirror and control an Android phone inside a realistic device frame (prebuilt binary)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/davidamunga/handset'
+license=('Apache-2.0')
+depends=('alsa-lib' 'android-tools' 'glibc' 'hicolor-icon-theme' 'libgcc' 'libstdc++')
+optdepends=(
+  'ffmpeg: recording and styled exports'
+  'wl-clipboard: clipboard sync and copying captures on Wayland'
+  'xclip: clipboard sync and copying captures on X11'
+  'zenity: the address and pairing-code prompts and error dialogs'
+  'xdg-utils: opening links and captures'
+  'android-udev: USB access to phones without extra setup'
+)
+provides=("$_pkgname")
+conflicts=("$_pkgname")
+options=('!strip' '!debug')
+source_x86_64=("$url/releases/download/v$pkgver/Handset-$pkgver-linux-x86_64.tar.gz")
+source_aarch64=("$url/releases/download/v$pkgver/Handset-$pkgver-linux-aarch64.tar.gz")
+# Fill in from the first release that ships the Linux tarballs (see the header).
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+
+package() {
+  cd "Handset-$pkgver-linux-$CARCH"
+  install -Dm755 handset "$pkgdir/usr/bin/handset"
+  install -Dm644 handset.desktop "$pkgdir/usr/share/applications/handset.desktop"
+  install -Dm644 handset.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/handset.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 NOTICE "$pkgdir/usr/share/licenses/$pkgname/NOTICE"
+}

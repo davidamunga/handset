@@ -72,15 +72,24 @@ or `FFMPEG` to override. Captures go to `Pictures\handset` and `Videos\handset`;
 ### Linux (experimental)
 
 It builds and passes its tests on Ubuntu 22.04 in CI, but nobody has run the window on a Linux desktop yet, so
-expect problems with the transparent, borderless frame on some compositors. There is no download yet; install it
-from source with Cargo. You need Rust 1.91 or newer, `cmake`, `nasm` and the ALSA headers.
+expect problems with the transparent, borderless frame on some compositors. There is no download yet; build it
+from source. You need Rust 1.91 or newer, `cmake`, `nasm` and the ALSA headers.
 
-Arch, Omarchy, EndeavourOS and Manjaro:
+Arch, Omarchy, EndeavourOS and Manjaro: build the package from the repository's PKGBUILD. It builds the latest
+release, installs `handset`, a launcher entry and the icon, and pulls in `alsa-lib` and `android-tools`:
 
 ```sh
-sudo pacman -S --needed base-devel cmake nasm alsa-lib android-tools rust zenity
-cargo install --git https://github.com/davidamunga/handset --locked handset
+sudo pacman -S --needed base-devel git
+git clone https://github.com/davidamunga/handset
+cd handset/app/packaging/linux
+makepkg -si
 ```
+
+To update, `git pull` in that folder and run `makepkg -si` again.
+
+The packages are not on the AUR yet. Once they are, `yay -S handset` will build from source and
+`yay -S handset-bin` will install the prebuilt binary from the release. Install `ffmpeg`, `zenity` and
+`wl-clipboard` (or `xclip` on X11) for recording, prompts and clipboard sync.
 
 Debian and Ubuntu (install Rust with [rustup](https://rustup.rs): the Rust in Ubuntu 22.04 and Debian 12 is too old):
 
@@ -89,10 +98,11 @@ sudo apt install build-essential pkg-config cmake nasm libasound2-dev adb zenity
 cargo install --git https://github.com/davidamunga/handset --locked handset
 ```
 
-That puts `handset` in `~/.cargo/bin` (put that on your `PATH`). Run `handset --doctor` to check your setup, then
-`handset --audio`. Run the same `cargo install` command with `--force` to update. This does not add a launcher
+That puts `handset` in `~/.cargo/bin` (put that on your `PATH`). Run the same `cargo install` command with `--force` to update. This does not add a launcher
 entry: copy `app/packaging/linux/handset.desktop` and `app/packaging/icon/handset-icon-512.png` into
 `~/.local/share/applications` and `~/.local/share/icons/hicolor/512x512/apps/handset.png` if you want one.
+
+Run `handset --doctor` to check your setup, then `handset --audio`.
 
 At run time, `adb` and `ffmpeg` are found on `PATH`, in `~/.local/bin` or in `~/Android/Sdk/platform-tools`.
 Your user needs USB access to the phone (udev rules for Android, usually the `plugdev` group or the
