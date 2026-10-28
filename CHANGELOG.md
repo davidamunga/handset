@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.3
+
+### Patch Changes
+
+- [#105](https://github.com/davidamunga/handset/pull/105) [`588c3e2`](https://github.com/davidamunga/handset/commit/588c3e2c728b9ecdf62b6ff4f8f4705eaacc0591) - Fixed a crash when taking a screenshot on some Linux graphics drivers, which listed a 16-bit surface format first.
+
+- [#103](https://github.com/davidamunga/handset/pull/103) [`6a3cafb`](https://github.com/davidamunga/handset/commit/6a3cafb15526ae3f30cef7f34361a4af952f93b4) - On Linux, `handset --doctor` now checks for a graphics adapter and an audio output device, and says what to install when one is missing. Its "no phone connected" advice also mentions USB access rules.
+
+- [#101](https://github.com/davidamunga/handset/pull/101) [`19740c9`](https://github.com/davidamunga/handset/commit/19740c9dc3f2371c23fac584a47408b4744e07ab) - On Linux, Handset now finds ffmpeg and adb installed with Nix, Snap or Homebrew even when it is started from a launcher with a bare PATH.
+
+- [#102](https://github.com/davidamunga/handset/pull/102) [`776d271`](https://github.com/davidamunga/handset/commit/776d271d751541fdf72e81700c4d59f062efca28) - On Linux, "Reveal" now selects the capture in your file manager instead of only opening its folder.
+
 ## 0.9.2
 
 ### Patch Changes
