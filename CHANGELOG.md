@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.2
+
+### Patch Changes
+
+- [#117](https://github.com/davidamunga/handset/pull/117) [`2698f0c`](https://github.com/davidamunga/handset/commit/2698f0cac3f712216a308c6e48ffdbaf5d6a9075) - Fixed the window opening too small and not resizing by dragging a corner on Linux under Wayland. With fractional scaling the window now opens at the intended size, and dragging a corner of the phone resizes it in place, keeping its proportions.
+
 ## 0.11.1
 
 ### Patch Changes
