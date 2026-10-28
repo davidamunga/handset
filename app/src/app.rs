@@ -161,6 +161,8 @@ pub struct App {
     touching: bool,
     /// A resize by dragging the frame: the edge or corner held and the opposite point that stays put (screen pixels).
     resizing: Option<(winit::window::ResizeDirection, (f64, f64))>,
+    /// Where in the window that drag began and the window's size then, when its screen position is unknown (Wayland).
+    resize_local: Option<((f64, f64), (f64, f64))>,
     mods: ModifiersState,
     device: (u16, u16),
     debug: bool,
@@ -261,6 +263,7 @@ impl App {
             cursor: (0.0, 0.0),
             touching: false,
             resizing: None,
+            resize_local: None,
             mods: ModifiersState::empty(),
             device: (0, 0),
             debug: std::env::var_os("HANDSET_DEBUG").is_some(),
@@ -1785,8 +1788,17 @@ impl App {
     /// Start resizing by dragging (the platform's own drag-resize is not available on macOS).
     fn begin_resize(&mut self, d: winit::window::ResizeDirection) {
         use winit::window::ResizeDirection::*;
+        self.resize_local = None;
         let Some(w) = &self.window else { return };
-        let (Ok(p), s) = (w.outer_position(), w.outer_size()) else { return };
+        // Wayland never tells a window where it is: size it by how far the pointer moves and leave it in place.
+        // The top-left stays put, so dragging a west or north corner outward grows the window away from the pointer.
+        let Ok(p) = w.outer_position() else {
+            let s = w.inner_size();
+            self.resize_local = Some((self.cursor, (s.width as f64, s.height as f64)));
+            self.resizing = Some((d, (0.0, 0.0)));
+            return;
+        };
+        let s = w.outer_size();
         let (x, y, r, b) = (p.x as f64, p.y as f64, p.x as f64 + s.width as f64, p.y as f64 + s.height as f64);
         let ax = if matches!(d, West | NorthWest | SouthWest) { r } else { x };
         let ay = if matches!(d, North | NorthWest | NorthEast) { b } else { y };
@@ -1795,23 +1807,27 @@ impl App {
 
     fn drag_resize(&mut self) {
         use winit::window::ResizeDirection::*;
-        let (Some((d, (ax, ay))), Some((gx, gy))) = (self.resizing, self.screen_cursor()) else { return };
+        let Some((d, (ax, ay))) = self.resizing else { return };
         let Some(a) = self.renderer.as_ref().and_then(|r| r.window_aspect()) else { return };
         let Some(w) = &self.window else { return };
         let max_h = w.current_monitor().map_or(f64::MAX, |m| m.size().height as f64 * 0.95);
-        let by_height = matches!(d, North | South);
-        let (nw, nh) = if by_height {
-            let h = if d == North { ay - gy } else { gy - ay };
-            (h * a as f64, h)
+        let (west, north) = (matches!(d, West | NorthWest | SouthWest), matches!(d, North | NorthWest | NorthEast));
+        let (span_w, span_h) = if let Some(((cx, cy), (sw, sh))) = self.resize_local {
+            let (dx, dy) = (self.cursor.0 - cx, self.cursor.1 - cy);
+            (if west { sw - dx } else { sw + dx }, if north { sh - dy } else { sh + dy })
         } else {
-            let wd = if matches!(d, West | NorthWest | SouthWest) { ax - gx } else { gx - ax };
-            (wd, wd / a as f64)
+            let Some((gx, gy)) = self.screen_cursor() else { return };
+            (if west { ax - gx } else { gx - ax }, if north { ay - gy } else { gy - ay })
         };
+        let (nw, nh) =
+            if matches!(d, North | South) { (span_h * a as f64, span_h) } else { (span_w, span_w / a as f64) };
         let k = (max_h / nh).min(1.0);
         let (nw, nh) = ((nw * k).max(100.0).round(), (nh * k).max(100.0 / a as f64).round());
-        let x = if matches!(d, West | NorthWest | SouthWest) { ax - nw } else { ax };
-        let y = if matches!(d, North | NorthWest | NorthEast) { ay - nh } else { ay };
-        w.set_outer_position(winit::dpi::PhysicalPosition::new(x, y));
+        if self.resize_local.is_none() {
+            let x = if west { ax - nw } else { ax };
+            let y = if north { ay - nh } else { ay };
+            w.set_outer_position(winit::dpi::PhysicalPosition::new(x, y));
+        }
         let _ = w.request_inner_size(winit::dpi::PhysicalSize::new(nw as u32, nh as u32));
     }
 
@@ -1837,9 +1853,12 @@ impl ApplicationHandler<UserEvent> for App {
         let scale = monitor.as_ref().map_or(1.0, |m| m.scale_factor());
         let area = work_area()
             .or_else(|| monitor.as_ref().map(|m| (m.position().x, m.position().y, m.size().width, m.size().height)));
-        let height = area.map_or(820.0, |(_, _, _, h)| {
-            (h as f64 / scale * if cfg!(windows) { 0.95 } else { 0.8 }).clamp(400.0, 1000.0)
-        });
+        let height_at = |scale: f64| {
+            area.map_or(820.0, |(_, _, _, h)| {
+                (h as f64 / scale * if cfg!(windows) { 0.95 } else { 0.8 }).clamp(400.0, 1000.0)
+            })
+        };
+        let height = height_at(scale);
         let mut attrs = Window::default_attributes()
             .with_title(self.title.clone())
             .with_window_icon(if cfg!(target_os = "macos") { None } else { window_icon() })
@@ -1871,6 +1890,14 @@ impl ApplicationHandler<UserEvent> for App {
             }
         }
         let window = Arc::new(el.create_window(attrs).expect("create window"));
+        // Wayland reports a monitor's scale rounded up (2 for 110%), so size again by the window's real one
+        let real = window.scale_factor();
+        let mut home_height = window.inner_size().height;
+        if (real - scale).abs() > 0.01 {
+            let height = height_at(real);
+            let _ = window.request_inner_size(LogicalSize::new(height * aspect, height));
+            home_height = (height * real).round() as u32;
+        }
         match Renderer::new(window.clone(), self.bezel.as_ref()) {
             Ok(mut r) => {
                 r.set_toolbar_visible(self.toolbar_start);
@@ -1891,7 +1918,7 @@ impl ApplicationHandler<UserEvent> for App {
         if let Some(b) = self.bezel.as_mut() {
             b.rgba = Vec::new();
         }
-        self.home_height = window.inner_size().height;
+        self.home_height = home_height;
         self.window = Some(window);
         if let Some(serial) = self.mirror.as_ref().filter(|m| !m.is_ios()).map(|m| m.serial().to_string()) {
             self.list_apps(serial);
@@ -2176,6 +2203,7 @@ impl ApplicationHandler<UserEvent> for App {
                 if self.resizing.is_some() =>
             {
                 self.resizing = None;
+                self.resize_local = None;
             }
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. }
                 if self.resize_zone().is_some() && self.toolbar_button().is_none() =>
