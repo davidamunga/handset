@@ -90,7 +90,7 @@ public half is in `app/src/verify.rs`. A release made without the secret is unsi
 can install it in place. Making, backing up and rotating the key is in the
 [release runbook](runbooks/release.md#update-signing). The design and its reasons are in
 [ADR 0024](adr/0024-update-in-place-only-where-nothing-else-manages-the-install.md) and, for Linux,
-[ADR 0033](adr/0033-update-linux-installs-by-how-they-were-made.md).
+[ADR 0036](adr/0036-update-linux-installs-by-how-they-were-made.md).
 
 To try an update without a real release, put the zip, `SHA256SUMS` and `SHA256SUMS.sig` (signed with the key the
 build trusts) in a folder and start Handset with `HANDSET_UPDATE_BASE=file:///that/folder` (the files are named as

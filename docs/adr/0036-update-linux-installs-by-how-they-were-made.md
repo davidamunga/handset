@@ -1,4 +1,4 @@
-# 0033. Update Linux installs by how they were made, and swap only the program of an unpacked tarball
+# 0036. Update Linux installs by how they were made, and swap only the program of an unpacked tarball
 
 - Status: accepted
 - Date: 2026-10-28

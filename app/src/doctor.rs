@@ -220,7 +220,7 @@ fn helper_checks(have: &dyn Fn(&str) -> bool, wayland: bool) -> Vec<Check> {
     if !any(&["zenity", "kdialog"]) {
         out.push(check(
             Level::Warn,
-            "neither zenity nor kdialog was found, so \"Type an address\", \"Pair with a code\" and error dialogs are off",
+            "neither zenity nor kdialog was found, so errors are not shown in a window when there is no terminal",
             Some("install zenity (GNOME and others) or kdialog (KDE)"),
         ));
     }

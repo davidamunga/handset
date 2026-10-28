@@ -30,7 +30,8 @@ small native Rust app that implements the desktop side of the scrcpy protocol an
 | `app/src/update.rs`, `install.rs` | Looking for a newer release; how this copy was installed (Homebrew, Scoop, winget, a download) and what the update notice says for each |
 | `app/src/updater.rs` | Updating a downloaded install in place: download, verify, unpack, then a helper script swaps the app (with rollback) |
 | `app/src/verify.rs` | Release signature and checksum checks (Ed25519 over `SHA256SUMS`), and `--verify-release` |
-| `app/src/menu.rs`, `tools.rs` | Native macOS menu; tool lookup, error dialogs, default arguments |
+| `app/src/menu.rs`, `tools.rs` | The right-click menu as data, shown natively on macOS and Windows; tool lookup, error dialogs, default arguments |
+| `app/src/popup.rs` | The same menu drawn in the window (Linux, or `HANDSET_DRAWN_MENU=1`): layout, placement at edges, pointer and keys |
 | `app/assets/` | Embedded scrcpy server, the built-in phone frames and the Inter fonts |
 | `site/` | The website (Vite, React, Tailwind): its own package, never shipped in a release; see `site/README.md` |
 | `frames/` | Script that generates the frame PNGs |

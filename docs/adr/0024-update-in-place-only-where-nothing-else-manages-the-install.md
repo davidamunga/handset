@@ -1,6 +1,6 @@
 # 0024. Update in place only where nothing else manages the install, and only to signed releases
 
-- Status: accepted (extended to Linux by [0033](0033-update-linux-installs-by-how-they-were-made.md))
+- Status: accepted (extended to Linux by [0036](0036-update-linux-installs-by-how-they-were-made.md))
 - Date: 2026-10-27
 
 ## Context

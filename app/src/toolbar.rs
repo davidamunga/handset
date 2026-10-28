@@ -102,6 +102,14 @@ pub fn button_at(ww: f32, wh: f32, x: f32, y: f32, order: &[Button]) -> Option<B
     order.get(((y - ry) / (rh / order.len() as f32)) as usize).copied()
 }
 
+/// Where button `b` is, as (x, y, w, h) in window pixels, if the toolbar has it.
+pub fn button_rect(ww: f32, wh: f32, order: &[Button], b: Button) -> Option<[f32; 4]> {
+    let i = order.iter().position(|o| *o == b)?;
+    let [rx, ry, rw, rh] = rect(ww, wh, order.len());
+    let cell = rh / order.len() as f32;
+    Some([rx, ry + i as f32 * cell, rw, cell])
+}
+
 fn cov(d: f32, px: f32) -> f32 {
     (0.5 - d / px).clamp(0.0, 1.0)
 }
@@ -299,6 +307,8 @@ mod tests {
             for (i, b) in order.iter().enumerate() {
                 let y = ry + rh / order.len() as f32 * (i as f32 + 0.5);
                 assert_eq!(button_at(ww, wh, rx + rw / 2.0, y, &order), Some(*b), "{b:?}");
+                let [bx, by, bw, bh] = button_rect(ww, wh, &order, *b).unwrap();
+                assert_eq!(button_at(ww, wh, bx + bw / 2.0, by + bh / 2.0, &order), Some(*b), "{b:?}");
             }
             assert_eq!(button_at(ww, wh, rx - 5.0, ry + 3.0, &order), None);
             // the pill fits in the window with room to spare

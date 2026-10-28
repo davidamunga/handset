@@ -9,6 +9,7 @@ use crate::frame::{self, Bezel};
 use crate::menu;
 use crate::mirror::Mirror;
 use crate::overlay;
+use crate::popup::{self, Anchor, Outcome, Popup};
 use crate::render::Renderer;
 use crate::restyle;
 use crate::server;
@@ -103,6 +104,8 @@ struct Waiting {
     paused: bool,
     /// An iOS device that is plugged in (macOS): its capture id and name. Offered, never started by itself.
     iphone: Option<(String, String)>,
+    /// The address or pairing code being typed, which takes the keyboard while it is open.
+    field: Option<connect::Field>,
 }
 
 impl Waiting {
@@ -131,6 +134,7 @@ impl Waiting {
             next_retry: Instant::now() + RECONNECT_EVERY,
             paused: false,
             iphone: None,
+            field: None,
             recent: crate::recent::load(),
         }
     }
@@ -173,6 +177,8 @@ pub struct App {
     occluded: bool,
     toolbar_key: Option<(u32, Option<Button>, bool, bool, bool)>,
     toast: Option<Toast>,
+    /// The menu drawn in the window, while it is open.
+    popup: Option<Popup>,
     /// What the renderer's overlay currently shows (text, dot colour).
     overlay_key: Option<(String, Option<[u8; 3]>)>,
     overlay_opacity: f32,
@@ -268,6 +274,7 @@ impl App {
             occluded: false,
             toolbar_key: None,
             toast: None,
+            popup: None,
             overlay_key: None,
             overlay_opacity: 1.0,
             overlay_layout: None,
@@ -330,6 +337,7 @@ impl App {
                 doctor: wt.doctor.as_deref(),
                 ios: cfg!(target_os = "macos"),
                 iphone: wt.iphone.as_ref().map(|(uid, name)| (uid.as_str(), name.as_str())),
+                field: wt.field.as_ref(),
             };
             connect::render(pw, ph, &model)
         };
@@ -476,13 +484,13 @@ impl App {
                 wt.busy = false;
                 wt.note = Some(brief(&e));
             }
-            LandingEvent::Typed(Some(addr)) => {
+            LandingEvent::Typed(addr) => {
+                wt.field = None;
                 wt.busy = true;
                 wt.note = Some(format!("Connecting to {}...", crate::adb::normalize_addr(&addr)));
                 connect::connect_async(proxy, addr);
             }
-            LandingEvent::Typed(None) => redraw = false,
-            LandingEvent::Code(Some(code)) => {
+            LandingEvent::Code(code) => {
                 // the phone's own pairing screen, not the one our QR code made
                 let ours = wt.qr.as_ref().map(|q| q.name.as_str());
                 match wt
@@ -491,6 +499,7 @@ impl App {
                     .find(|s| s.kind == crate::adb::ServiceKind::Pairing && Some(s.name.as_str()) != ours)
                 {
                     Some(p) => {
+                        wt.field = None;
                         wt.pairing = true;
                         wt.note = Some("Pairing...".into());
                         connect::pair_async(proxy, p.addr.clone(), code);
@@ -501,12 +510,40 @@ impl App {
                     }
                 }
             }
-            LandingEvent::Code(None) => redraw = false,
             LandingEvent::Doctor(checks) => wt.doctor = Some(checks),
         }
         if redraw {
             self.draw_connect();
         }
+    }
+
+    /// A key pressed while the connect screen's text field is open goes to the field. Returns whether it did.
+    fn on_field_key(&mut self, event: &winit::event::KeyEvent) -> bool {
+        let cmd = self.mods.super_key() || self.mods.control_key();
+        let Some(field) = self.waiting.as_mut().and_then(|wt| wt.field.as_mut()) else { return false };
+        match &event.logical_key {
+            Key::Named(NamedKey::Escape) => self.on_action(Action::Cancel),
+            Key::Named(NamedKey::Enter) => self.on_action(Action::Submit),
+            Key::Named(NamedKey::Backspace) => {
+                field.backspace();
+                self.draw_connect();
+            }
+            Key::Character(c) if cmd && c.eq_ignore_ascii_case("v") => {
+                if let Some(clip) = crate::clipboard::read_mac() {
+                    field.paste(&clip);
+                    self.draw_connect();
+                }
+            }
+            // other shortcuts (zoom, for one) keep working while the field is open
+            _ if cmd => return false,
+            _ => {
+                if let Some(t) = &event.text {
+                    field.insert(t);
+                    self.draw_connect();
+                }
+            }
+        }
+        true
     }
 
     /// A landing screen button was clicked.
@@ -523,11 +560,13 @@ impl App {
         match action {
             Action::Open(View::Wifi) => {
                 wt.view = View::Wifi;
+                wt.field = None;
                 wt.note = None;
                 connect::want_mdns(true);
             }
             Action::Open(View::Qr) => {
                 wt.view = View::Qr;
+                wt.field = None;
                 wt.note = None;
                 wt.pairing = false;
                 wt.paired_ip = None;
@@ -542,6 +581,7 @@ impl App {
             }
             Action::Open(View::Home) | Action::Back => {
                 wt.view = View::Home;
+                wt.field = None;
                 wt.note = None;
                 wt.qr = None;
                 connect::want_mdns(false);
@@ -551,8 +591,19 @@ impl App {
                 wt.note = Some(format!("Connecting to {addr}..."));
                 connect::connect_async(proxy, addr);
             }
-            Action::TypeAddress if !wt.busy => connect::ask_address_async(proxy),
-            Action::PairWithCode if !wt.busy && !wt.pairing => connect::ask_code_async(proxy),
+            Action::TypeAddress if !wt.busy => wt.field = Some(connect::Field::new(connect::FieldKind::Address)),
+            Action::PairWithCode if !wt.busy && !wt.pairing => {
+                wt.field = Some(connect::Field::new(connect::FieldKind::Code));
+            }
+            Action::Submit => {
+                // the field stays open (with what was typed) until connecting or pairing actually starts
+                if let Some(event) = wt.field.as_ref().and_then(|f| f.submit()) {
+                    wt.hover = None;
+                    self.on_landing(event);
+                }
+                return;
+            }
+            Action::Cancel => wt.field = None,
             Action::Mirror(serial) => {
                 wt.paused = false;
                 wt.starting = Some((serial.clone(), Instant::now() + Duration::from_millis(300)));
@@ -886,7 +937,18 @@ impl App {
             Button::Record => self.on_menu(el, "rec"),
             Button::Rotate => self.on_menu(el, "rotate"),
             Button::Update => self.act_on_update(),
-            Button::More => self.show_menu(),
+            Button::More => {
+                let (ww, wh) = self
+                    .window
+                    .as_ref()
+                    .map(|w| w.inner_size())
+                    .map_or((0.0, 0.0), |s| (s.width as f32, s.height as f32));
+                let order = toolbar::order(self.is_ios(), self.update.is_some());
+                match toolbar::button_rect(ww, wh, &order, Button::More) {
+                    Some(r) => self.show_menu(Anchor::Beside(r)),
+                    None => self.show_menu(Anchor::Point(self.cursor.0 as f32, self.cursor.1 as f32)),
+                }
+            }
             Button::Quit => el.exit(),
             Button::NextFrame => {
                 // None -> each built-in frame (only the iOS ones for an iOS device) -> back to None
@@ -907,7 +969,8 @@ impl App {
         Some(winit::dpi::PhysicalSize::new((height as f32 * aspect).round() as u32, height))
     }
 
-    fn show_menu(&mut self) {
+    /// Open the menu: the native one at the pointer, or the drawn one at `anchor`.
+    fn show_menu(&mut self, anchor: Anchor) {
         let Some(w) = self.window.clone() else { return };
         let ios = self.is_ios();
         let frames = frame::names_for(ios);
@@ -937,7 +1000,108 @@ impl App {
             apps_loading: self.apps_loading,
             recent: capture::recent_captures(5),
         };
-        menu::show(&w, &state);
+        if !menu::drawn() {
+            menu::show(&w, &state);
+            return;
+        }
+        let s = w.inner_size();
+        self.popup =
+            Some(Popup::new(menu::build(&state), anchor, (s.width as f32, s.height as f32), w.scale_factor() as f32));
+        // the menu covers the toolbar's hint
+        if self.hover.take().is_some() {
+            self.refresh_toolbar();
+            self.refresh_overlay();
+        }
+        if let Some(p) = self.popup.as_mut() {
+            p.pointer_moved(self.cursor.0 as f32, self.cursor.1 as f32);
+        }
+        self.refresh_popup();
+    }
+
+    /// Show the drawn menu as it is now, or take it away once it is closed.
+    fn refresh_popup(&mut self) {
+        let panels = self.popup.as_ref().map(|p| p.raster()).unwrap_or_default();
+        if let Some(r) = self.renderer.as_mut() {
+            r.set_menu(&panels);
+        }
+        if let Some(w) = &self.window {
+            w.request_redraw();
+        }
+    }
+
+    fn close_popup(&mut self) {
+        if self.popup.take().is_some() {
+            self.refresh_popup();
+        }
+    }
+
+    /// While the drawn menu is open it takes the pointer and the keyboard. True when it used `event`.
+    fn popup_event(&mut self, el: &ActiveEventLoop, event: &WindowEvent) -> bool {
+        let Some(p) = self.popup.as_mut() else { return false };
+        let (x, y) = (self.cursor.0 as f32, self.cursor.1 as f32);
+        let outcome = match event {
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor = (position.x, position.y);
+                let changed = p.pointer_moved(position.x as f32, position.y as f32);
+                if let Some(w) = &self.window {
+                    w.set_cursor(Cursor::Icon(CursorIcon::Default));
+                }
+                if changed {
+                    self.refresh_popup();
+                }
+                return true;
+            }
+            WindowEvent::MouseInput { state: ElementState::Pressed, button, .. } => match p.click(x, y) {
+                // a right-click elsewhere opens the menu again there
+                Outcome::Closed if *button == MouseButton::Right => {
+                    self.close_popup();
+                    return false;
+                }
+                o => o,
+            },
+            WindowEvent::MouseInput { .. } => return true,
+            WindowEvent::MouseWheel { delta, .. } => {
+                let dy = match delta {
+                    MouseScrollDelta::LineDelta(_, dy) => -dy * 3.0 * p.row_height(),
+                    MouseScrollDelta::PixelDelta(d) => -d.y as f32,
+                };
+                if p.scroll(x, y, dy) {
+                    self.refresh_popup();
+                }
+                return true;
+            }
+            WindowEvent::KeyboardInput { event, .. } => {
+                if event.state != ElementState::Pressed {
+                    return true;
+                }
+                let key = match &event.logical_key {
+                    Key::Named(NamedKey::Escape) => popup::Key::Escape,
+                    Key::Named(NamedKey::ArrowUp) => popup::Key::Up,
+                    Key::Named(NamedKey::ArrowDown) => popup::Key::Down,
+                    Key::Named(NamedKey::ArrowLeft) => popup::Key::Left,
+                    Key::Named(NamedKey::ArrowRight) => popup::Key::Right,
+                    Key::Named(NamedKey::Enter | NamedKey::Space) => popup::Key::Enter,
+                    // nothing reaches the phone while the menu is open
+                    _ => return true,
+                };
+                p.key(key)
+            }
+            // the menu was laid out for the window as it was
+            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } | WindowEvent::Focused(false) => {
+                self.close_popup();
+                return false;
+            }
+            _ => return false,
+        };
+        match outcome {
+            Outcome::Open => self.refresh_popup(),
+            Outcome::Closed => self.close_popup(),
+            Outcome::Chose(id) => {
+                self.close_popup();
+                self.on_menu(el, &id);
+            }
+        }
+        true
     }
 
     /// Switch the frame while running (`None` = no frame).
@@ -1101,6 +1265,14 @@ impl App {
                 let _ = self.control.rotate_device();
             }
             "quit" => el.exit(),
+            // the drawn menu's About: there is no About window to open
+            "about" => {
+                self.show_toast(&format!("HANDSET {} - GITHUB.COM/DAVIDAMUNGA/HANDSET", env!("CARGO_PKG_VERSION")));
+                if let Some(t) = self.toast.as_mut() {
+                    t.url = Some("https://github.com/davidamunga/handset".into());
+                    t.ttl = TOAST_SAVED;
+                }
+            }
             "frame:none" => self.set_frame(None),
             other if other.starts_with("recent:") => {
                 // recent:<action>:<absolute path>
@@ -1699,10 +1871,18 @@ impl ApplicationHandler<UserEvent> for App {
             }
         }
         if self.waiting.is_some() {
-            // HANDSET_LANDING=wifi|qr opens that view first (for looking at it without clicking)
+            // HANDSET_LANDING=wifi|qr|address|code opens that view (or field) first, for looking at it without clicking
             match std::env::var("HANDSET_LANDING").as_deref() {
                 Ok("wifi") => self.on_action(Action::Open(View::Wifi)),
                 Ok("qr") => self.on_action(Action::Open(View::Qr)),
+                Ok("address") => {
+                    self.on_action(Action::Open(View::Wifi));
+                    self.on_action(Action::TypeAddress);
+                }
+                Ok("code") => {
+                    self.on_action(Action::Open(View::Qr));
+                    self.on_action(Action::PairWithCode);
+                }
                 _ => self.draw_connect(),
             }
         }
@@ -1858,6 +2038,9 @@ impl ApplicationHandler<UserEvent> for App {
     }
 
     fn window_event(&mut self, el: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        if self.popup_event(el, &event) {
+            return;
+        }
         match event {
             WindowEvent::CloseRequested => el.exit(),
             WindowEvent::Resized(s) => {
@@ -1958,7 +2141,7 @@ impl ApplicationHandler<UserEvent> for App {
                     let _ = self.control.touch(Touch::Up, 0, 0, self.device.0, self.device.1);
                     self.show_touch(Touch::Up, 0, 0);
                 }
-                self.show_menu();
+                self.show_menu(Anchor::Point(self.cursor.0 as f32, self.cursor.1 as f32));
             }
             WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. }
                 if self.resizing.is_some() =>
@@ -2077,6 +2260,9 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 if self.debug {
                     eprintln!("key {:?} text {:?}", event.logical_key, event.text);
+                }
+                if self.on_field_key(&event) {
+                    return;
                 }
                 let code = match &event.logical_key {
                     Key::Named(NamedKey::Escape) => Some(keycode::BACK),

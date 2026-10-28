@@ -106,7 +106,7 @@ pub fn run(dir: &Path) -> i32 {
     let keys = keys_from(KEYS);
     let mut failed = false;
     let mut found = false;
-    for sums in ["SHA256SUMS", "SHA256SUMS-windows"] {
+    for sums in ["SHA256SUMS", "SHA256SUMS-windows", "SHA256SUMS-linux"] {
         if !dir.join(sums).is_file() {
             continue;
         }
@@ -120,7 +120,7 @@ pub fn run(dir: &Path) -> i32 {
         }
     }
     if !found {
-        eprintln!("no SHA256SUMS or SHA256SUMS-windows in {}", dir.display());
+        eprintln!("no SHA256SUMS, SHA256SUMS-windows or SHA256SUMS-linux in {}", dir.display());
         return 1;
     }
     i32::from(failed)
