@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0
+
+### Minor Changes
+
+- [#107](https://github.com/davidamunga/handset/pull/107) [`c115b6f`](https://github.com/davidamunga/handset/commit/c115b6f79cf6182737cd99879d9c6ba049005030) - Added "Turn On Audio" to the right-click menu for Android phones. It restarts the session with sound and remembers the choice, so audio no longer needs the `--audio` flag on Windows and Linux.
+
 ## 0.9.3
 
 ### Patch Changes
