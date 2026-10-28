@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1
+
+### Patch Changes
+
+- [#113](https://github.com/davidamunga/handset/pull/113) [`f801b6a`](https://github.com/davidamunga/handset/commit/f801b6a8309005fe077879942b73a9502fddf5d9) - Fixed Mirror iPhone doing nothing in the macOS download. The signed app now carries the camera and microphone entitlements macOS needs, and an iPhone that cannot be mirrored keeps its error on the connect screen instead of going back to "Looking for a phone...".
+
 ## 0.11.0
 
 ### Minor Changes

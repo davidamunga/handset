@@ -1621,7 +1621,7 @@ dependencies = [
 
 [[package]]
 name = "handset"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "ab_glyph",
  "block2 0.6.2",
