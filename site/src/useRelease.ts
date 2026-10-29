@@ -3,9 +3,12 @@ import { REPO, RELEASES } from './links'
 
 export type Download = { url: string; size: string }
 export type LinuxArch = 'x86_64' | 'aarch64'
+/** Downloads of the installable files, across every release. Checksums, signatures and the update archive are left out. */
+export type Downloads = { total: number; mac: number; windows: number; linux: number }
 export type Release = {
   version: string
   page: string
+  downloads: Downloads
   mac?: Download
   windows?: Download
   linux: Partial<Record<LinuxArch, Download>>
@@ -13,14 +16,32 @@ export type Release = {
 
 const mb = (bytes: number) => `${(bytes / 1_048_576).toFixed(0)} MB`
 
-/** The newest release from GitHub, so the buttons point at the real files. Null until it arrives, or if it cannot. */
+type Asset = { name: string; size: number; browser_download_url: string; download_count: number }
+type GithubRelease = { tag_name: string; html_url: string; prerelease: boolean; draft: boolean; assets: Asset[] }
+
+function countDownloads(releases: GithubRelease[]): Downloads {
+  const d = { total: 0, mac: 0, windows: 0, linux: 0 }
+  for (const a of releases.flatMap((r) => r.assets)) {
+    const os = a.name.endsWith('-macos.zip') ? 'mac' : a.name.endsWith('-windows.zip') ? 'windows' : /-linux-.+\.tar\.gz$/.test(a.name) ? 'linux' : null
+    if (!os) continue
+    d[os] += a.download_count
+    d.total += a.download_count
+  }
+  return d
+}
+
+/** The newest release from GitHub, so the buttons point at the real files, and how often every release was downloaded.
+ * Null until it arrives, or if it cannot. */
 export function useRelease(): Release | null {
   const [release, setRelease] = useState<Release | null>(null)
   useEffect(() => {
     const ctl = new AbortController()
-    fetch(`https://api.github.com/repos/${REPO.split('github.com/')[1]}/releases/latest`, { signal: ctl.signal })
+    fetch(`https://api.github.com/repos/${REPO.split('github.com/')[1]}/releases?per_page=100`, { signal: ctl.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((j: { tag_name: string; html_url: string; assets: { name: string; size: number; browser_download_url: string }[] }) => {
+      .then((all: GithubRelease[]) => {
+        const published = all.filter((r) => !r.draft)
+        const j = published.find((r) => !r.prerelease)
+        if (!j) return
         const pick = (suffix: string): Download | undefined => {
           const a = j.assets.find((x) => x.name.endsWith(suffix))
           return a && { url: a.browser_download_url, size: mb(a.size) }
@@ -28,6 +49,7 @@ export function useRelease(): Release | null {
         setRelease({
           version: j.tag_name.replace(/^v/, ''),
           page: j.html_url || RELEASES,
+          downloads: countDownloads(published),
           mac: pick('-macos.zip'),
           windows: pick('-windows.zip'),
           linux: { x86_64: pick('-linux-x86_64.tar.gz'), aarch64: pick('-linux-aarch64.tar.gz') },

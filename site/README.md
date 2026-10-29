@@ -14,4 +14,5 @@ npm run build    # builds into site/dist, adds a page per legal URL, and type-ch
 The pictures, the icon and the Open Graph image come from `docs/images` and `app/packaging/icon`
 (`scripts/sync-assets.mjs` copies them into `public/shared`, which is git-ignored). Change them there.
 
-The download buttons read the latest release from the GitHub API, so there is no version number to update.
+The download buttons read the releases from the GitHub API, so there is no version number to update. The same
+request gives the download counts shown beside each system: installable files only, summed over every release.

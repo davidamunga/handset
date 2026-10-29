@@ -21,6 +21,7 @@ export function DownloadSection() {
             {release ? (
               <>
                 Latest: <a className="underline underline-offset-4 hover:text-paper" href={release.page}>v{release.version}</a>
+                {release.downloads.total > 0 && <> · {count(release.downloads.total)} downloads</>}
               </>
             ) : (
               <a className="underline underline-offset-4 hover:text-paper" href={RELEASES}>
@@ -42,6 +43,7 @@ export function DownloadSection() {
                     : 'Experimental: there is no download yet, so it installs from source with Cargo. Works on Ubuntu 22.04 or Debian 12 and newer, Fedora, Arch (and Omarchy), Alpine and NixOS. It has not run on a real Linux desktop yet.'
                 }
                 file={linux}
+                downloads={release?.downloads.linux}
                 fallback={LINUX_GUIDE}
                 cta={linux ? `Download for Linux (${arch})` : 'Read the Linux guide'}
                 alt={release?.linux[other] && { label: `${other} instead`, url: release.linux[other].url }}
@@ -59,6 +61,7 @@ export function DownloadSection() {
                 title="macOS"
                 note="macOS 12 or later, Apple Silicon and Intel. Signed and notarised."
                 file={release?.mac}
+                downloads={release?.downloads.mac}
                 fallback={release?.page ?? RELEASES}
                 cta="Download for macOS"
                 command={BREW}
@@ -71,6 +74,7 @@ export function DownloadSection() {
                 title="Windows"
                 note="Windows 10 or 11. Not code-signed yet, so SmartScreen asks once: More info, then Run anyway."
                 file={release?.windows}
+                downloads={release?.downloads.windows}
                 fallback={release?.page ?? RELEASES}
                 cta="Download for Windows"
                 command={SCOOP}
@@ -95,10 +99,13 @@ export function DownloadSection() {
   )
 }
 
+const count = (n: number) => n.toLocaleString('en-US')
+
 function Card(props: {
   title: string
   note: string
   file?: Download
+  downloads?: number
   fallback: string
   cta: string
   alt?: { label: string; url: string }
@@ -110,7 +117,12 @@ function Card(props: {
     <div className={`min-w-0 rounded-3xl p-7 sm:p-8 ${props.featured ? 'bg-stage-2 ring-1 ring-stage-line' : 'bg-stage ring-1 ring-stage-line'}`}>
       <div className="flex items-baseline justify-between gap-4">
         <h3 className="font-display text-2xl font-bold">{props.title}</h3>
-        {props.file && <span className="text-sm text-stage-text">{props.file.size}</span>}
+        {props.file && (
+          <span className="text-sm text-stage-text">
+            {props.file.size}
+            {props.downloads ? ` · ${count(props.downloads)} downloads` : ''}
+          </span>
+        )}
       </div>
       <p className="mt-3 text-[0.95rem] text-stage-text">{props.note}</p>
       <a
