@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0
+
+### Minor Changes
+
+- [#129](https://github.com/davidamunga/handset/pull/129) [`1cfbbfe`](https://github.com/davidamunga/handset/commit/1cfbbfedd55dca9e54cae27a87fc0dd5c28d7ff8) - New Window in the right-click menu opens another Handset window, for example an Android phone in one and an iPhone or iPad in the other. The new window starts on the connect screen and leaves the phone the first window shows alone.
+
 ## 0.11.5
 
 ### Patch Changes
