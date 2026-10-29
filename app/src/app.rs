@@ -206,6 +206,8 @@ pub struct App {
     update_auto: bool,
     /// Whether the first picture of the current iOS device was looked at to pick an iPad frame.
     ipad_frame_checked: bool,
+    /// The iOS device being mirrored is an iPad, so it has its own saved frame.
+    ipad: bool,
     update: Option<update::Release>,
     /// The version this run has already announced with a toast.
     update_told: Option<String>,
@@ -298,6 +300,7 @@ impl App {
             tilt_start: init.tilt,
             update_auto: init.update_check,
             ipad_frame_checked: false,
+            ipad: false,
             just_updated: init.updated_from,
             update: None,
             update_told: None,
@@ -727,8 +730,9 @@ impl App {
                 self.waiting = None;
                 connect::stop_poll();
                 connect::want_mdns(false);
-                self.switch_frame_family(true);
                 self.ipad_frame_checked = false;
+                self.ipad = false;
+                self.switch_frame_family(true);
             }
             Err(e) => {
                 eprintln!("{e}");
@@ -740,13 +744,24 @@ impl App {
         }
     }
 
-    /// The first picture of an iOS device shows whether it is an iPad; one that has no frame of its own
-    /// chosen yet gets the iPad frame instead of the iPhone one.
+    /// The first picture of an iOS device shows whether it is an iPad. An iPad has its own saved frame
+    /// (an iPhone's would squeeze its picture into a narrow screen), the iPad one until it is changed.
     fn use_ipad_frame(&mut self) {
-        let (w, h) = (self.device.0 as u32, self.device.1 as u32);
-        let unchosen = settings::Settings::load().get("frame-ios").is_none();
-        if unchosen && self.frame_spec.as_deref() == Some(frame::IOS_DEFAULT) && frame::is_tablet_shape(w, h) {
-            self.apply_frame(Some(frame::IPAD_DEFAULT.to_string()), false);
+        if !frame::is_tablet_shape(self.device.0 as u32, self.device.1 as u32) {
+            return;
+        }
+        self.ipad = true;
+        if self.frame_spec.as_deref().is_some_and(|s| !frame::builtin_names().any(|n| n == s)) {
+            return;
+        }
+        let saved = settings::Settings::load();
+        let want = match saved.get("frame-ipad") {
+            Some("none") => None,
+            Some(spec) => Some(spec.to_string()),
+            None => Some(frame::IPAD_DEFAULT.to_string()),
+        };
+        if want != self.frame_spec {
+            self.apply_frame(want, false);
         }
     }
 
@@ -1158,7 +1173,12 @@ impl App {
         });
         // an iOS device keeps its own frame, so going back to Android finds the phone's frame
         if remember {
-            settings::save(if self.is_ios() { "frame-ios" } else { "frame" }, self.frame_spec_name(&spec));
+            let key = match (self.is_ios(), self.ipad) {
+                (true, true) => "frame-ipad",
+                (true, false) => "frame-ios",
+                _ => "frame",
+            };
+            settings::save(key, self.frame_spec_name(&spec));
         }
         self.frame_spec = spec;
         // keep the height, follow the new aspect ratio
