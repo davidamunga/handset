@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.5
+
+### Patch Changes
+
+- [#126](https://github.com/davidamunga/handset/pull/126) [`f29632c`](https://github.com/davidamunga/handset/commit/f29632c5611a1708bc5b92e2090d82aea52fa67f) - An iPad now opens in the iPad frame even if you have picked an iPhone frame before. It keeps its own frame choice, separate from the iPhone's.
+
 ## 0.11.4
 
 ### Patch Changes
