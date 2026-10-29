@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.4
+
+### Patch Changes
+
+- [#123](https://github.com/davidamunga/handset/pull/123) [`2e0ae10`](https://github.com/davidamunga/handset/commit/2e0ae10e975821a8d8209c61f7fee37062e350ab) - An iPad now opens in an iPad-shaped frame instead of the iPhone one, so its picture fills the screen.
+
 ## 0.11.3
 
 ### Patch Changes
