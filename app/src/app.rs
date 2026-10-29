@@ -204,6 +204,8 @@ pub struct App {
     tilt_start: Tilt,
     /// Look for newer releases by itself (a saved setting), and the newer release once one is found.
     update_auto: bool,
+    /// Whether the first picture of the current iOS device was looked at to pick an iPad frame.
+    ipad_frame_checked: bool,
     update: Option<update::Release>,
     /// The version this run has already announced with a toast.
     update_told: Option<String>,
@@ -295,6 +297,7 @@ impl App {
             touches_start: init.touches,
             tilt_start: init.tilt,
             update_auto: init.update_check,
+            ipad_frame_checked: false,
             just_updated: init.updated_from,
             update: None,
             update_told: None,
@@ -725,6 +728,7 @@ impl App {
                 connect::stop_poll();
                 connect::want_mdns(false);
                 self.switch_frame_family(true);
+                self.ipad_frame_checked = false;
             }
             Err(e) => {
                 eprintln!("{e}");
@@ -733,6 +737,16 @@ impl App {
                 }
                 self.draw_connect();
             }
+        }
+    }
+
+    /// The first picture of an iOS device shows whether it is an iPad; one that has no frame of its own
+    /// chosen yet gets the iPad frame instead of the iPhone one.
+    fn use_ipad_frame(&mut self) {
+        let (w, h) = (self.device.0 as u32, self.device.1 as u32);
+        let unchosen = settings::Settings::load().get("frame-ios").is_none();
+        if unchosen && self.frame_spec.as_deref() == Some(frame::IOS_DEFAULT) && frame::is_tablet_shape(w, h) {
+            self.apply_frame(Some(frame::IPAD_DEFAULT.to_string()), false);
         }
     }
 
@@ -1120,6 +1134,11 @@ impl App {
 
     /// Switch the frame while running (`None` = no frame).
     fn set_frame(&mut self, spec: Option<String>) {
+        self.apply_frame(spec, true);
+    }
+
+    /// `remember` keeps the choice for next time; the iPad frame picked for you is not a choice.
+    fn apply_frame(&mut self, spec: Option<String>, remember: bool) {
         let bezel = match spec.as_deref().map(frame::load).transpose() {
             Ok(b) => b,
             Err(e) => {
@@ -1138,7 +1157,9 @@ impl App {
             b
         });
         // an iOS device keeps its own frame, so going back to Android finds the phone's frame
-        settings::save(if self.is_ios() { "frame-ios" } else { "frame" }, self.frame_spec_name(&spec));
+        if remember {
+            settings::save(if self.is_ios() { "frame-ios" } else { "frame" }, self.frame_spec_name(&spec));
+        }
         self.frame_spec = spec;
         // keep the height, follow the new aspect ratio
         let height = w.inner_size().height;
@@ -2053,14 +2074,22 @@ impl ApplicationHandler<UserEvent> for App {
             UserEvent::Adb(result) => self.on_adb(result),
             UserEvent::Landing(event) => self.on_landing(event),
             UserEvent::Frame => {
-                let (Some(r), Some(w)) = (self.renderer.as_mut(), self.window.as_ref()) else { return };
+                if self.renderer.is_none() || self.window.is_none() {
+                    return;
+                }
                 // the frame itself goes to the GPU when it is drawn (`upload_latest`)
                 let s = self.slot.lock().unwrap();
                 let black = s.black;
                 if s.fresh {
                     self.device = (s.yuv.width as u16, s.yuv.height as u16);
                 }
+                let fresh = s.fresh;
                 drop(s);
+                if fresh && !self.ipad_frame_checked && self.is_ios() {
+                    self.ipad_frame_checked = true;
+                    self.use_ipad_frame();
+                }
+                let (Some(r), Some(w)) = (self.renderer.as_mut(), self.window.as_ref()) else { return };
 
                 let landscape = self.device.0 > self.device.1;
                 if landscape != r.landscape() {

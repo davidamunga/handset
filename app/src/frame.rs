@@ -38,6 +38,8 @@ const BUILTIN: &[(&str, &[u8], &str)] = builtin![
     "flat-sage",
     "tablet-space",
     "tablet-silver",
+    "ipad-space",
+    "ipad-silver",
     "fold-black",
     "fold-cream",
     "flip-lilac",
@@ -51,10 +53,19 @@ pub fn builtin_names() -> impl Iterator<Item = &'static str> {
 }
 
 /// The device types an iPhone or iPad looks like; the others have Android shapes (punch-hole, fold...).
-const IOS_DEVICES: &[&str] = &["island", "notch", "home", "tablet"];
+const IOS_DEVICES: &[&str] = &["island", "notch", "home", "ipad", "tablet"];
 
 /// The frame an iOS device starts in.
 pub const IOS_DEFAULT: &str = "island-black";
+
+/// The frame an iPad starts in: an iPhone's frame would squeeze its picture into a narrow screen.
+pub const IPAD_DEFAULT: &str = "ipad-space";
+
+/// Whether a picture of this size is a tablet's (iPhones are 0.46 to 0.56 wide for their height).
+pub fn is_tablet_shape(w: u32, h: u32) -> bool {
+    let (short, long) = (w.min(h) as f32, w.max(h) as f32);
+    long > 0.0 && short / long > 0.6
+}
 
 /// Whether a built-in frame suits an iOS device.
 pub fn is_ios(name: &str) -> bool {
@@ -194,9 +205,18 @@ mod tests {
     fn ios_frames_are_apple_shaped_and_include_the_default() {
         let ios = names_for(true);
         assert!(ios.contains(&IOS_DEFAULT));
-        assert!(ios.iter().all(|n| ["island-", "notch-", "home-", "tablet-"].iter().any(|p| n.starts_with(p))));
+        assert!(
+            ios.iter().all(|n| ["island-", "notch-", "home-", "ipad-", "tablet-"].iter().any(|p| n.starts_with(p)))
+        );
         assert!(!ios.contains(&"obsidian") && !ios.contains(&"fold-black"));
         assert_eq!(names_for(false).len(), builtin_names().count());
+    }
+
+    #[test]
+    fn tells_an_ipad_from_an_iphone() {
+        assert!(!is_tablet_shape(1290, 2796) && !is_tablet_shape(2796, 1290) && !is_tablet_shape(750, 1334));
+        assert!(is_tablet_shape(1640, 2360) && is_tablet_shape(2752, 2064) && is_tablet_shape(1488, 2266));
+        assert!(names_for(true).contains(&IPAD_DEFAULT));
     }
 
     #[test]

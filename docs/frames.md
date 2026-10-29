@@ -17,6 +17,7 @@ Pick one in the right-click menu (Frame), with the Next Frame button on the tool
 | `home` | an older phone with bezels and a home button | `black`, `white` |
 | `flat` | flat edges and a punch hole | `slate`, `sage` |
 | `tablet` | a 5:8 tablet | `space`, `silver` |
+| `ipad` | an iPad, chosen for you when one is mirrored | `space`, `silver` |
 | `fold` | an unfolded foldable, with a crease | `black`, `cream` |
 | `flip` | an unfolded flip phone, with a hinge | `lilac`, `black` |
 | `rugged` | a rugged phone with a rubber bumper | `orange`, `olive` |
