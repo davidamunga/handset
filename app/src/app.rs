@@ -391,6 +391,9 @@ impl App {
     /// New `adb devices` result while waiting: update what the screen says, or start mirroring.
     fn on_adb(&mut self, result: Result<Vec<(String, String)>, String>) {
         let Some(wt) = self.waiting.as_mut() else { return };
+        // a window opened from another one leaves that one's phone alone
+        let skip = connect::skipped();
+        let result = result.map(|list| list.into_iter().filter(|(s, _)| skip.as_ref() != Some(s)).collect::<Vec<_>>());
         if wt.starting.is_some() {
             return;
         }
@@ -1309,6 +1312,7 @@ impl App {
             "conn:disconnect" => {
                 self.leave_session(View::Home);
             }
+            "win:new" => self.new_window(),
             "conn:another" => {
                 self.leave_session(View::Wifi);
             }
@@ -1727,6 +1731,19 @@ impl App {
                 eprintln!("screenshot failed: {e}");
                 self.show_toast("SCREENSHOT FAILED");
             }
+        }
+    }
+
+    /// Another Handset window, in its own process, for a second phone. It starts on the connect screen and
+    /// does not pick up the phone this window shows.
+    fn new_window(&mut self) {
+        let exe = std::env::current_exe().unwrap_or_else(|_| "handset".into());
+        let mut cmd = crate::tools::command(exe);
+        if let Some(m) = &self.mirror {
+            cmd.env(connect::SKIP_ENV, m.serial());
+        }
+        if cmd.spawn().is_err() {
+            self.show_toast("NEW WINDOW FAILED");
         }
     }
 

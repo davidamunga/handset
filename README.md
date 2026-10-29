@@ -187,7 +187,8 @@ Pair device with pairing code, run `handset --pair <ip:port> <code>` with what i
 `handset --wifi` does it from a USB connection in one step. The phone and the Mac must be on the same network.
 
 A running session has a **Phone** submenu (right-click): **Switch to Wi-Fi** for a USB phone, **Connect Another
-Phone** and **Disconnect**. After Disconnect nothing restarts by itself; the connect screen offers the phone
+Phone**, **New Window** (a second window for a second phone, or an iPhone or iPad beside an Android
+phone) and **Disconnect**. After Disconnect nothing restarts by itself; the connect screen offers the phone
 that is plugged in, or the Wi-Fi and QR options.
 
 ## Features

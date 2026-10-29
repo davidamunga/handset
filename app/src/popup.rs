@@ -890,6 +890,7 @@ mod tests {
         let known = [
             "conn:wifi",
             "conn:another",
+            "win:new",
             "conn:disconnect",
             "shot",
             "rec",

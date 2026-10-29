@@ -238,9 +238,10 @@ fn main() {
     } else if let Some(addr) = &connect {
         Some(adb::connect(addr).unwrap_or_else(|e| tools::die(&e.to_string())))
     } else {
+        let skip = connect::skipped();
         adb::devices().ok().and_then(|d| match &serial {
             Some(want) => d.into_iter().find(|s| s == want),
-            None => d.into_iter().next(),
+            None => d.into_iter().find(|s| skip.as_ref() != Some(s)),
         })
     };
 
