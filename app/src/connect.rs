@@ -42,6 +42,13 @@ pub fn pick(list: &[(String, String)], want: Option<&str>) -> Option<String> {
         .map(|(serial, _)| serial.clone())
 }
 
+/// The phone another Handset window is already showing, which a window opened from it leaves alone.
+pub const SKIP_ENV: &str = "HANDSET_SKIP";
+
+pub fn skipped() -> Option<String> {
+    std::env::var(SKIP_ENV).ok().filter(|s| !s.is_empty())
+}
+
 /// Is this adb serial a phone reached over the network (`ip:port` or an mDNS name)?
 pub fn is_wireless(serial: &str) -> bool {
     serial.contains(':') || serial.contains("_adb-tls")

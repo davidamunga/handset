@@ -198,6 +198,7 @@ pub fn build(s: &State) -> Vec<Entry> {
     let phone = vec![
         item("conn:wifi", "Switch to Wi-Fi").enabled(s.mirroring && s.usb).into(),
         item("conn:another", "Connect Another Phone\u{2026}").into(),
+        item("win:new", "New Window").into(),
         item("conn:disconnect", "Disconnect").enabled(s.mirroring).into(),
     ];
     let mut open_app = Vec::new();
