@@ -1,5 +1,5 @@
 {
-  "version": "0.11.5",
+  "version": "0.12.0",
   "description": "Mirror and control an Android phone from your computer, inside a realistic phone frame",
   "homepage": "https://github.com/davidamunga/handset",
   "license": "Apache-2.0",
@@ -8,9 +8,9 @@
   "suggest": {
     "ffmpeg": "ffmpeg"
   },
-  "url": "https://github.com/davidamunga/handset/releases/download/v0.11.5/Handset-0.11.5-windows.zip",
-  "hash": "d9e900a5b4527469e52031ba524af082f0fc38c1ee2306c064f3c77a20a131b7",
-  "extract_dir": "Handset-0.11.5",
+  "url": "https://github.com/davidamunga/handset/releases/download/v0.12.0/Handset-0.12.0-windows.zip",
+  "hash": "d5637c0661a9b23a6f659052d04ed1e9d49e9b8a16f57c398c0ff771ac372bd5",
+  "extract_dir": "Handset-0.12.0",
   "bin": "handset.exe",
   "shortcuts": [
     [
