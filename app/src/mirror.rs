@@ -4,6 +4,7 @@ use crate::audio;
 use crate::control::Control;
 use crate::server;
 use crate::stream::{self, Slot, UserEvent};
+use crate::tap::Tap;
 use std::sync::{Arc, Mutex};
 use winit::event_loop::EventLoopProxy;
 
@@ -18,6 +19,9 @@ enum Source {
 /// an iOS device, stops the capture).
 pub struct Mirror {
     source: Source,
+    /// The phone's video packets as they arrive, for Share. An iOS device has none: it is captured as pictures.
+    #[allow(dead_code)] // Share is the first reader
+    tap: Option<Arc<Tap>>,
     /// The playback stream is not `Send`, so it stays on the thread that made it.
     _playback: Option<audio::Playback>,
 }
@@ -38,7 +42,8 @@ impl Mirror {
             crate::recent::remember(&addr, &session.device_name);
         }
 
-        stream::spawn(session.video.try_clone().unwrap(), slot, proxy);
+        let tap = Arc::new(Tap::default());
+        stream::spawn(session.video.try_clone().unwrap(), slot, proxy, tap.clone());
 
         // The server writes device messages (the phone's clipboard...) on the control socket: read them so
         // clipboard text reaches the Mac and the server never blocks.
@@ -53,7 +58,7 @@ impl Mirror {
         }
 
         let control = Control::new(session.control.try_clone().unwrap());
-        Ok((Mirror { source: Source::Android(session), _playback: playback }, control))
+        Ok((Mirror { source: Source::Android(session), tap: Some(tap), _playback: playback }, control))
     }
 
     /// Mirror an iOS device over USB, view only.
@@ -78,7 +83,12 @@ impl Mirror {
             proxy,
         )?;
         eprintln!("connected: {} (iOS, view only)", capture.name);
-        Ok(Mirror { source: Source::Ios(capture), _playback: playback })
+        Ok(Mirror { source: Source::Ios(capture), tap: None, _playback: playback })
+    }
+
+    #[allow(dead_code)] // Share is the first caller
+    pub fn tap(&self) -> Option<&Arc<Tap>> {
+        self.tap.as_ref()
     }
 
     pub fn with_audio(&self) -> bool {

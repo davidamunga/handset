@@ -32,6 +32,7 @@ mod server;
 mod settings;
 mod stream;
 mod style;
+mod tap;
 mod tilt;
 mod toolbar;
 mod tools;
