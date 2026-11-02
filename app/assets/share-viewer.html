@@ -1,40 +1,508 @@
 <!doctype html>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Handset Share</title>
 <style>
-  :root { color-scheme: dark; }
-  html, body { height: 100%; margin: 0; background: #0e0e10; color: #e6e6e8; font: 15px system-ui, sans-serif; }
-  body { display: grid; place-items: center; }
-  video { max-width: 100vw; max-height: 100vh; background: #000; border-radius: 14px; display: none; outline: none; }
-  video.control { touch-action: none; cursor: pointer; max-height: calc(100vh - 64px); }
-  #keys { position: fixed; bottom: 12px; left: 0; right: 0; display: none; justify-content: center; gap: 8px; }
-  #keys button { font: inherit; color: inherit; background: #26262b; border: 1px solid #3a3a42; border-radius: 10px; padding: 8px 16px; }
-  #keys button:active { background: #3a3a42; }
-  #sound { position: fixed; top: 12px; right: 12px; display: none; font: inherit; color: inherit; background: #26262b; border: 1px solid #3a3a42; border-radius: 10px; padding: 8px 14px; }
-  #notice { position: fixed; top: 12px; left: 12px; right: 140px; font-size: 12px; color: #6f6f78; }
-  #status { position: fixed; inset: auto 0 24px 0; text-align: center; color: #9a9aa2; padding: 0 16px; }
+  :root {
+    color-scheme: dark;
+    /* warm near-black for the chrome, so it reads on any background the viewer picks */
+    --ink: #19181c;
+    --ink-2: #26252b;
+    --line: #3b393f;
+    --text: #efece4;
+    --muted: #aaa69d;
+    --blue: #0a84ff;
+    --live: #3ddc84;
+    --bar: 46px;
+    font: 14px/1.4 ui-rounded, "SF Pro Rounded", "Avenir Next", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; overflow: hidden; background: var(--ink); color: var(--text); }
+  button, select, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  /* the picture area: its background, shape and padding are what the viewer chose */
+  #canvas { position: absolute; overflow: hidden; background: #e9e5db; }
+  #phone { position: absolute; }
+  #v { position: absolute; background: #000; outline: none; display: none; object-fit: fill; }
+  #v.control { touch-action: none; cursor: pointer; }
+  #bezel { position: absolute; pointer-events: none; display: none; user-select: none; -webkit-user-drag: none; }
+
+  /* a solid band: the brand, what this is, and that the host can end it */
+  #bar { position: fixed; top: 0; left: 0; right: 0; min-height: var(--bar); display: flex; align-items: center; gap: 12px; padding: env(safe-area-inset-top) 16px 0 14px; background: var(--ink); }
+  #brand { display: flex; align-items: center; gap: 9px; flex: none; }
+  #brand svg { width: 30px; height: 30px; flex: none; }
+  #brand b { font-size: 17px; font-weight: 800; letter-spacing: -0.02em; }
+  #live { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  #live.on { background: var(--live); }
+  #mode { flex: none; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line); color: var(--muted); }
+  #mode.control { border-color: var(--blue); color: #6fb3ff; }
+  #mode[hidden] { display: none; }
+  #hint { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: calc(100vw - 32px); padding: 9px 16px; border-radius: 10px; background: var(--ink); color: var(--text); text-align: center; opacity: 0; transition: opacity 0.2s ease-out; pointer-events: none; }
+  #hint.show { opacity: 1; }
+  #note { color: var(--muted); font-size: 13px; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  #note strong { color: var(--text); font-weight: 600; }
+  #gh { flex: none; display: flex; align-items: center; gap: 7px; color: var(--muted); text-decoration: none; font-size: 13px; padding: 6px 8px; border-radius: 8px; }
+  #gh:hover { color: var(--text); background: var(--ink-2); }
+  #gh svg { width: 18px; height: 18px; fill: currentColor; }
+  .credit { margin: 18px 0 0; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  .credit a { color: var(--text); }
+
+  /* the page's own tools live in the header; the phone's keys sit beside the phone, like Handset's toolbar */
+  #tools { display: flex; align-items: center; gap: 2px; margin-left: auto; flex: none; }
+  .htool { display: flex; align-items: center; gap: 7px; padding: 6px 10px; background: none; border: 0; border-radius: 8px; color: var(--muted); cursor: pointer; font-size: 13px; }
+  .htool svg { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .htool:hover { background: var(--ink-2); color: var(--text); }
+  .htool[aria-pressed="true"] { color: var(--text); background: var(--ink-2); box-shadow: inset 0 -2px 0 var(--blue); }
+  .htool[hidden] { display: none; }
+
+  #keys { position: fixed; display: none; flex-direction: column; gap: 2px; padding: 6px; background: var(--ink); border-radius: 14px; }
+  #keys.on { display: flex; }
+  .key { width: 58px; padding: 8px 0 6px; display: grid; justify-items: center; gap: 3px; background: none; border: 0; border-radius: 9px; cursor: pointer; font-size: 12px; color: var(--muted); }
+  .key svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .key:hover { background: var(--ink-2); color: var(--text); }
+  .key:active { background: var(--line); color: var(--text); }
+
+  .panel { position: fixed; top: calc(var(--bar) + 10px); right: 12px; bottom: 12px; width: 288px; overflow: auto; background: var(--ink); border-radius: 14px; padding: 16px; display: none; }
+  .panel.open { display: block; }
+  .panel h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin: 18px 0 8px; }
+  .panel h2:first-child { margin-top: 0; }
+  .panel label { display: grid; grid-template-columns: 64px 1fr 28px; gap: 8px; align-items: center; margin: 7px 0; }
+  .panel label output { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .panel label.check { display: flex; gap: 10px; }
+  .panel select { width: 100%; background: var(--ink-2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; }
+  .panel input[type=range] { width: 100%; accent-color: var(--blue); }
+  .swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  .swatch { aspect-ratio: 1; border-radius: 7px; border: 0; padding: 0; cursor: pointer; box-shadow: 0 0 0 1px var(--line); }
+  .swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--text); }
+  #savebox { bottom: auto; }
+  .hint { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+  .saves { display: grid; gap: 8px; }
+  .saves button { text-align: left; background: var(--ink-2); border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; cursor: pointer; }
+  .saves button:hover { border-color: var(--muted); }
+  .saves button:disabled { opacity: 0.5; cursor: default; }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+  .row input[type=color] { width: 40px; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 7px; background: none; cursor: pointer; }
+  .row button { background: var(--ink-2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+  .row button:hover { border-color: var(--muted); }
+
+  #status { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: calc(100vw - 32px); padding: 12px 18px; border-radius: 12px; background: var(--ink); color: var(--text); text-align: center; pointer-events: none; }
+
+  /* a narrow or upright window (a phone, usually): the header keeps icons only and wraps the note, the keys go along the bottom */
+  @media (max-width: 640px), (max-aspect-ratio: 1/1) {
+    #bar { flex-wrap: wrap; row-gap: 0; padding-bottom: 8px; }
+    #note { order: 5; flex: 1 0 100%; font-size: 12px; }
+    .htool { padding: 8px; }
+    .htool span, #gh span { display: none; }
+    #keys { left: 0 !important; right: 0; top: auto !important; bottom: 0; flex-direction: row; justify-content: space-around; border-radius: 0; padding: 4px 6px calc(4px + env(safe-area-inset-bottom)); }
+    .key { width: auto; flex: 1; }
+    .panel { top: auto; left: 10px; right: 10px; bottom: 12px; width: auto; max-height: 55vh; }
+    #keys.on ~ .panel { bottom: 74px; }
+    #hint { bottom: 24px; }
+    #keys.on ~ #hint { bottom: 84px; }
+    .swatches { grid-template-columns: repeat(9, 1fr); }
+  }
 </style>
-<video id="v" autoplay muted playsinline></video>
-<div id="keys">
-  <button data-key="back">Back</button><button data-key="home">Home</button><button data-key="recents">Recents</button>
-  <button data-key="rotate">Rotate</button>
-</div>
-<div id="notice">You are seeing the phone's screen live. The host allowed this, can see that you are connected, and can stop it at any time.</div>
-<button id="sound">Sound off</button>
+
+<div id="canvas"><div id="phone"><video id="v" autoplay muted playsinline></video><img id="bezel" alt=""></div></div>
+
+<header id="bar">
+  <div id="brand">
+    <svg viewBox="10 13 200 200" role="img" aria-label="Handset">
+      <mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="220" height="220">
+        <rect width="220" height="220" fill="#fff"/>
+        <rect x="81" y="53" width="98" height="146" rx="25" fill="#000"/>
+      </mask>
+      <g mask="url(#cut)">
+        <g transform="rotate(-12 86 108)"><rect x="46" y="44" width="80" height="128" rx="20" fill="#3DDC84"/><rect x="53" y="51" width="66" height="114" rx="14" fill="#27B566"/></g>
+        <g transform="rotate(10 120 98)"><rect x="80" y="34" width="80" height="128" rx="20" fill="#0A84FF"/><rect x="87" y="41" width="66" height="114" rx="14" fill="#0063D1"/></g>
+      </g>
+      <rect x="88" y="60" width="84" height="132" rx="16" fill="#F4F5F7"/>
+      <rect x="95" y="67" width="70" height="118" rx="10" fill="#2A2C30"/>
+      <circle cx="120" cy="130" r="5" fill="#fff"/><circle cx="140" cy="130" r="5" fill="#fff"/>
+    </svg>
+    <b>Handset</b>
+  </div>
+  <span id="live" title="Connection"></span>
+  <span id="mode" hidden></span>
+  <div id="note"><strong id="device"></strong> <span id="notetext">Live view. The host allowed this, can see that you are here, and can stop it at any time.</span></div>
+  <div id="tools">
+    <button class="htool" id="sound" hidden aria-label="Sound" title="Sound"><svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path id="waves" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/><path id="slash" d="M16 9l5 6M21 9l-5 6"/></svg><span>Sound off</span></button>
+    <button class="htool" id="save" aria-pressed="false" aria-controls="savebox" aria-label="Save a picture" title="Save a picture"><svg viewBox="0 0 24 24"><path d="M12 4v10M7.5 10 12 14.5 16.5 10M5 19h14"/></svg><span>Save</span></button>
+    <button class="htool" id="look" aria-pressed="false" aria-controls="panel" aria-label="Style" title="Style"><svg viewBox="0 0 24 24"><path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15" cy="8" r="2"/><circle cx="9" cy="16" r="2"/></svg><span>Style</span></button>
+    <button class="htool" id="full" aria-label="Full screen" title="Full screen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg><span>Full screen</span></button>
+  </div>
+  <a id="gh" href="https://github.com/davidamunga/handset" target="_blank" rel="noopener" title="Handset is open source">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    <span>GitHub</span>
+  </a>
+</header>
+
+<nav id="keys" aria-label="Phone keys">
+  <button class="key" data-key="back" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M16 5 7 12l9 7z"/></svg>Back</button>
+  <button class="key" data-key="home" aria-label="Home"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/></svg>Home</button>
+  <button class="key" data-key="recents" aria-label="Recents"><svg viewBox="0 0 24 24"><rect x="5.5" y="5.5" width="13" height="13" rx="3"/></svg>Recents</button>
+  <button class="key" data-key="rotate" aria-label="Rotate"><svg viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.2-5.1"/><path d="M19.5 4v4.5H15"/></svg>Rotate</button>
+</nav>
+
+<aside id="panel" class="panel" aria-label="Style">
+  <h2>Look</h2>
+  <select id="looks" aria-label="Look"></select>
+  <h2>Background</h2>
+  <div class="swatches" id="swatches"></div>
+  <div class="row"><input type="color" id="color" value="#e9e5db" aria-label="Colour"><span>Any colour</span></div>
+  <h2>Frame</h2>
+  <label class="check"><input type="checkbox" id="framed"><span id="framedText">Show the host's frame</span></label>
+  <h2>Space and shadow</h2>
+  <label><span>Padding</span><input type="range" id="padding" min="0" max="40"><output></output></label>
+  <label><span>Corners</span><input type="range" id="radius" min="0" max="25"><output></output></label>
+  <label><span>Shadow</span><input type="range" id="shadow" min="0" max="100"><output></output></label>
+  <h2>Shape</h2>
+  <select id="aspect" aria-label="Aspect ratio"></select>
+  <div class="row"><button id="reset">Reset</button></div>
+  <p class="credit">Handset is open source. <a href="https://github.com/davidamunga/handset" target="_blank" rel="noopener">Get it on GitHub</a>.</p>
+</aside>
+
+<aside id="savebox" class="panel" aria-label="Save a picture">
+  <h2>Save a picture</h2>
+  <p class="hint">Saves what you see now, in the look you chose, at the phone's own resolution (at least 1600 pixels on the long side).</p>
+  <div class="saves">
+    <button data-save="png">PNG</button>
+    <button data-save="png-clear">PNG, no background</button>
+    <button data-save="jpeg">JPEG</button>
+  </div>
+</aside>
+
 <div id="status">Asking the host to let you in…</div>
+<div id="hint" role="status"></div>
+
 <script>
-const status = document.getElementById('status');
-const video = document.getElementById('v');
-const say = text => { status.textContent = text; status.style.display = text ? '' : 'none'; };
-// The host says "control" over the data channel when it lets this viewer touch the phone.
+const $ = id => document.getElementById(id);
+const video = $('v'), bezel = $('bezel'), canvas = $('canvas'), phone = $('phone');
+const say = text => { $('status').textContent = text; $('status').style.display = text ? '' : 'none'; };
+const narrow = matchMedia('(max-width: 640px), (max-aspect-ratio: 1/1)');
+
+// ---- how the phone is drawn: the viewer's choices, kept in this browser only
+// Padding is a share of the picture area's shorter side, small by default so the phone fills the window.
+const DEFAULT = { bg: 'dots:paper', padding: 3, radius: 6, shadow: 45, aspect: 'auto', framed: true };
+let S = { ...DEFAULT };
+try { Object.assign(S, JSON.parse(localStorage.getItem('handset-share-look-3') || '{}')); } catch (e) {}
+const save = () => { try { localStorage.setItem('handset-share-look-3', JSON.stringify(S)); } catch (e) {} };
+let palette = { gradients: [], wallpapers: [], looks: [], aspects: ['auto'], maxPadding: 40, maxRadius: 25 };
+let look = { device: '', frame: null, v: 0 };   // the host's frame, from the data channel
+
+// a grid of dots on a flat colour: the page's own background, not one of the editor's
+const DOTS = { paper: { base: '#e9e5db', dot: '#c4bdac' }, ink: { base: '#19181c', dot: '#3a3840' } };
+const DOT_GRID = 24;
+
+const backgroundCss = bg => {
+  const [kind, name] = [bg.slice(0, bg.indexOf(':')), bg.slice(bg.indexOf(':') + 1)];
+  if (kind === 'color') return name;
+  if (kind === 'dots') {
+    const d = DOTS[name] || DOTS.paper;
+    return `radial-gradient(circle at center, ${d.dot} 1.6px, transparent 1.9px) 0 0 / ${DOT_GRID}px ${DOT_GRID}px, ${d.base}`;
+  }
+  if (kind === 'gradient') {
+    const g = palette.gradients.find(g => g.name === name);
+    // the editor's angle is 0 = left to right, 90 = top to bottom; CSS starts from "up"
+    if (g) return `linear-gradient(${g.angle + 90}deg, ${g.stops.join(', ')})`;
+  }
+  if (kind === 'wallpaper') {
+    const w = palette.wallpapers.find(w => w.name === name);
+    if (w) {
+      const blobs = w.blobs.map(([x, y, r, c]) => `radial-gradient(ellipse ${r * 140}% ${r * 140}% at ${x * 100}% ${y * 100}%, ${c}, transparent)`);
+      return [...blobs, w.base].join(', ');
+    }
+  }
+  return '#e9e5db';
+};
+
+const shadowColor = k => `rgba(25, 24, 28, ${(0.16 + 0.24 * k).toFixed(3)})`;
+
+function layout() {
+  const W = innerWidth, H = innerHeight;
+  const top = $('bar').getBoundingClientRect().height;
+  // the phone's keys, when the viewer may press them: a band along the bottom, or a column beside the phone
+  // (room kept on both sides, so the phone stays centred)
+  const keys = $('keys').getBoundingClientRect(), keysOn = $('keys').classList.contains('on');
+  const bottom = narrow.matches && keysOn ? keys.height : 0;
+  const side = !narrow.matches && keysOn ? keys.width + 24 : 0;
+  const freeH = H - top - bottom;
+
+  let cw = W, ch = freeH;
+  if (S.aspect !== 'auto') {
+    const [a, b] = S.aspect.split(':').map(Number), r = a / b;
+    if (W / freeH > r) cw = freeH * r; else ch = W / r;
+  }
+  Object.assign(canvas.style, { width: cw + 'px', height: ch + 'px', left: (W - cw) / 2 + 'px', top: top + (freeH - ch) / 2 + 'px', background: backgroundCss(S.bg) });
+
+  const framed = S.framed && look.frame && bezel.naturalWidth > 0;
+  const landscape = video.videoWidth > video.videoHeight;
+  const pad = S.padding / 100 * Math.min(cw, ch);
+  // the picture's shape: the frame's, turned if the phone is on its side, or the video's own
+  let aspect, hole;
+  if (framed) {
+    const f = bezel.naturalWidth / bezel.naturalHeight, h = look.frame.hole;
+    aspect = landscape ? 1 / f : f;
+    hole = landscape ? [1 - h[1] - h[3], h[0], h[3], h[2]] : h;
+  } else {
+    aspect = (video.videoWidth || 9) / (video.videoHeight || 16);
+    hole = [0, 0, 1, 1];
+  }
+  const availW = Math.min(cw - 2 * pad, W - 2 * side), availH = ch - 2 * pad;
+  const w = Math.max(40, Math.min(availW, availH * aspect)), h = w / aspect;
+  Object.assign(phone.style, { width: w + 'px', height: h + 'px', left: (cw - w) / 2 + 'px', top: (ch - h) / 2 + 'px' });
+  if (keysOn && !narrow.matches) {
+    // stand the keys against the phone's right edge, level with its middle
+    const phoneRight = (W - cw) / 2 + (cw - w) / 2 + w, phoneMid = top + (freeH - ch) / 2 + ch / 2;
+    Object.assign($('keys').style, {
+      left: Math.min(phoneRight + 14, W - keys.width - 8) + 'px',
+      top: Math.max(top + 8, Math.min(phoneMid - keys.height / 2, H - keys.height - 8)) + 'px',
+    });
+  }
+  const k = S.shadow / 100;
+  // a flat, hard-edged shadow, down and to the right, like a cut-out lifted off the page
+  const step = h * 0.02 * k;
+  phone.style.filter = k ? `drop-shadow(${step}px ${step}px 0 ${shadowColor(k)})` : 'none';
+
+  Object.assign(video.style, { left: hole[0] * w + 'px', top: hole[1] * h + 'px', width: hole[2] * w + 'px', height: hole[3] * h + 'px' });
+  video.style.borderRadius = framed ? '0' : S.radius / 100 * Math.min(hole[2] * w, hole[3] * h) + 'px';
+  if (framed) {
+    // a phone on its side is the frame turned a quarter, so its box is swapped and centred
+    Object.assign(bezel.style, landscape
+      ? { display: 'block', width: h + 'px', height: w + 'px', left: (w - h) / 2 + 'px', top: (h - w) / 2 + 'px', transform: 'rotate(90deg)' }
+      : { display: 'block', width: w + 'px', height: h + 'px', left: '0', top: '0', transform: 'none' });
+  } else {
+    bezel.style.display = 'none';
+  }
+}
+addEventListener('resize', layout);
+narrow.addEventListener('change', layout);
+video.addEventListener('resize', layout);
+bezel.addEventListener('load', layout);
+
+// ---- the style panel
+const el = { looks: $('looks'), swatches: $('swatches'), aspect: $('aspect'), color: $('color'), framed: $('framed') };
+function sync() {
+  for (const k of ['padding', 'radius', 'shadow']) { $(k).value = S[k]; $(k).nextElementSibling.textContent = S[k]; }
+  el.aspect.value = S.aspect;
+  el.framed.checked = S.framed;
+  el.framed.disabled = !look.frame;
+  $('framedText').textContent = look.frame ? "Show the host's frame" : 'The host is not using a frame';
+  el.color.value = S.bg.startsWith('color:') && S.bg.length === 13 ? S.bg.slice(6) : '#e9e5db';
+  for (const b of el.swatches.children) b.setAttribute('aria-pressed', String(b.dataset.bg === S.bg));
+  el.looks.value = '';
+  layout();
+  save();
+}
+function parseSpec(spec) {
+  const o = Object.fromEntries(spec.split(';').map(p => [p.slice(0, p.indexOf('=')), p.slice(p.indexOf('=') + 1)]));
+  return { bg: o.bg, padding: +o.padding, radius: +o.radius, shadow: +o.shadow, aspect: o.aspect };
+}
+function buildPanel() {
+  el.swatches.textContent = '';
+  const add = (bg, title) => {
+    const b = document.createElement('button');
+    b.className = 'swatch'; b.title = title; b.setAttribute('aria-label', title); b.dataset.bg = bg;
+    b.style.background = backgroundCss(bg);
+    b.onclick = () => { S.bg = bg; sync(); };
+    el.swatches.append(b);
+  };
+  add('dots:paper', 'paper dots');
+  add('dots:ink', 'ink dots');
+  add('color:#e9e5db', 'paper');
+  add('color:#19181c', 'ink');
+  palette.gradients.forEach(g => add('gradient:' + g.name, g.name));
+  palette.wallpapers.forEach(w => add('wallpaper:' + w.name, w.name));
+  el.looks.textContent = '';
+  el.looks.append(new Option('Custom', ''));
+  palette.looks.forEach((l, i) => el.looks.append(new Option(l.name, String(i))));
+  el.aspect.textContent = '';
+  palette.aspects.forEach(a => el.aspect.append(new Option(a === 'auto' ? 'Fit the window' : a, a)));
+  $('padding').max = palette.maxPadding; $('radius').max = palette.maxRadius;
+  sync();
+}
+el.looks.onchange = () => {
+  const l = palette.looks[+el.looks.value];
+  if (l) { Object.assign(S, parseSpec(l.spec)); const keep = el.looks.value; sync(); el.looks.value = keep; }
+};
+for (const k of ['padding', 'radius', 'shadow']) $(k).oninput = e => { S[k] = +e.target.value; sync(); };
+el.aspect.onchange = e => { S.aspect = e.target.value; sync(); };
+el.color.oninput = e => { S.bg = 'color:' + e.target.value; sync(); };
+el.framed.onchange = e => { S.framed = e.target.checked; sync(); };
+$('reset').onclick = () => { S = { ...DEFAULT }; sync(); };
+// the style panel and the save box share the space beside the tools: one open at a time
+function togglePanel(panel) {
+  const open = !$(panel).classList.contains('open');
+  for (const [p, b] of [['panel', 'look'], ['savebox', 'save']]) {
+    $(p).classList.toggle('open', open && p === panel);
+    $(b).setAttribute('aria-pressed', String(open && p === panel));
+  }
+}
+$('look').onclick = () => togglePanel('panel');
+$('save').onclick = () => togglePanel('savebox');
+const fullscreen = () => document.fullscreenElement || document.webkitFullscreenElement;
+$('full').onclick = () => {
+  if (fullscreen()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  else {
+    const root = document.documentElement;
+    (root.requestFullscreen || root.webkitRequestFullscreen || (() => {})).call(root);
+  }
+};
+document.addEventListener('fullscreenchange', () => { $('full').lastChild.textContent = fullscreen() ? 'Exit' : 'Full screen'; layout(); });
+// ---- save what is on screen as a picture: the same look, drawn again at the phone's own resolution
+const hexRgb = c => [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16));
+function paintBackground(ctx, bg, cw, ch, k) {
+  const kind = bg.slice(0, bg.indexOf(':')), name = bg.slice(bg.indexOf(':') + 1);
+  const flat = color => { ctx.fillStyle = color; ctx.fillRect(0, 0, cw, ch); };
+  if (kind === 'color') return flat(name);
+  if (kind === 'dots') {
+    const d = DOTS[name] || DOTS.paper, step = DOT_GRID * k;
+    flat(d.base);
+    ctx.fillStyle = d.dot;
+    for (let y = step / 2; y < ch + step; y += step) {
+      for (let x = step / 2; x < cw + step; x += step) { ctx.beginPath(); ctx.arc(x, y, 1.75 * k, 0, Math.PI * 2); ctx.fill(); }
+    }
+    return;
+  }
+  if (kind === 'gradient') {
+    const g = palette.gradients.find(g => g.name === name);
+    if (g) {
+      // CSS draws the line through the middle, as long as the box is along that direction
+      const a = (g.angle + 90) * Math.PI / 180, dx = Math.sin(a), dy = -Math.cos(a);
+      const len = Math.abs(cw * dx) + Math.abs(ch * dy);
+      const line = ctx.createLinearGradient(cw / 2 - dx * len / 2, ch / 2 - dy * len / 2, cw / 2 + dx * len / 2, ch / 2 + dy * len / 2);
+      g.stops.forEach((c, i) => line.addColorStop(g.stops.length > 1 ? i / (g.stops.length - 1) : 0, c));
+      ctx.fillStyle = line; ctx.fillRect(0, 0, cw, ch);
+      return;
+    }
+  }
+  if (kind === 'wallpaper') {
+    const w = palette.wallpapers.find(w => w.name === name);
+    if (w) {
+      flat(w.base);
+      // the first blob is the top layer, so paint from the last
+      for (const [x, y, r, c] of [...w.blobs].reverse()) {
+        const [R, G, B] = hexRgb(c);
+        ctx.save();
+        ctx.translate(x * cw, y * ch);
+        ctx.scale(r * 1.4 * cw, r * 1.4 * ch);
+        const blob = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+        blob.addColorStop(0, `rgba(${R},${G},${B},1)`);
+        blob.addColorStop(1, `rgba(${R},${G},${B},0)`);
+        ctx.fillStyle = blob; ctx.fillRect(-1, -1, 2, 2);
+        ctx.restore();
+      }
+      return;
+    }
+  }
+  flat('#e9e5db');
+}
+
+function render(kind) {
+  if (!video.videoWidth) return null;
+  const css = el => parseFloat(el.style.width);
+  const cw = css(canvas), ch = parseFloat(canvas.style.height), pw = css(phone), ph = parseFloat(phone.style.height);
+  // one picture pixel per video pixel, but never smaller than 1600 on the long side or bigger than 4096
+  let k = video.videoWidth / css(video);
+  const long = Math.max(cw, ch) * k;
+  k *= Math.min(4096, Math.max(1600, long)) / long;
+  const out = document.createElement('canvas');
+  out.width = Math.round(cw * k); out.height = Math.round(ch * k);
+  const ctx = out.getContext('2d');
+  if (kind !== 'png-clear') paintBackground(ctx, S.bg, out.width, out.height, k);
+
+  // the phone on its own, then placed with its shadow
+  const t = document.createElement('canvas');
+  t.width = Math.round(pw * k); t.height = Math.round(ph * k);
+  const tc = t.getContext('2d');
+  const vx = parseFloat(video.style.left) * k, vy = parseFloat(video.style.top) * k, vw = css(video) * k, vh = parseFloat(video.style.height) * k;
+  const framed = bezel.style.display === 'block';
+  tc.save();
+  if (!framed && tc.roundRect) { tc.beginPath(); tc.roundRect(vx, vy, vw, vh, parseFloat(video.style.borderRadius) * k); tc.clip(); }
+  tc.drawImage(video, vx, vy, vw, vh);
+  tc.restore();
+  if (framed) {
+    if (video.videoWidth > video.videoHeight) {
+      tc.save(); tc.translate(t.width / 2, t.height / 2); tc.rotate(Math.PI / 2);
+      tc.drawImage(bezel, -t.height / 2, -t.width / 2, t.height, t.width);
+      tc.restore();
+    } else {
+      tc.drawImage(bezel, 0, 0, t.width, t.height);
+    }
+  }
+  const shade = S.shadow / 100;
+  if (shade) {
+    // the same flat shadow as on the page, scaled to the picture
+    ctx.shadowColor = shadowColor(shade);
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = ctx.shadowOffsetY = ph * k * 0.02 * shade;
+  }
+  ctx.drawImage(t, Math.round(parseFloat(phone.style.left) * k), Math.round(parseFloat(phone.style.top) * k));
+  return out;
+}
+
+function saveAs(kind) {
+  const out = render(kind);
+  if (!out) { say('Waiting for the first picture…'); setTimeout(() => say(''), 1500); return; }
+  const jpeg = kind === 'jpeg';
+  const now = new Date(), two = n => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}${two(now.getMonth() + 1)}${two(now.getDate())}-${two(now.getHours())}${two(now.getMinutes())}${two(now.getSeconds())}`;
+  const device = (look.device || 'phone').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'phone';
+  out.toBlob(blob => {
+    if (!blob) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `handset-${device}-${stamp}.${jpeg ? 'jpg' : 'png'}`;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }, jpeg ? 'image/jpeg' : 'image/png', 0.92);
+}
+$('savebox').addEventListener('click', e => {
+  const b = e.target.closest('[data-save]');
+  if (b) saveAs(b.dataset.save);
+});
+
+fetch('/styles.json').then(r => r.json()).then(p => { palette = p; buildPanel(); }).catch(() => sync());
+
+// ---- what the host tells the page over the data channel
+function onLook(json) {
+  try { look = JSON.parse(json); } catch (e) { return; }
+  $('device').textContent = look.device ? look.device + ' · ' : '';
+  bezel.src = look.frame ? '/frame.png?v=' + look.v : '';
+  sync();
+}
+
+// ---- control, when the host lets this viewer touch the phone
+let hintTimer;
+function hint(text) {
+  $('hint').textContent = text;
+  $('hint').classList.add('show');
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => $('hint').classList.remove('show'), 2600);
+}
+function setMode(control) {
+  $('mode').hidden = false;
+  $('mode').textContent = control ? 'Control' : 'View only';
+  $('mode').classList.toggle('control', control);
+}
+
+// the host has not let this viewer touch the phone: say so, and say so again when it tries
+function enableViewOnly() {
+  setMode(false);
+  $('notetext').textContent = 'You can watch but not touch. The host can see that you are here and can stop it at any time.';
+  video.addEventListener('pointerdown', () => hint('View only. The host has not let you control this phone.'));
+}
+
 function enableControl(dc) {
-  document.getElementById('notice').textContent =
-    'You can control this phone. What you tap and type happens on it, live, and the host can stop this at any time.';
   video.classList.add('control');
   video.tabIndex = 0;
-  document.getElementById('keys').style.display = 'flex';
+  $('keys').classList.add('on');
+  setMode(true);
+  $('notetext').textContent = 'You can control this phone: tap and scroll on the screen, and click it before you type. The host can stop it at any time.';
+  layout();
   const send = text => dc.readyState === 'open' && dc.send(text);
+  // taps are measured on the video itself, so the frame and the padding around it do not matter
   const at = e => {
     const r = video.getBoundingClientRect();
     return ((e.clientX - r.left) / r.width).toFixed(4) + ',' + ((e.clientY - r.top) / r.height).toFixed(4);
@@ -53,7 +521,6 @@ function enableControl(dc) {
   video.addEventListener('pointercancel', up);
   video.addEventListener('wheel', e => {
     e.preventDefault();
-    // a wheel notch is about 100 pixels; the phone scrolls the other way
     send('s,' + at(e) + ',' + (-e.deltaX / 100).toFixed(2) + ',' + (-e.deltaY / 100).toFixed(2));
   }, { passive: false });
   video.addEventListener('keydown', e => {
@@ -64,34 +531,41 @@ function enableControl(dc) {
     else return;
     e.preventDefault();
   });
-  document.getElementById('keys').addEventListener('click', e => {
-    const key = e.target.dataset && e.target.dataset.key;
-    if (key) send(key === 'rotate' ? 'r' : 'k,' + key);
+  $('keys').addEventListener('click', e => {
+    const key = e.target.closest('[data-key]');
+    if (key) send(key.dataset.key === 'rotate' ? 'r' : 'k,' + key.dataset.key);
   });
 }
 
 (async () => {
   const pc = new RTCPeerConnection();
   pc.addTransceiver('video', { direction: 'recvonly' });
-  // always opened: it is how the host says whether this viewer may control, and it keeps the offer the same
+  // always opened: the host talks to the page on it, and it keeps the offer the same for every viewer
   const dc = pc.createDataChannel('control');
   pc.addTransceiver('audio', { direction: 'recvonly' });
   dc.onmessage = e => {
     if (e.data === 'control') enableControl(dc);
-    if (e.data === 'audio') document.getElementById('sound').style.display = 'block';
+    else if (e.data === 'view') enableViewOnly();
+    else if (e.data === 'audio') { $('sound').hidden = false; layout(); }
+    else if (e.data.startsWith('look,')) onLook(e.data.slice(5));
   };
   // browsers only let a page make sound after the person asks for it
-  document.getElementById('sound').addEventListener('click', e => {
-    video.muted = !video.muted;
-    e.target.textContent = video.muted ? 'Sound off' : 'Sound on';
-  });
+  const showSound = () => {
+    $('sound').lastChild.textContent = video.muted ? 'Sound off' : 'Sound on';
+    $('waves').style.display = video.muted ? 'none' : '';
+    $('slash').style.display = video.muted ? '' : 'none';
+  };
+  $('sound').onclick = () => { video.muted = !video.muted; showSound(); };
+  showSound();
   const stream = new MediaStream();
   pc.ontrack = e => {
     stream.addTrack(e.track);
     video.srcObject = stream;
     if (e.track.kind === 'video') video.style.display = 'block';
+    layout();
   };
   pc.onconnectionstatechange = () => {
+    $('live').classList.toggle('on', pc.connectionState === 'connected');
     if (pc.connectionState === 'connected') say('');
     if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
       say('The connection ended. Reload to ask again.');
@@ -111,4 +585,5 @@ function enableControl(dc) {
   say('Connecting…');
   await pc.setRemoteDescription({ type: 'answer', sdp: await r.text() });
 })().catch(e => say('Could not connect: ' + e));
+sync();
 </script>

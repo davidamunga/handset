@@ -16,8 +16,30 @@ reasoning is in [ADR 0039](adr/0039-share-the-phone-by-forwarding-its-h264-over-
    - **Watch Only**: they only see.
    - **Don't Allow**: they are told you did not let them in.
 
-The pill on the phone says how many are watching and controlling. **Share > Stop Sharing** ends every viewer, and
+The pill on the phone says how many are watching and controlling. Each viewer's page says which it is: a "View only" or
+"Control" badge in the header. A view-only viewer who taps the screen is told the host has not let them control it. **Share > Stop Sharing** ends every viewer, and
 so does closing the window or disconnecting the phone. **Share > Copy Link** copies the link again.
+
+## How the page looks
+
+<p><img src="images/share-page.png" alt="The Share page: the phone in its frame on a dotted background, with the phone keys beside it and the tools in the header" width="760"></p>
+
+The page starts on a warm paper background with a grid of dots, and the phone fills the window. It draws the phone in the frame you chose in Handset (or without one if you chose none), on a background,
+with the editor's own gradients and wallpapers. If you change the frame while people are watching, their page
+follows. A phone on its side turns the frame with it.
+
+Each viewer can change how it looks for themselves with **Style**: a look from the editor's presets, the
+background (gradient, wallpaper or any colour), padding, corner radius, shadow, the shape of the page (1:1, 16:9,
+4:5 and so on) and whether to show your frame. Their choices stay in their browser and do not change what other
+viewers or you see. **Full screen** hides everything but the page.
+
+<p><img src="images/share-page-style.png" alt="The same page with the Style panel open" width="760"></p>
+
+**Save** downloads what the viewer sees as a PNG, a PNG with a transparent background, or a JPEG, at the phone's own
+resolution (at least 1600 pixels on the long side). Anyone who can watch can save a picture, as they could with a
+screenshot, so only allow people you would trust with one.
+
+The header links to Handset's page on GitHub.
 
 ## Sound
 

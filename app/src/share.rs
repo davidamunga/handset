@@ -7,6 +7,7 @@
 //! decoded or encoded here.
 
 use crate::control::Touch;
+use crate::frame::Art;
 use crate::share_audio::{self, Packet as Sound};
 use crate::share_input::{self, Gate, Input as Command};
 use crate::tap::{Tap, Unit};
@@ -18,6 +19,7 @@ use std::sync::mpsc::{Receiver, sync_channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use str0m::change::SdpOffer;
+use str0m::channel::ChannelId;
 use str0m::format::Codec;
 use str0m::media::{Frequency, MediaKind, MediaTime, Mid};
 use str0m::net::{Protocol, Receive};
@@ -72,7 +74,40 @@ impl Limiter {
     }
 }
 
+/// What a viewer needs to draw the phone the way the host sees it.
+struct Look {
+    device: String,
+    frame: Option<Arc<Art>>,
+    /// Changes with the frame, so a viewer knows to fetch it again.
+    version: u64,
+}
+
+/// Text for a JSON string.
+fn json_string(s: &str) -> String {
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if c.is_control() => out.push(' '),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// The message that tells a viewer how to draw the phone: `look,` and then JSON.
+fn look_message(look: &Look) -> String {
+    let frame = match &look.frame {
+        Some(art) => format!("{{\"hole\":[{},{},{},{}]}}", art.hole[0], art.hole[1], art.hole[2], art.hole[3]),
+        None => "null".into(),
+    };
+    format!("look,{{\"device\":{},\"frame\":{frame},\"v\":{}}}", json_string(&look.device), look.version)
+}
+
 struct Inner {
+    look: Mutex<Look>,
     tap: Arc<Tap>,
     control: Mutex<crate::control::Control>,
     keyframes: Limiter,
@@ -112,6 +147,7 @@ impl Share {
     pub fn start(
         tap: Arc<Tap>,
         control: crate::control::Control,
+        device: String,
         approve: Approve,
         changed: Notify,
     ) -> io::Result<Share> {
@@ -121,6 +157,7 @@ impl Share {
         let port = server.server_addr().to_ip().map(|a| a.port()).unwrap_or(PREFERRED_PORT);
         let server = Arc::new(server);
         let inner = Arc::new(Inner {
+            look: Mutex::new(Look { device, frame: None, version: 0 }),
             tap,
             control: Mutex::new(control),
             keyframes: Limiter::new(KEYFRAME_EVERY),
@@ -152,6 +189,13 @@ impl Share {
         self.inner.viewers.load(SeqCst)
     }
 
+    /// The frame the host has chosen, or none. Viewers draw the phone in it.
+    pub fn set_frame(&self, art: Option<Art>) {
+        let mut look = self.inner.look.lock().unwrap();
+        look.frame = art.map(Arc::new);
+        look.version += 1;
+    }
+
     pub fn controllers(&self) -> usize {
         self.inner.controllers.load(SeqCst)
     }
@@ -174,6 +218,21 @@ fn serve(inner: &Arc<Inner>, server: &tiny_http::Server) {
             (tiny_http::Method::Get, "/") => {
                 let html = "Content-Type: text/html; charset=utf-8".parse::<tiny_http::Header>().unwrap();
                 let _ = req.respond(tiny_http::Response::from_string(VIEWER_PAGE).with_header(html));
+            }
+            (tiny_http::Method::Get, "/styles.json") => {
+                let json = "Content-Type: application/json".parse::<tiny_http::Header>().unwrap();
+                let _ = req.respond(tiny_http::Response::from_string(crate::style::palette_json()).with_header(json));
+            }
+            (tiny_http::Method::Get, "/frame.png") => {
+                let art = inner.look.lock().unwrap().frame.clone();
+                let _ = match art {
+                    Some(art) => {
+                        let png = "Content-Type: image/png".parse::<tiny_http::Header>().unwrap();
+                        let fresh = "Cache-Control: no-store".parse::<tiny_http::Header>().unwrap();
+                        req.respond(tiny_http::Response::from_data(art.png.clone()).with_header(png).with_header(fresh))
+                    }
+                    None => req.respond(text("no frame", 404)),
+                };
             }
             (tiny_http::Method::Post, "/offer") => {
                 if inner.waiting.fetch_add(1, SeqCst) >= MAX_WAITING {
@@ -304,6 +363,9 @@ fn serve_viewer(inner: &Inner, mut rtc: Rtc, socket: &UdpSocket, link: Link, gat
     let mut mid: Option<Mid> = None;
     let mut voice: Option<Mid> = None;
     let mut need_key = true;
+    // the channel the host talks to the page on, and the version of the look the page has been told
+    let mut channel: Option<ChannelId> = None;
+    let mut told: Option<u64> = None;
     let mut last_kick = Instant::now();
     let mut heard = Instant::now();
     while !inner.stop.load(SeqCst) && heard.elapsed() < SILENCE {
@@ -329,13 +391,14 @@ fn serve_viewer(inner: &Inner, mut rtc: Rtc, socket: &UdpSocket, link: Link, gat
                     Event::KeyframeRequest(_) => inner.request_keyframe(),
                     // the page turns its sound button and its controls on when it hears these
                     Event::ChannelOpen(id, _) => {
-                        if let Some(mut channel) = rtc.channel(id) {
+                        channel = Some(id);
+                        if let Some(mut c) = rtc.channel(id) {
                             if inner.tap.has_audio() {
-                                let _ = channel.write(false, b"audio");
+                                let _ = c.write(false, b"audio");
                             }
-                            if access == Access::Control {
-                                let _ = channel.write(false, b"control");
-                            }
+                            // every viewer is told which it is, so the page can say so
+                            let verdict: &[u8] = if access == Access::Control { b"control" } else { b"view" };
+                            let _ = c.write(false, verdict);
                         }
                     }
                     Event::ChannelData(d) if access == Access::Control && !d.binary => {
@@ -350,6 +413,14 @@ fn serve_viewer(inner: &Inner, mut rtc: Rtc, socket: &UdpSocket, link: Link, gat
                 continue;
             }
         };
+
+        if let Some(mut c) = channel.and_then(|id| rtc.channel(id)) {
+            let look = inner.look.lock().unwrap();
+            if told != Some(look.version) {
+                told = Some(look.version);
+                let _ = c.write(false, look_message(&look).as_bytes());
+            }
+        }
 
         if need_key && mid.is_some() && last_kick.elapsed() > Duration::from_secs(1) {
             inner.request_keyframe();
@@ -532,9 +603,14 @@ mod tests {
     }
 
     fn share(approve: Approve) -> (Share, SocketAddr) {
-        let share =
-            Share::start(Arc::new(Tap::default()), crate::control::Control::disconnected(), approve, Arc::new(|| {}))
-                .unwrap();
+        let share = Share::start(
+            Arc::new(Tap::default()),
+            crate::control::Control::disconnected(),
+            "Pixel".into(),
+            approve,
+            Arc::new(|| {}),
+        )
+        .unwrap();
         let port = share.url().trim_end_matches('/').rsplit(':').next().unwrap().parse().unwrap();
         (share, SocketAddr::new(IpAddr::from([127, 0, 0, 1]), port))
     }
@@ -543,9 +619,47 @@ mod tests {
         let mut s = TcpStream::connect(addr).unwrap();
         write!(s, "{request} HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
             .unwrap();
-        let mut out = String::new();
-        s.read_to_string(&mut out).unwrap();
-        out
+        let mut out = Vec::new();
+        s.read_to_end(&mut out).unwrap();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    #[test]
+    fn the_look_message_carries_the_device_and_the_screen_of_the_frame() {
+        let mut look = Look { device: "Pixel \"7\"\n".into(), frame: None, version: 3 };
+        assert_eq!(look_message(&look), "look,{\"device\":\"Pixel \\\"7\\\" \",\"frame\":null,\"v\":3}");
+        look.frame = Some(Arc::new(Art { png: Vec::new(), hole: [0.1, 0.2, 0.5, 0.25] }));
+        assert!(look_message(&look).contains("\"frame\":{\"hole\":[0.1,0.2,0.5,0.25]}"));
+    }
+
+    #[test]
+    fn viewers_get_the_hosts_frame_and_the_editors_backgrounds() {
+        let (share, addr) = share(Arc::new(|_| Access::Watch));
+        assert!(http(addr, "GET /frame.png", "").starts_with("HTTP/1.1 404"));
+        share.set_frame(crate::frame::art("obsidian").ok());
+        let png = http(addr, "GET /frame.png", "");
+        assert!(png.starts_with("HTTP/1.1 200") && png.contains("image/png"));
+        let styles = http(addr, "GET /styles.json", "");
+        for g in crate::style::GRADIENTS {
+            assert!(styles.contains(g.name), "{}", g.name);
+        }
+        assert!(styles.contains("Aurora 16:9") && styles.contains("\"maxPadding\":40"));
+    }
+
+    #[test]
+    fn the_page_asks_for_what_the_host_serves_and_reads_what_it_sends() {
+        for needed in [
+            "/styles.json",
+            "/frame.png",
+            "'look,'",
+            "e.data === 'audio'",
+            "e.data === 'control'",
+            "e.data === 'view'",
+            "github.com/davidamunga/handset",
+            "data-save",
+        ] {
+            assert!(VIEWER_PAGE.contains(needed), "the page does not use {needed}");
+        }
     }
 
     #[test]
