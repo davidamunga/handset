@@ -3,18 +3,26 @@
 //!
 //! The video thread publishes every packet. With nobody subscribed that costs one lock and no copy.
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex};
 
 /// Units a subscriber may fall behind by before its delta frames are dropped.
 const BACKLOG: usize = 64;
+/// Chunks of sound a reader may fall behind by.
+const AUDIO_BACKLOG: usize = 256;
 
 /// One picture's worth of Annex B data. A keyframe starts with the SPS and PPS, so a unit stands on its own.
 pub struct Unit {
     pub pts_us: u64,
     pub key: bool,
     pub data: Arc<[u8]>,
+}
+
+/// Sound from the phone, as it arrives: 48 kHz, stereo, 16-bit little endian.
+pub struct Pcm {
+    pub pts_us: u64,
+    pub data: Vec<u8>,
 }
 
 struct Subscriber {
@@ -34,6 +42,8 @@ pub struct Tap {
     state: Mutex<State>,
     /// The phone screen's width and height in pixels, from the last session packet.
     size: AtomicU32,
+    audio: Mutex<Vec<SyncSender<Arc<Pcm>>>>,
+    has_audio: AtomicBool,
 }
 
 impl Tap {
@@ -47,6 +57,31 @@ impl Tap {
     #[cfg(test)]
     pub fn subscribers(&self) -> usize {
         self.state.lock().unwrap().subscribers.len()
+    }
+
+    /// Sound chunks from now on. A reader that falls behind loses sound, never the audio thread its time.
+    pub fn subscribe_audio(&self) -> Receiver<Arc<Pcm>> {
+        let (tx, rx) = sync_channel(AUDIO_BACKLOG);
+        self.audio.lock().unwrap().push(tx);
+        rx
+    }
+
+    pub fn audio(&self, pts_us: u64, data: &[u8]) {
+        let mut subscribers = self.audio.lock().unwrap();
+        if subscribers.is_empty() {
+            return;
+        }
+        let chunk = Arc::new(Pcm { pts_us, data: data.to_vec() });
+        subscribers.retain(|tx| !matches!(tx.try_send(chunk.clone()), Err(TrySendError::Disconnected(_))));
+    }
+
+    /// The phone is sending sound.
+    pub fn set_has_audio(&self, on: bool) {
+        self.has_audio.store(on, Ordering::Relaxed);
+    }
+
+    pub fn has_audio(&self) -> bool {
+        self.has_audio.load(Ordering::Relaxed)
     }
 
     pub fn set_size(&self, width: u32, height: u32) {
@@ -110,6 +145,22 @@ mod tests {
         assert_eq!(tap.size(), (0, 0));
         tap.set_size(576, 1280);
         assert_eq!(tap.size(), (576, 1280));
+    }
+
+    #[test]
+    fn sound_reaches_every_reader_and_a_dropped_reader_leaves() {
+        let tap = Tap::default();
+        tap.audio(0, &[1]); // nobody is listening: nothing to keep
+        let (a, b) = (tap.subscribe_audio(), tap.subscribe_audio());
+        tap.audio(20_000, &[1, 2]);
+        assert_eq!(a.try_recv().unwrap().pts_us, 20_000);
+        assert_eq!(b.try_recv().unwrap().data, [1, 2]);
+        drop(a);
+        tap.audio(40_000, &[3]);
+        assert_eq!(tap.audio.lock().unwrap().len(), 1);
+        assert!(!tap.has_audio());
+        tap.set_has_audio(true);
+        assert!(tap.has_audio());
     }
 
     #[test]

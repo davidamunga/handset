@@ -7,18 +7,19 @@
 //! decoded or encoded here.
 
 use crate::control::Touch;
+use crate::share_audio::{self, Packet as Sound};
 use crate::share_input::{self, Gate, Input as Command};
 use crate::tap::{Tap, Unit};
 use std::collections::HashMap;
 use std::io::{self, ErrorKind, Read};
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, sync_channel};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use str0m::change::SdpOffer;
 use str0m::format::Codec;
-use str0m::media::{MediaTime, Mid};
+use str0m::media::{Frequency, MediaKind, MediaTime, Mid};
 use str0m::net::{Protocol, Receive};
 use str0m::{Candidate, Event, IceConnectionState, Input, Output, Rtc, RtcConfig, RtcError};
 
@@ -34,6 +35,8 @@ const KEYFRAME_EVERY: Duration = Duration::from_millis(700);
 /// A viewer that sends nothing for this long is gone: browsers answer every second or so, and a closed tab
 /// does not tell us.
 const SILENCE: Duration = Duration::from_secs(10);
+/// Packets of sound a viewer may fall behind by (20 ms each).
+const SOUND_BACKLOG: usize = 50;
 const MAX_OFFER: u64 = 64 * 1024;
 
 /// What the host lets a viewer do.
@@ -76,7 +79,9 @@ struct Inner {
     approve: Approve,
     /// Called when the number of viewers changes.
     changed: Notify,
-    stop: AtomicBool,
+    stop: Arc<AtomicBool>,
+    /// Where the encoded sound goes, one channel per viewer.
+    sound: share_audio::Listeners,
     viewers: AtomicUsize,
     /// ...and how many of them may also touch the phone.
     controllers: AtomicUsize,
@@ -121,7 +126,8 @@ impl Share {
             keyframes: Limiter::new(KEYFRAME_EVERY),
             approve,
             changed,
-            stop: AtomicBool::new(false),
+            stop: Arc::new(AtomicBool::new(false)),
+            sound: Arc::default(),
             viewers: AtomicUsize::new(0),
             controllers: AtomicUsize::new(0),
             slots: Mutex::new([false; MAX_VIEWERS]),
@@ -129,6 +135,7 @@ impl Share {
             asking: Mutex::new(()),
             denied: Mutex::new(HashMap::new()),
         });
+        share_audio::spawn(inner.tap.subscribe_audio(), inner.sound.clone(), inner.stop.clone());
         {
             let (inner, server) = (inner.clone(), server.clone());
             std::thread::spawn(move || serve(&inner, &server));
@@ -237,7 +244,9 @@ fn accept(inner: &Arc<Inner>, offer: SdpOffer, peer: IpAddr, access: Access) -> 
     rtc.add_local_candidate(Candidate::host(addr, "udp").map_err(|e| e.to_string())?);
     let answer = rtc.sdp_api().accept_offer(offer).map_err(|e| e.to_string())?;
 
-    let link = Link { frames: inner.tap.subscribe(), access, slot: 0 };
+    let (sound_tx, sound) = sync_channel(SOUND_BACKLOG);
+    inner.sound.lock().unwrap().push(sound_tx);
+    let link = Link { frames: inner.tap.subscribe(), sound, access, slot: 0 };
     let slot = {
         let mut slots = inner.slots.lock().unwrap();
         let free = slots.iter().position(|taken| !taken).ok_or("too many viewers")?;
@@ -271,6 +280,7 @@ fn accept(inner: &Arc<Inner>, offer: SdpOffer, peer: IpAddr, access: Access) -> 
 /// What one viewer is sent, and what it may do.
 struct Link {
     frames: Receiver<Arc<Unit>>,
+    sound: Receiver<Arc<Sound>>,
     access: Access,
     /// The pointer id its touches use.
     slot: usize,
@@ -289,9 +299,10 @@ fn run(inner: &Inner, rtc: Rtc, socket: &UdpSocket, link: Link) -> Result<(), Rt
 }
 
 fn serve_viewer(inner: &Inner, mut rtc: Rtc, socket: &UdpSocket, link: Link, gate: &mut Gate) -> Result<(), RtcError> {
-    let Link { frames, access, slot } = link;
+    let Link { frames, sound, access, slot } = link;
     let mut buf = vec![0u8; 2000];
     let mut mid: Option<Mid> = None;
+    let mut voice: Option<Mid> = None;
     let mut need_key = true;
     let mut last_kick = Instant::now();
     let mut heard = Instant::now();
@@ -305,7 +316,10 @@ fn serve_viewer(inner: &Inner, mut rtc: Rtc, socket: &UdpSocket, link: Link, gat
             Output::Event(e) => {
                 match e {
                     Event::IceConnectionStateChange(IceConnectionState::Disconnected) => return Ok(()),
-                    Event::MediaAdded(m) => mid = Some(m.mid),
+                    Event::MediaAdded(m) => match m.kind {
+                        MediaKind::Video => mid = Some(m.mid),
+                        MediaKind::Audio => voice = Some(m.mid),
+                    },
                     Event::Connected => {
                         // the keyframe asked for at join time went out before the link was up
                         need_key = true;
@@ -313,10 +327,15 @@ fn serve_viewer(inner: &Inner, mut rtc: Rtc, socket: &UdpSocket, link: Link, gat
                         last_kick = Instant::now();
                     }
                     Event::KeyframeRequest(_) => inner.request_keyframe(),
-                    // the page turns its controls on when it hears this
-                    Event::ChannelOpen(id, _) if access == Access::Control => {
+                    // the page turns its sound button and its controls on when it hears these
+                    Event::ChannelOpen(id, _) => {
                         if let Some(mut channel) = rtc.channel(id) {
-                            let _ = channel.write(false, b"control");
+                            if inner.tap.has_audio() {
+                                let _ = channel.write(false, b"audio");
+                            }
+                            if access == Access::Control {
+                                let _ = channel.write(false, b"control");
+                            }
                         }
                     }
                     Event::ChannelData(d) if access == Access::Control && !d.binary => {
@@ -355,6 +374,15 @@ fn serve_viewer(inner: &Inner, mut rtc: Rtc, socket: &UdpSocket, link: Link, gat
             if writer.write(pt, Instant::now(), pts, unit.data.clone()).is_ok() {
                 need_key = false;
             }
+        }
+
+        while let Ok(packet) = sound.try_recv() {
+            let Some(writer) = voice.and_then(|m| rtc.writer(m)) else { continue };
+            let Some(pt) = writer.payload_params().find(|p| p.spec().codec == Codec::Opus).map(|p| p.pt()) else {
+                continue;
+            };
+            let at = MediaTime::new(packet.pts_us * 48 / 1000, Frequency::FORTY_EIGHT_KHZ);
+            let _ = writer.write(pt, Instant::now(), at, packet.data.clone());
         }
 
         let wait = timeout.saturating_duration_since(Instant::now()).min(Duration::from_millis(5));

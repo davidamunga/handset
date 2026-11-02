@@ -31,6 +31,7 @@ mod restyle;
 mod server;
 mod settings;
 mod share;
+mod share_audio;
 mod share_input;
 mod stream;
 mod style;
