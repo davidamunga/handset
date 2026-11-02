@@ -13,18 +13,25 @@ pub struct Preset {
     pub style: Style,
 }
 
+const BUILTIN: [(&str, &str); 5] = [
+    ("Clean white", "bg=color:#f5f5f7;padding=12;radius=6;shadow=40;aspect=auto"),
+    ("Dark card", "bg=color:#18181b;padding=10;radius=6;shadow=70;aspect=auto"),
+    ("Sunset 4:5", "bg=gradient:sunset;padding=12;radius=6;shadow=60;aspect=4:5"),
+    ("Aurora 16:9", "bg=wallpaper:aurora;padding=10;radius=6;shadow=60;aspect=16:9"),
+    ("Dusk square", "bg=gradient:dusk;padding=12;radius=6;shadow=60;aspect=1:1"),
+];
+
 /// The presets that come with Handset.
 pub fn builtin() -> Vec<Preset> {
-    [
-        ("Clean white", "bg=color:#f5f5f7;padding=12;radius=6;shadow=40;aspect=auto"),
-        ("Dark card", "bg=color:#18181b;padding=10;radius=6;shadow=70;aspect=auto"),
-        ("Sunset 4:5", "bg=gradient:sunset;padding=12;radius=6;shadow=60;aspect=4:5"),
-        ("Aurora 16:9", "bg=wallpaper:aurora;padding=10;radius=6;shadow=60;aspect=16:9"),
-        ("Dusk square", "bg=gradient:dusk;padding=12;radius=6;shadow=60;aspect=1:1"),
-    ]
-    .into_iter()
-    .filter_map(|(name, spec)| Some(Preset { name: name.to_string(), style: Style::parse(spec)? }))
-    .collect()
+    BUILTIN
+        .into_iter()
+        .filter_map(|(name, spec)| Some(Preset { name: name.to_string(), style: Style::parse(spec)? }))
+        .collect()
+}
+
+/// The same presets as written text, for the page Share serves.
+pub fn builtin_specs() -> Vec<(&'static str, &'static str)> {
+    BUILTIN.to_vec()
 }
 
 /// A name that is safe to keep: trimmed, on one line, not empty, not longer than 32 characters.

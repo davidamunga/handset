@@ -151,6 +151,33 @@ pub const WALLPAPERS: &[Wallpaper] = &[
     },
 ];
 
+fn css_hex(c: u32) -> String {
+    format!("#{c:06x}")
+}
+
+/// The backgrounds, looks and limits as JSON, so the page that Share serves offers exactly what the editor does.
+pub fn palette_json() -> String {
+    let list = |items: Vec<String>| format!("[{}]", items.join(","));
+    let gradients = GRADIENTS.iter().map(|g| {
+        let stops = list(g.stops.iter().map(|s| format!("\"{}\"", css_hex(*s))).collect());
+        format!("{{\"name\":\"{}\",\"angle\":{},\"stops\":{stops}}}", g.name, g.angle)
+    });
+    let wallpapers = WALLPAPERS.iter().map(|w| {
+        let blobs = list(w.blobs.iter().map(|(x, y, r, c)| format!("[{x},{y},{r},\"{}\"]", css_hex(*c))).collect());
+        format!("{{\"name\":\"{}\",\"base\":\"{}\",\"blobs\":{blobs}}}", w.name, css_hex(w.base))
+    });
+    let looks = crate::presets::builtin_specs()
+        .into_iter()
+        .map(|(name, spec)| format!("{{\"name\":\"{name}\",\"spec\":\"{spec}\"}}"));
+    let aspects = list(ASPECTS.iter().map(|a| format!("\"{}\"", a.label().to_lowercase())).collect());
+    format!(
+        "{{\"gradients\":{},\"wallpapers\":{},\"looks\":{},\"aspects\":{aspects},\"maxPadding\":{MAX_PADDING},\"maxRadius\":{MAX_RADIUS}}}",
+        list(gradients.collect()),
+        list(wallpapers.collect()),
+        list(looks.collect()),
+    )
+}
+
 pub struct Img {
     pub w: u32,
     pub h: u32,

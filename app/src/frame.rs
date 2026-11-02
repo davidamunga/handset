@@ -77,6 +77,38 @@ pub fn names_for(ios: bool) -> Vec<&'static str> {
     builtin_names().filter(|n| !ios || is_ios(n)).collect()
 }
 
+/// A bezel as it is stored: the PNG itself, and where the screen sits in it, for a viewer that draws the
+/// frame in a web page.
+pub struct Art {
+    pub png: Vec<u8>,
+    /// Screen area as fractions of the image: x, y, w, h.
+    pub hole: [f32; 4],
+}
+
+/// The same `spec` as [`load`], without decoding the picture.
+pub fn art(spec: &str) -> Result<Art, String> {
+    let (png, meta) = match BUILTIN.iter().find(|b| b.0 == spec) {
+        Some((_, png, meta)) => (png.to_vec(), meta.to_string()),
+        None => {
+            let png = std::fs::read(spec).map_err(|e| format!("{spec}: {e}"))?;
+            let meta_path = std::path::Path::new(spec).with_extension("frame");
+            let meta = std::fs::read_to_string(&meta_path).map_err(|e| format!("{}: {e}", meta_path.display()))?;
+            (png, meta)
+        }
+    };
+    let n: Vec<f32> = meta.split_whitespace().filter_map(|t| t.parse().ok()).collect();
+    // a PNG starts with its signature and an IHDR chunk whose first two numbers are width and height
+    if n.len() != 4 || n[2] <= 0.0 || n[3] <= 0.0 || png.len() < 24 || png[..8] != *b"\x89PNG\r\n\x1a\n" {
+        return Err("invalid frame".into());
+    }
+    let w = u32::from_be_bytes(png[16..20].try_into().unwrap()) as f32;
+    let h = u32::from_be_bytes(png[20..24].try_into().unwrap()) as f32;
+    if w <= 0.0 || h <= 0.0 || n[0] + n[2] > w || n[1] + n[3] > h {
+        return Err("screen area is outside of the frame image".into());
+    }
+    Ok(Art { png, hole: [n[0] / w, n[1] / h, n[2] / w, n[3] / h] })
+}
+
 /// `spec` is a built-in name or a path to a PNG with a `.frame` sidecar.
 pub fn load(spec: &str) -> Result<Bezel, String> {
     if let Some((_, png, meta)) = BUILTIN.iter().find(|b| b.0 == spec) {
@@ -199,6 +231,21 @@ impl Bezel {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_art_of_every_built_in_frame_gives_a_viewer_its_screen() {
+        for name in builtin_names() {
+            let art = art(name).unwrap();
+            let [x, y, w, h] = art.hole;
+            assert!(x >= 0.0 && y >= 0.0 && w > 0.0 && h > 0.0 && x + w <= 1.0 && y + h <= 1.0, "{name}");
+            // the viewer's hole is the one the window uses
+            let bezel = load(name).unwrap();
+            for (a, b) in art.hole.iter().zip(bezel.hole) {
+                assert!((a - b).abs() < 0.001, "{name}");
+            }
+        }
+        assert!(art("no-such-frame").is_err());
+    }
+
     use super::*;
 
     #[test]

@@ -1205,6 +1205,9 @@ impl App {
             };
             settings::save(key, self.frame_spec_name(&spec));
         }
+        if let Some(share) = &self.share {
+            share.set_frame(spec.as_deref().and_then(|s| frame::art(s).ok()));
+        }
         self.frame_spec = spec;
         // keep the height, follow the new aspect ratio
         let height = w.inner_size().height;
@@ -1654,14 +1657,16 @@ impl App {
         if !crate::share::network_is_private() && !confirm_public_share() {
             return;
         }
+        let name = device.clone();
         let proxy = self.proxy.clone();
         let sound = tap.clone();
         let approve: crate::share::Approve = Arc::new(move |ip| crate::share::ask_host(&device, ip, sound.has_audio()));
         let changed = Arc::new(move || {
             let _ = proxy.send_event(UserEvent::Share);
         });
-        match crate::share::Share::start(tap, control, approve, changed) {
+        match crate::share::Share::start(tap, control, name, approve, changed) {
             Ok(share) => {
+                share.set_frame(self.frame_spec.as_deref().and_then(|s| frame::art(s).ok()));
                 eprintln!("sharing at {}", share.url());
                 crate::clipboard::write_text(share.url());
                 self.share = Some(share);
