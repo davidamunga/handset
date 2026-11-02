@@ -849,6 +849,7 @@ mod tests {
             mirroring: true,
             usb: true,
             sync: false,
+            sharing: None,
             apps: vec![
                 crate::apps::AppEntry { name: "Maps".into(), package: "com.maps".into(), system: false },
                 crate::apps::AppEntry { name: "Settings".into(), package: "com.settings".into(), system: true },
@@ -902,6 +903,7 @@ mod tests {
             "mute",
             "rotate",
             "sync",
+            "share:start",
             "toolbar",
             "touches",
             "zoom:in",
@@ -936,6 +938,29 @@ mod tests {
             assert!(all.iter().any(|a| a == id), "{id} is missing");
         }
         assert!(all.contains(&"frame:galaxy-white".to_string()) && all.contains(&"app:com.settings".to_string()));
+    }
+
+    #[test]
+    fn a_running_share_offers_the_link_and_a_stop() {
+        let ids = |sharing| {
+            let s = menu::State { sharing, ..state() };
+            let mut ids = Vec::new();
+            fn walk(entries: &[Entry], out: &mut Vec<String>) {
+                for e in entries {
+                    match e {
+                        Entry::Item(i) => out.extend(i.id.clone()),
+                        Entry::Submenu { items, .. } => walk(items, out),
+                        _ => {}
+                    }
+                }
+            }
+            walk(&menu::build(&s), &mut ids);
+            ids
+        };
+        assert!(ids(None).contains(&"share:start".to_string()));
+        let running = ids(Some(2));
+        assert!(running.contains(&"share:copy".to_string()) && running.contains(&"share:stop".to_string()));
+        assert!(!running.contains(&"share:start".to_string()));
     }
 
     #[test]

@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handset Share</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; background: #0e0e10; color: #e6e6e8; font: 15px system-ui, sans-serif; }
+  body { display: grid; place-items: center; }
+  video { max-width: 100vw; max-height: 100vh; background: #000; border-radius: 14px; display: none; }
+  #status { position: fixed; inset: auto 0 24px 0; text-align: center; color: #9a9aa2; padding: 0 16px; }
+</style>
+<video id="v" autoplay muted playsinline></video>
+<div id="status">Asking the host to let you in…</div>
+<script>
+const status = document.getElementById('status');
+const video = document.getElementById('v');
+const say = text => { status.textContent = text; status.style.display = text ? '' : 'none'; };
+(async () => {
+  const pc = new RTCPeerConnection();
+  pc.addTransceiver('video', { direction: 'recvonly' });
+  pc.ontrack = e => {
+    video.srcObject = e.streams[0] || new MediaStream([e.track]);
+    video.style.display = 'block';
+  };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'connected') say('');
+    if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+      say('The connection ended. Reload to ask again.');
+    }
+  };
+  await pc.setLocalDescription(await pc.createOffer());
+  // the host sends its connectivity checks to the addresses in the offer, so wait for them
+  await new Promise(done => {
+    if (pc.iceGatheringState === 'complete') return done();
+    pc.onicegatheringstatechange = () => pc.iceGatheringState === 'complete' && done();
+    setTimeout(done, 3000);
+  });
+  const r = await fetch('/offer', { method: 'POST', body: pc.localDescription.sdp });
+  if (r.status === 403) return say('The host did not let you in.');
+  if (r.status === 429 || r.status === 503) return say('The host is busy. Try again in a moment.');
+  if (!r.ok) return say('Could not connect: ' + (await r.text()));
+  say('Connecting…');
+  await pc.setRemoteDescription({ type: 'answer', sdp: await r.text() });
+})().catch(e => say('Could not connect: ' + e));
+</script>

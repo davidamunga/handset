@@ -219,6 +219,8 @@ pub struct App {
     /// Window height at start (physical pixels), what Default Size returns to.
     home_height: u32,
     mirror: Option<Mirror>,
+    /// Someone may be watching the phone in a browser.
+    share: Option<crate::share::Share>,
     waiting: Option<Waiting>,
     proxy: EventLoopProxy<UserEvent>,
     opts: server::Options,
@@ -252,6 +254,7 @@ type OverlayWant = (String, Option<[u8; 3]>, f32);
 
 const AMBER_DOT: [u8; 3] = [255, 190, 60];
 const BLACK_HINT: &str = "BLACK SCREEN: PHONE ASLEEP OR APP BLOCKS CAPTURE";
+const SHARE_BLUE: [u8; 3] = [80, 160, 255];
 const REC_RED: [u8; 3] = [235, 60, 60];
 const REC_DIM: [u8; 3] = [110, 35, 35];
 
@@ -308,6 +311,7 @@ impl App {
             updating: false,
             home_height: 0,
             mirror: init.mirror,
+            share: None,
             waiting: init.wait.map(|w| Waiting::new(w.serial, w.wifi, Status::Looking)),
             proxy: init.proxy,
             opts: init.opts,
@@ -642,6 +646,7 @@ impl App {
     /// Stop mirroring and return the frame to its idle state. Returns the serial that was mirrored.
     fn end_session(&mut self) -> Option<String> {
         let mirror = self.mirror.take()?;
+        self.share = None;
         let serial = mirror.serial().to_string();
         self.stop_recording();
         drop(mirror); // kills the server and removes the adb forward
@@ -1042,6 +1047,7 @@ impl App {
             mirroring: self.mirror.is_some(),
             usb: self.mirror.as_ref().is_some_and(|m| !connect::is_wireless(m.serial())),
             sync: self.sync.lock().unwrap().enabled,
+            sharing: self.share.as_ref().map(|s| s.viewers()),
             apps: self.apps.clone(),
             apps_loading: self.apps_loading,
             recent: capture::recent_captures(5),
@@ -1331,6 +1337,17 @@ impl App {
             "rotate" => {
                 let _ = self.control.rotate_device();
             }
+            "share:start" => self.start_share(),
+            "share:copy" => {
+                if let Some(s) = &self.share {
+                    crate::clipboard::write_text(s.url());
+                    self.show_toast("LINK COPIED");
+                }
+            }
+            "share:stop" => {
+                self.share = None;
+                self.show_toast("SHARING STOPPED");
+            }
             "quit" => el.exit(),
             // the drawn menu's About: there is no About window to open
             "about" => {
@@ -1611,6 +1628,32 @@ impl App {
         });
     }
 
+    /// Let people on this network watch the phone in a browser. Each one is asked about first.
+    fn start_share(&mut self) {
+        let Some(m) = self.mirror.as_ref() else { return self.show_toast("CONNECT A PHONE FIRST") };
+        let (Some(tap), Some(control)) = (m.tap().cloned(), m.control_clone()) else {
+            return self.show_toast("NOT AVAILABLE ON IOS YET");
+        };
+        let device = m.device_name().to_string();
+        let proxy = self.proxy.clone();
+        let approve: crate::share::Approve = Arc::new(move |ip| crate::share::ask_host(&device, ip));
+        let changed = Arc::new(move || {
+            let _ = proxy.send_event(UserEvent::Share);
+        });
+        match crate::share::Share::start(tap, control, approve, changed) {
+            Ok(share) => {
+                eprintln!("sharing at {}", share.url());
+                crate::clipboard::write_text(share.url());
+                self.share = Some(share);
+                self.show_toast("SHARING - LINK COPIED");
+            }
+            Err(e) => {
+                eprintln!("could not start sharing: {e}");
+                self.show_toast("SHARING FAILED");
+            }
+        }
+    }
+
     fn show_toast(&mut self, text: &str) {
         self.toast = Some(Toast {
             text: text.to_string(),
@@ -1676,7 +1719,7 @@ impl App {
             let secs = e.as_secs();
             Some((format!("REC {}:{:02}", secs / 60, secs % 60), Some(dot), 1.0))
         } else {
-            None
+            self.share.as_ref().map(|s| (format!("SHARING - {} WATCHING", s.viewers()), Some(SHARE_BLUE), 1.0))
         };
 
         let (Some(r), Some(w)) = (self.renderer.as_mut(), self.window.as_ref()) else { return false };
@@ -2110,6 +2153,9 @@ impl ApplicationHandler<UserEvent> for App {
             },
             UserEvent::Adb(result) => self.on_adb(result),
             UserEvent::Landing(event) => self.on_landing(event),
+            UserEvent::Share => {
+                self.refresh_overlay();
+            }
             UserEvent::Frame => {
                 if self.renderer.is_none() || self.window.is_none() {
                     return;

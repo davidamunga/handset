@@ -40,6 +40,8 @@ pub struct State {
     pub usb: bool,
     /// Clipboard text is shared with the phone.
     pub sync: bool,
+    /// Share is running, and how many people are watching.
+    pub sharing: Option<usize>,
     /// The phone's apps (empty until listed) and whether the list is still being fetched.
     pub apps: Vec<crate::apps::AppEntry>,
     pub apps_loading: bool,
@@ -212,6 +214,20 @@ pub fn build(s: &State) -> Vec<Entry> {
         open_app.push(sub("System Apps", s.apps.iter().filter(|a| a.system).map(app).collect()));
     }
 
+    let share = match s.sharing {
+        None => vec![item("share:start", "Share in a Browser\u{2026}").enabled(s.mirroring && !s.ios).into()],
+        Some(n) => vec![
+            note(match n {
+                0 => "Nobody is watching".to_string(),
+                1 => "1 person is watching".to_string(),
+                n => format!("{n} people are watching"),
+            })
+            .into(),
+            item("share:copy", "Copy Link").into(),
+            item("share:stop", "Stop Sharing").into(),
+        ],
+    };
+
     let tilt = crate::tilt::Tilt::PRESETS
         .iter()
         .map(|(name, t)| item(format!("tilt:{}", t.to_spec()), *name).checked(s.tilt == *t).into())
@@ -230,6 +246,7 @@ pub fn build(s: &State) -> Vec<Entry> {
     menu.push(item("shot", "Take Screenshot").key("S").into());
     menu.push(item("rec", format!("{} Recording", if s.recording { "Stop" } else { "Start" })).key("E").into());
     menu.push(sub("Recent Captures", recent));
+    menu.push(sub("Share", share));
     menu.push(sub("Recording", record));
     menu.push(Entry::Separator);
     if s.audio {

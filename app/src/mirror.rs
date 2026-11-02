@@ -20,7 +20,6 @@ enum Source {
 pub struct Mirror {
     source: Source,
     /// The phone's video packets as they arrive, for Share. An iOS device has none: it is captured as pictures.
-    #[allow(dead_code)] // Share is the first reader
     tap: Option<Arc<Tap>>,
     /// The playback stream is not `Send`, so it stays on the thread that made it.
     _playback: Option<audio::Playback>,
@@ -86,9 +85,17 @@ impl Mirror {
         Ok(Mirror { source: Source::Ios(capture), tap: None, _playback: playback })
     }
 
-    #[allow(dead_code)] // Share is the first caller
     pub fn tap(&self) -> Option<&Arc<Tap>> {
         self.tap.as_ref()
+    }
+
+    /// A second writer on the phone's control socket, for Share's keyframe requests.
+    pub fn control_clone(&self) -> Option<Control> {
+        match &self.source {
+            Source::Android(s) => s.control.try_clone().ok().map(Control::new),
+            #[cfg(target_os = "macos")]
+            Source::Ios(_) => None,
+        }
     }
 
     pub fn with_audio(&self) -> bool {
