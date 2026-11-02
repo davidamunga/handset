@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.0
+
+### Minor Changes
+
+- [#137](https://github.com/davidamunga/handset/pull/137) [`09a34c5`](https://github.com/davidamunga/handset/commit/09a34c5dedeb2ba955956c431dab0db72ab0d0fe) - Share in a Browser, in the right-click menu, lets someone on the same network watch the phone from a web page, with no app to install. Handset asks you about each person before they see anything: Allow and Control lets them tap, swipe, type and press Back and Home from their browser, Watch Only does not. It shows how many are watching, and Stop Sharing ends it. With audio on, the page has a sound button.
+
+- [#143](https://github.com/davidamunga/handset/pull/143) [`d2f9dbc`](https://github.com/davidamunga/handset/commit/d2f9dbcac50dbef96d65f680c29a5898e78ed51f) - The page that Share in a Browser shows now looks like Handset: the phone fills the window in the frame you chose, on a dotted grid, with the Handset logo and a link to the project on GitHub. Viewers can change the look for themselves with the editor's gradients, wallpapers, colours, padding, corners, shadow and shapes, go full screen, or save the picture as a PNG or JPEG.
+
 ## 0.12.0
 
 ### Minor Changes
