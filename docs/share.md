@@ -77,3 +77,5 @@ the viewer's page say the same.
   audio on.
 - **Black picture in the browser.** Reload the page. Then check the log for `share:` lines
   (`HANDSET_DEBUG=1` adds more).
+
+How the page and Handset talk to each other is written down in [share-protocol.md](share-protocol.md).

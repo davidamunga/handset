@@ -8,6 +8,9 @@ const GUIDE: &str = include_str!("../../docs/styling.md");
 const README: &str = include_str!("../../README.md");
 const MAIN: &str = include_str!("main.rs");
 const UPDATES: &str = include_str!("../../docs/updates.md");
+const SHARE_GUIDE: &str = include_str!("../../docs/share.md");
+const SHARE_PROTOCOL: &str = include_str!("../../docs/share-protocol.md");
+const SHARE_SOURCE: &str = include_str!("share.rs");
 
 fn docs_dir() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../docs")
@@ -146,4 +149,31 @@ fn the_update_guide_names_the_files_the_updater_really_downloads() {
     assert!(UPDATES.contains("handset-update-<id>/update.log"));
     assert!(MAIN.contains("--verify-release") && UPDATES.contains("--verify-release"));
     assert!(README.contains("docs/updates.md"));
+}
+
+#[test]
+fn the_share_protocol_guide_names_what_the_page_is_served_and_told() {
+    for route in ["/styles.json", "/frame.png", "/offer"] {
+        assert!(SHARE_PROTOCOL.contains(route), "{route} is not in docs/share-protocol.md");
+        assert!(SHARE_SOURCE.contains(route), "{route} is documented but the host does not serve it");
+    }
+    for message in [
+        "`audio`",
+        "`control`",
+        "`view`",
+        "`look,{json}`",
+        "`d,x,y`",
+        "`m,x,y`",
+        "`u,x,y`",
+        "`s,x,y,h,v`",
+        "`t,text`",
+        "`r`",
+    ] {
+        assert!(SHARE_PROTOCOL.contains(message), "{message} is not in docs/share-protocol.md");
+    }
+    for key in ["back", "home", "recents", "enter", "del"] {
+        assert!(SHARE_PROTOCOL.contains(&format!("`{key}`")), "the key {key} is not in docs/share-protocol.md");
+        assert!(include_str!("share_input.rs").contains(&format!("\"{key}\"")), "{key} is documented but not read");
+    }
+    assert!(SHARE_GUIDE.contains("share-protocol.md") && README.contains("docs/share-protocol.md"));
 }
