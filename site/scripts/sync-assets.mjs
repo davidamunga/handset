@@ -17,6 +17,7 @@ const files = {
   'docs/images/styled-example.jpg': 'styled-example.jpg',
   'docs/images/mirroring.png': 'mirroring.png',
   'docs/images/handset-looking.gif': 'handset-looking.gif',
+  'docs/images/share-page.png': 'share-page.png',
   'docs/images/og/og-product.png': 'og.png',
   'app/packaging/icon/handset-icon.svg': 'icon.svg',
   'app/packaging/icon/handset-icon-512.png': 'icon-512.png',

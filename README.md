@@ -207,7 +207,7 @@ that is plugged in, or the Wi-Fi and QR options.
 - Clipboard text is shared with the phone: copy on the phone and paste on the Mac, or copy on the Mac, click the
   Handset window and paste on the phone
 - A clickable "saved" toast, a recent captures menu and automatic clipboard copy
-- A single binary (under 20 MB, including the style editor) with the scrcpy server embedded
+- A single binary (under 30 MB, including the style editor and Share) with the scrcpy server embedded
 
 ### Controls
 
@@ -248,7 +248,8 @@ Your original is kept. Click **EDIT** on the toast after a capture is saved (or
 Right-click the phone and choose **Share > Share in a Browser...** to get a link. Anyone on the same network who
 opens it can watch the phone, and tap on it if you allow it. You are asked about every person before they see
 anything. It needs no install on their side, shows who is watching in the window, and **Stop Sharing** ends it.
-The guide is in [docs/share.md](docs/share.md).
+The guide is in [docs/share.md](docs/share.md), and what the page and Handset say to each other is in
+[docs/share-protocol.md](docs/share-protocol.md).
 
 ## iPhone and iPad (experimental)
 
@@ -389,6 +390,7 @@ diagnostics.
 Ideas, not promises:
 
 - Keyboard-to-touch mapping profiles (a long-standing request in the scrcpy world)
+- Share across networks, not only the same Wi-Fi (it needs a signalling service and a relay, see [ADR 0039](docs/adr/0039-share-the-phone-by-forwarding-its-h264-over-webrtc.md))
 - A device picker
 - OBS-friendly output (Syphon or a virtual camera)
 - Microphone to phone
