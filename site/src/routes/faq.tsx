@@ -6,7 +6,7 @@ export const Route = createFileRoute('/faq')({
   head: () => ({
     meta: [
       { title: 'FAQ | Handset' },
-      { name: 'description', content: 'Fixes for the usual problems: Wi-Fi pairing that fails, a phone that does not show up, a restart of adb, and Linux.' },
+      { name: 'description', content: 'Fixes for the usual problems: Wi-Fi pairing that fails, a phone that does not show up, sharing the phone in a browser, a restart of adb, and Linux.' },
     ],
   }),
   component: Faq,
@@ -16,7 +16,7 @@ function Faq() {
   return (
     <LegalPage
       title="FAQ"
-      updated="October 27, 2026"
+      updated="November 2, 2026"
       intro="Most problems come from the connection to the phone, not from Handset. Here are the fixes that work most often."
       stamp={false}
     >
@@ -95,6 +95,43 @@ function Faq() {
         <li>If the phone says it is <code>unauthorized</code>, unlock it and accept the prompt. Choose &ldquo;Revoke USB debugging authorizations&rdquo; first if no prompt appears.</li>
         <li>Restart adb as above, then unplug and plug in the cable again.</li>
       </ul>
+
+      <h2>Sharing in a browser</h2>
+      <p>
+        Right-click the phone, choose <strong>Share</strong>, then <strong>Share in a Browser</strong>. Handset copies a link, such as{' '}
+        <code>http://192.168.1.71:8099/</code>, and asks you about each person who opens it.
+      </p>
+      <ul>
+        <li>
+          <strong>The link does not open on another device.</strong> The two devices must be on the same network. A guest network, a
+          VPN, or a router setting that isolates devices will block it. Try the link on the computer itself first: if it opens
+          there, the problem is between the devices. Type the whole address, starting with <code>http://</code>.
+        </li>
+        <li>
+          <strong>The page says the host did not let you in.</strong> You, or whoever shares, chose Don&apos;t Allow. The same
+          address is not asked about again for 30 seconds.
+        </li>
+        <li>
+          <strong>A viewer can watch but not touch the phone.</strong> The host chose Watch Only. The page shows &ldquo;View
+          only&rdquo; in its header.
+        </li>
+        <li>
+          <strong>There is no sound button.</strong> Sound needs Android 11 or later, and Handset has to be started with audio on
+          (<code>--audio</code>, or <strong>Turn On Audio</strong> in the menu) before you share. Browsers also keep the sound off
+          until the viewer presses the button.
+        </li>
+        <li>
+          <strong>Can someone outside my network watch?</strong> Not yet. Share works on one network only. Each person is also
+          allowed by you, one at a time, before they see anything.
+        </li>
+        <li>
+          <strong>Full screen does nothing on an iPhone.</strong> iPhone Safari cannot make a page full screen.
+        </li>
+      </ul>
+      <p>
+        The <a href={`${REPO}/blob/main/docs/share.md`}>Share guide</a> has the rest, and{' '}
+        <a href={`${REPO}/blob/main/SECURITY.md`}>SECURITY.md</a> says what sharing means for safety.
+      </p>
 
       <h2>Will restarting adb disturb anything?</h2>
       <p>

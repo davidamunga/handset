@@ -1,3 +1,5 @@
+import { REPO } from '../links'
+
 const img = (name: string) => `/shared/${name}`
 
 export function Features() {
@@ -27,7 +29,7 @@ export function Features() {
       <Row
         number="02"
         title="Inside a real device frame"
-        body="Twenty-one frames, from punch-hole and notch to foldable, flip and tablet, or bring your own PNG. The window is transparent, so the phone sits on your desktop like an object, not a rectangle."
+        body="Twenty-three frames, from punch-hole and notch to foldable, flip and tablet, or bring your own PNG. The window is transparent, so the phone sits on your desktop like an object, not a rectangle."
         points={['Screenshots as transparent PNGs', 'Recordings as MP4 with sound, or GIF', 'Switch frames while it runs']}
         flip
       >
@@ -62,6 +64,29 @@ export function Features() {
           className="w-full rounded-2xl border border-line"
         />
       </Row>
+
+      <Row
+        number="04"
+        title="Show it to someone with a link"
+        body="Right-click the phone and choose Share. Anyone on your network opens the link in a browser and sees your phone in its frame, with sound. You are asked about each person before they see anything, and you choose whether they may only watch or may tap and type too."
+        points={['No app to install on their side', 'Watch only, or allow control, per person', 'They can restyle the page and save a PNG or JPEG']}
+        flip
+        link={{ href: `${REPO}/blob/main/docs/share.md`, label: 'Read the Share guide' }}
+      >
+        <figure>
+          <img
+            src={img('share-page.png')}
+            alt="The page Share shows in a browser: the phone in its frame on a dotted background, with the phone's keys beside it and the tools along the top"
+            width={1440}
+            height={900}
+            loading="lazy"
+            className="w-full rounded-2xl border border-line"
+          />
+          <figcaption className="mt-3 text-sm text-ink-2">
+            The page a viewer sees. The screen is a drawn demo, not a real phone. On the same Wi-Fi or network only, for now.
+          </figcaption>
+        </figure>
+      </Row>
     </section>
   )
 }
@@ -74,6 +99,7 @@ function Row(props: {
   children: React.ReactNode
   stage?: boolean
   flip?: boolean
+  link?: { href: string; label: string }
 }) {
   return (
     <article className="mt-16 grid items-center gap-8 md:mt-24 md:grid-cols-12 md:gap-12">
@@ -91,6 +117,13 @@ function Row(props: {
             </li>
           ))}
         </ul>
+        {props.link && (
+          <p className="mt-5">
+            <a href={props.link.href} className="font-medium underline underline-offset-4 hover:no-underline">
+              {props.link.label}
+            </a>
+          </p>
+        )}
       </div>
       <div className={`md:col-span-7 ${props.flip ? 'md:order-1' : ''}`}>
         {props.stage ? <div className="rounded-[2rem] bg-stage px-6 py-10 sm:py-12">{props.children}</div> : props.children}

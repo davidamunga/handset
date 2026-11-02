@@ -16,7 +16,7 @@ function Privacy() {
   return (
     <LegalPage
       title="Privacy Policy"
-      updated="October 27, 2026"
+      updated="November 2, 2026"
       intro="Handset does not collect your data. This page says what the app and this website do, so you do not have to take that on trust."
     >
       <h2>The short version</h2>
@@ -24,6 +24,7 @@ function Privacy() {
         <li>Handset has no account, no sign-in, no analytics and no advertising.</li>
         <li>What you mirror, record or screenshot stays on your computer.</li>
         <li>The only time the app talks to the internet is to ask GitHub whether a newer version exists, and to download an update if you choose to install one.</li>
+        <li>Share, which shows your phone to someone on your network, is off until you start it, and each person is allowed by you before they see anything.</li>
         <li>This website sets no cookies and uses no trackers.</li>
       </ul>
 
@@ -46,6 +47,27 @@ function Privacy() {
       <p>
         <strong>Clipboard sharing.</strong> Handset can pass copied text between your phone and your computer. It moves directly
         between the two and goes nowhere else.
+      </p>
+
+      <h2>Share in a browser</h2>
+      <p>
+        <strong>Share</strong> is off until you choose it from the menu. Then Handset opens a small web server on your computer, on the
+        network it is connected to, and the link it gives you points there. Someone who opens the link connects straight to your
+        computer. Nothing goes through a server of ours, and Handset contacts no third-party service to make the connection.
+      </p>
+      <p>
+        Before anyone sees anything, Handset asks you about that person, showing their network address. You can let them watch,
+        let them watch and control the phone, or refuse. Someone you allow sees everything on the phone&apos;s screen, including
+        notifications and anything typed, and hears what it plays. With control they can also tap, type and press the phone&apos;s
+        keys. Sharing stops when you choose <strong>Stop Sharing</strong>, close the window or disconnect the phone.
+      </p>
+      <p>
+        The page and the setup of the connection travel over plain HTTP on your network. The picture and the sound are encrypted.
+        Because of that, share only on a network you trust. A viewer&apos;s page keeps its own style choices in that
+        person&apos;s browser, on their device, and sends them nowhere. The page links to this project on GitHub; nothing is
+        loaded from there until the person follows the link. More in the{' '}
+        <a href={`${REPO}/blob/main/SECURITY.md`}>security notes</a> and the{' '}
+        <a href={`${REPO}/blob/main/docs/share.md`}>Share guide</a>.
       </p>
 
       <h2>Checking for updates</h2>
