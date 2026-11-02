@@ -199,6 +199,8 @@ that is plugged in, or the Wi-Fi and QR options.
 - Touch, scroll, keyboard and text input; landscape rotation
 - Framed screenshots (transparent PNG) and recordings (MP4 with audio, or GIF) via ffmpeg
 - A style editor for captures (see [Styling captures](#styling-captures))
+- Share the phone with someone on the same network, who watches (and, if you allow it, taps) from a web page, with
+  no app to install (see [Sharing in a browser](#sharing-in-a-browser))
 - A Dock icon that shows what Handset is doing: grey eyes while waiting for a phone, amber while connecting, white
   while mirroring, red with a dot while recording
 - A toolbar beside the phone and a native right-click menu, with an **About Handset** item that credits the author
@@ -240,6 +242,13 @@ corners and an aspect ratio (1:1, 16:9, 4:5 ...); trim and play recordings with 
 Your original is kept. Click **EDIT** on the toast after a capture is saved (or
 **Recent Captures > Edit Style...**) to open the editor, or turn on
 **Recording > Save a styled copy of each capture**. The guide is in [docs/styling.md](docs/styling.md).
+
+### Sharing in a browser
+
+Right-click the phone and choose **Share > Share in a Browser...** to get a link. Anyone on the same network who
+opens it can watch the phone, and tap on it if you allow it. You are asked about every person before they see
+anything. It needs no install on their side, shows who is watching in the window, and **Stop Sharing** ends it.
+The guide is in [docs/share.md](docs/share.md).
 
 ## iPhone and iPad (experimental)
 
