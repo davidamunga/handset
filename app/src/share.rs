@@ -1,10 +1,13 @@
 //! Share: the phone's H.264 stream forwarded, untouched, to a browser on the same network over WebRTC.
-//! View only. The host decides about every viewer before anything is sent (see ADR 0039).
+//! The host decides about every viewer before anything is sent, and whether that viewer may also touch the
+//! phone (see ADR 0039).
 //!
 //! A small HTTP server hands out the viewer page and answers each viewer's WebRTC offer. Every viewer then gets
 //! a thread and a UDP socket of its own: the packets come from the `Tap`, `str0m` packetizes them, nothing is
 //! decoded or encoded here.
 
+use crate::control::Touch;
+use crate::share_input::{self, Gate, Input as Command};
 use crate::tap::{Tap, Unit};
 use std::collections::HashMap;
 use std::io::{self, ErrorKind, Read};
@@ -38,6 +41,7 @@ const MAX_OFFER: u64 = 64 * 1024;
 pub enum Access {
     Deny,
     Watch,
+    Control,
 }
 
 /// Asks the host what `ip` may do. Blocks until they answer.
@@ -74,6 +78,10 @@ struct Inner {
     changed: Notify,
     stop: AtomicBool,
     viewers: AtomicUsize,
+    /// ...and how many of them may also touch the phone.
+    controllers: AtomicUsize,
+    /// The pointer ids viewers touch with, so two fingers are never the same finger.
+    slots: Mutex<[bool; MAX_VIEWERS]>,
     waiting: AtomicUsize,
     /// One question to the host at a time.
     asking: Mutex<()>,
@@ -115,6 +123,8 @@ impl Share {
             changed,
             stop: AtomicBool::new(false),
             viewers: AtomicUsize::new(0),
+            controllers: AtomicUsize::new(0),
+            slots: Mutex::new([false; MAX_VIEWERS]),
             waiting: AtomicUsize::new(0),
             asking: Mutex::new(()),
             denied: Mutex::new(HashMap::new()),
@@ -133,6 +143,10 @@ impl Share {
 
     pub fn viewers(&self) -> usize {
         self.inner.viewers.load(SeqCst)
+    }
+
+    pub fn controllers(&self) -> usize {
+        self.inner.controllers.load(SeqCst)
     }
 }
 
@@ -204,7 +218,7 @@ fn offer(inner: &Arc<Inner>, mut req: tiny_http::Request) {
             inner.denied.lock().unwrap().insert(peer, Instant::now());
             return drop(req.respond(text("not allowed", 403)));
         }
-        accept(inner, sdp, peer)
+        accept(inner, sdp, peer, access)
     };
     match answer {
         Ok(sdp) => drop(req.respond(tiny_http::Response::from_string(sdp))),
@@ -215,7 +229,7 @@ fn offer(inner: &Arc<Inner>, mut req: tiny_http::Request) {
     }
 }
 
-fn accept(inner: &Arc<Inner>, offer: SdpOffer, peer: IpAddr) -> Result<String, String> {
+fn accept(inner: &Arc<Inner>, offer: SdpOffer, peer: IpAddr, access: Access) -> Result<String, String> {
     let mut rtc = RtcConfig::new().build(Instant::now());
     // the address this computer has on the network the viewer is on
     let socket = UdpSocket::bind((local_toward(peer), 0)).map_err(|e| e.to_string())?;
@@ -223,26 +237,59 @@ fn accept(inner: &Arc<Inner>, offer: SdpOffer, peer: IpAddr) -> Result<String, S
     rtc.add_local_candidate(Candidate::host(addr, "udp").map_err(|e| e.to_string())?);
     let answer = rtc.sdp_api().accept_offer(offer).map_err(|e| e.to_string())?;
 
-    let frames = inner.tap.subscribe();
+    let link = Link { frames: inner.tap.subscribe(), access, slot: 0 };
+    let slot = {
+        let mut slots = inner.slots.lock().unwrap();
+        let free = slots.iter().position(|taken| !taken).ok_or("too many viewers")?;
+        slots[free] = true;
+        free
+    };
     inner.viewers.fetch_add(1, SeqCst);
+    if access == Access::Control {
+        inner.controllers.fetch_add(1, SeqCst);
+    }
     (inner.changed)();
     // a joining viewer needs a keyframe now, not at the encoder's next interval
     inner.request_keyframe();
     let inner = inner.clone();
     std::thread::spawn(move || {
-        eprintln!("share: {peer} joined");
-        if let Err(e) = run(&inner, rtc, &socket, frames) {
+        eprintln!("share: {peer} joined ({access:?})");
+        if let Err(e) = run(&inner, rtc, &socket, Link { slot, ..link }) {
             eprintln!("share: {peer} ended: {e:?}");
         }
+        inner.slots.lock().unwrap()[slot] = false;
         inner.viewers.fetch_sub(1, SeqCst);
+        if access == Access::Control {
+            inner.controllers.fetch_sub(1, SeqCst);
+        }
         (inner.changed)();
         eprintln!("share: {peer} left");
     });
     Ok(answer.to_sdp_string())
 }
 
+/// What one viewer is sent, and what it may do.
+struct Link {
+    frames: Receiver<Arc<Unit>>,
+    access: Access,
+    /// The pointer id its touches use.
+    slot: usize,
+}
+
 /// One viewer's connection, until it goes away or sharing stops.
-fn run(inner: &Inner, mut rtc: Rtc, socket: &UdpSocket, frames: Receiver<Arc<Unit>>) -> Result<(), RtcError> {
+fn run(inner: &Inner, rtc: Rtc, socket: &UdpSocket, link: Link) -> Result<(), RtcError> {
+    let slot = link.slot;
+    let mut gate = Gate::default();
+    let result = serve_viewer(inner, rtc, socket, link, &mut gate);
+    // a viewer that leaves mid-touch must not leave the phone held
+    if let Some((x, y)) = gate.release() {
+        apply(inner, slot, Command::Touch(Touch::Up, x, y));
+    }
+    result
+}
+
+fn serve_viewer(inner: &Inner, mut rtc: Rtc, socket: &UdpSocket, link: Link, gate: &mut Gate) -> Result<(), RtcError> {
+    let Link { frames, access, slot } = link;
     let mut buf = vec![0u8; 2000];
     let mut mid: Option<Mid> = None;
     let mut need_key = true;
@@ -266,6 +313,19 @@ fn run(inner: &Inner, mut rtc: Rtc, socket: &UdpSocket, frames: Receiver<Arc<Uni
                         last_kick = Instant::now();
                     }
                     Event::KeyframeRequest(_) => inner.request_keyframe(),
+                    // the page turns its controls on when it hears this
+                    Event::ChannelOpen(id, _) if access == Access::Control => {
+                        if let Some(mut channel) = rtc.channel(id) {
+                            let _ = channel.write(false, b"control");
+                        }
+                    }
+                    Event::ChannelData(d) if access == Access::Control && !d.binary => {
+                        if let Some(command) = std::str::from_utf8(&d.data).ok().and_then(share_input::parse)
+                            && gate.allow(&command)
+                        {
+                            apply(inner, slot, command);
+                        }
+                    }
                     _ => {}
                 }
                 continue;
@@ -326,6 +386,23 @@ fn run(inner: &Inner, mut rtc: Rtc, socket: &UdpSocket, frames: Receiver<Arc<Uni
     Ok(())
 }
 
+/// Do what a viewer asked, on the phone.
+fn apply(inner: &Inner, slot: usize, command: Command) {
+    let (w, h) = inner.tap.size();
+    if w == 0 || h == 0 {
+        return;
+    }
+    let pixel = |fraction: f32, extent: u16| (fraction * f32::from(extent - 1)).round() as i32;
+    let mut control = inner.control.lock().unwrap();
+    let _ = match command {
+        Command::Touch(action, x, y) => control.touch_as(slot as u64, action, pixel(x, w), pixel(y, h), w, h),
+        Command::Scroll { x, y, h: dx, v: dy } => control.scroll(pixel(x, w), pixel(y, h), w, h, dx, dy),
+        Command::Key(code) => control.key(code),
+        Command::Text(text) => control.text(&text),
+        Command::Rotate => control.rotate_device(),
+    };
+}
+
 /// The address this computer would use to reach `peer`. Connecting a UDP socket sends nothing.
 fn local_toward(peer: IpAddr) -> IpAddr {
     UdpSocket::bind("0.0.0.0:0")
@@ -339,19 +416,25 @@ fn local_ip() -> IpAddr {
     local_toward(IpAddr::from([192, 0, 2, 1]))
 }
 
-/// The host's question: may this address watch the phone?
+/// The host's question: what may this address do with the phone?
 pub fn ask_host(device: &str, ip: IpAddr) -> Access {
     use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
     let answer = MessageDialog::new()
         .set_level(MessageLevel::Info)
         .set_title("Handset Share")
         .set_description(format!(
-            "{ip} wants to watch {device}.\n\nThey will see everything on the phone's screen. They cannot control it."
+            "{ip} wants to open {device}.\n\nThey will see everything on the phone's screen. \
+             With control they can also tap, swipe, type and press Back and Home."
         ))
-        .set_buttons(MessageButtons::OkCancelCustom("Allow".into(), "Don't Allow".into()))
+        .set_buttons(MessageButtons::YesNoCancelCustom(
+            "Allow and Control".into(),
+            "Watch Only".into(),
+            "Don't Allow".into(),
+        ))
         .show();
     match answer {
-        MessageDialogResult::Custom(s) if s == "Allow" => Access::Watch,
+        MessageDialogResult::Custom(s) if s == "Allow and Control" => Access::Control,
+        MessageDialogResult::Custom(s) if s == "Watch Only" => Access::Watch,
         _ => Access::Deny,
     }
 }

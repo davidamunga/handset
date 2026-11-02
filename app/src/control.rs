@@ -14,7 +14,7 @@ const TYPE_ROTATE_DEVICE: u8 = 11;
 const TYPE_START_APP: u8 = 16;
 const TYPE_RESET_VIDEO: u8 = 17;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Touch {
     Down = 0,
     Up = 1,
@@ -65,10 +65,15 @@ impl Control {
 
     /// `x`, `y` are device pixels; `w`, `h` the device screen size.
     pub fn touch(&mut self, action: Touch, x: i32, y: i32, w: u16, h: u16) -> io::Result<()> {
+        self.touch_as(u64::MAX, action, x, y, w, h) // pointer id: mouse (-1)
+    }
+
+    /// A touch by pointer `pointer`, so fingers from different places do not get mixed up.
+    pub fn touch_as(&mut self, pointer: u64, action: Touch, x: i32, y: i32, w: u16, h: u16) -> io::Result<()> {
         let mut m = Vec::with_capacity(32);
         m.push(TYPE_TOUCH);
         m.push(action as u8);
-        m.extend_from_slice(&u64::MAX.to_be_bytes()); // pointer id: mouse (-1)
+        m.extend_from_slice(&pointer.to_be_bytes());
         m.extend_from_slice(&x.to_be_bytes());
         m.extend_from_slice(&y.to_be_bytes());
         m.extend_from_slice(&w.to_be_bytes());

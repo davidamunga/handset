@@ -1719,7 +1719,13 @@ impl App {
             let secs = e.as_secs();
             Some((format!("REC {}:{:02}", secs / 60, secs % 60), Some(dot), 1.0))
         } else {
-            self.share.as_ref().map(|s| (format!("SHARING - {} WATCHING", s.viewers()), Some(SHARE_BLUE), 1.0))
+            self.share.as_ref().map(|s| {
+                let text = match s.controllers() {
+                    0 => format!("SHARING - {} WATCHING", s.viewers()),
+                    c => format!("SHARING - {} WATCHING, {c} CONTROLLING", s.viewers()),
+                };
+                (text, Some(SHARE_BLUE), 1.0)
+            })
         };
 
         let (Some(r), Some(w)) = (self.renderer.as_mut(), self.window.as_ref()) else { return false };
