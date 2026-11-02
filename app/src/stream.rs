@@ -97,6 +97,7 @@ pub fn spawn(mut video: TcpStream, slot: Arc<Mutex<Slot>>, proxy: EventLoopProxy
             let (data, key) = match server::read_packet(&mut video) {
                 Ok(Packet::Session { width, height }) => {
                     eprintln!("video session: {width}x{height}");
+                    tap.set_size(width, height);
                     continue;
                 }
                 Ok(Packet::Config(d)) => {

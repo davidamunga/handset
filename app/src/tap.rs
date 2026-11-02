@@ -3,6 +3,7 @@
 //!
 //! The video thread publishes every packet. With nobody subscribed that costs one lock and no copy.
 
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex};
 
@@ -31,6 +32,8 @@ struct State {
 #[derive(Default)]
 pub struct Tap {
     state: Mutex<State>,
+    /// The phone screen's width and height in pixels, from the last session packet.
+    size: AtomicU32,
 }
 
 impl Tap {
@@ -44,6 +47,17 @@ impl Tap {
     #[cfg(test)]
     pub fn subscribers(&self) -> usize {
         self.state.lock().unwrap().subscribers.len()
+    }
+
+    pub fn set_size(&self, width: u32, height: u32) {
+        let (w, h) = (width.min(0xffff), height.min(0xffff));
+        self.size.store(w << 16 | h, Ordering::Relaxed);
+    }
+
+    /// Width and height, or zeros before the first session packet.
+    pub fn size(&self) -> (u16, u16) {
+        let v = self.size.load(Ordering::Relaxed);
+        ((v >> 16) as u16, v as u16)
     }
 
     /// The SPS and PPS the server sends apart from the pictures; the next keyframes carry them.
@@ -88,6 +102,14 @@ mod tests {
 
     fn drain(rx: &Receiver<Arc<Unit>>) -> Vec<(bool, Vec<u8>)> {
         rx.try_iter().map(|u| (u.key, u.data.to_vec())).collect()
+    }
+
+    #[test]
+    fn the_screen_size_is_kept_for_touches() {
+        let tap = Tap::default();
+        assert_eq!(tap.size(), (0, 0));
+        tap.set_size(576, 1280);
+        assert_eq!(tap.size(), (576, 1280));
     }
 
     #[test]
