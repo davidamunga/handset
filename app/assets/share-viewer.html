@@ -12,6 +12,7 @@
   #keys button { font: inherit; color: inherit; background: #26262b; border: 1px solid #3a3a42; border-radius: 10px; padding: 8px 16px; }
   #keys button:active { background: #3a3a42; }
   #sound { position: fixed; top: 12px; right: 12px; display: none; font: inherit; color: inherit; background: #26262b; border: 1px solid #3a3a42; border-radius: 10px; padding: 8px 14px; }
+  #notice { position: fixed; top: 12px; left: 12px; right: 140px; font-size: 12px; color: #6f6f78; }
   #status { position: fixed; inset: auto 0 24px 0; text-align: center; color: #9a9aa2; padding: 0 16px; }
 </style>
 <video id="v" autoplay muted playsinline></video>
@@ -19,6 +20,7 @@
   <button data-key="back">Back</button><button data-key="home">Home</button><button data-key="recents">Recents</button>
   <button data-key="rotate">Rotate</button>
 </div>
+<div id="notice">You are seeing the phone's screen live. The host allowed this, can see that you are connected, and can stop it at any time.</div>
 <button id="sound">Sound off</button>
 <div id="status">Asking the host to let you in…</div>
 <script>
@@ -27,6 +29,8 @@ const video = document.getElementById('v');
 const say = text => { status.textContent = text; status.style.display = text ? '' : 'none'; };
 // The host says "control" over the data channel when it lets this viewer touch the phone.
 function enableControl(dc) {
+  document.getElementById('notice').textContent =
+    'You can control this phone. What you tap and type happens on it, live, and the host can stop this at any time.';
   video.classList.add('control');
   video.tabIndex = 0;
   document.getElementById('keys').style.display = 'flex';

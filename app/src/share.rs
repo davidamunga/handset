@@ -444,16 +444,23 @@ fn local_ip() -> IpAddr {
     local_toward(IpAddr::from([192, 0, 2, 1]))
 }
 
+/// What the host is told before letting a viewer in: what that person gets to see and do.
+fn question(device: &str, ip: IpAddr, sound: bool) -> String {
+    let hear = if sound { " and hear everything it plays" } else { "" };
+    format!(
+        "{ip} wants to open {device}.\n\nThey will see the phone's screen{hear}, including notifications, \
+         messages and anything typed on it. With control they can also tap, swipe, type and press Back and Home, \
+         which can reach anything the phone can do.\n\nOnly allow someone you know."
+    )
+}
+
 /// The host's question: what may this address do with the phone?
-pub fn ask_host(device: &str, ip: IpAddr) -> Access {
+pub fn ask_host(device: &str, ip: IpAddr, sound: bool) -> Access {
     use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
     let answer = MessageDialog::new()
         .set_level(MessageLevel::Info)
         .set_title("Handset Share")
-        .set_description(format!(
-            "{ip} wants to open {device}.\n\nThey will see everything on the phone's screen. \
-             With control they can also tap, swipe, type and press Back and Home."
-        ))
+        .set_description(question(device, ip, sound))
         .set_buttons(MessageButtons::YesNoCancelCustom(
             "Allow and Control".into(),
             "Watch Only".into(),
@@ -467,11 +474,51 @@ pub fn ask_host(device: &str, ip: IpAddr) -> Access {
     }
 }
 
+/// Is this computer on a private network (a home or office one) rather than directly on the internet?
+/// A cafe's Wi-Fi is private too, so this cannot tell it apart: it only catches the plainly public case.
+pub fn network_is_private() -> bool {
+    is_private(local_ip())
+}
+
+fn is_private(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(a) => {
+            // 100.64.0.0/10 is shared address space: carrier NAT, and private overlays such as Tailscale
+            a.is_private()
+                || a.is_link_local()
+                || a.is_loopback()
+                || (a.octets()[0] == 100 && a.octets()[1] & 0xc0 == 64)
+        }
+        IpAddr::V6(a) => {
+            a.is_loopback() || (a.segments()[0] & 0xfe00 == 0xfc00) || (a.segments()[0] & 0xffc0 == 0xfe80)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
 
+    #[test]
+    fn the_host_is_told_what_the_viewer_can_see_and_do() {
+        let ip = IpAddr::from([192, 168, 1, 9]);
+        let with = question("Pixel", ip, true);
+        assert!(with.contains("192.168.1.9") && with.contains("Pixel") && with.contains("hear"));
+        assert!(with.contains("notifications") && with.contains("control"));
+        assert!(!question("Pixel", ip, false).contains("hear"));
+    }
+
+    #[test]
+    fn only_private_addresses_count_as_a_private_network() {
+        for private in ["10.1.2.3", "172.16.0.5", "192.168.1.71", "169.254.3.4", "127.0.0.1", "100.100.1.1", "fd00::1"]
+        {
+            assert!(is_private(private.parse().unwrap()), "{private}");
+        }
+        for public in ["8.8.8.8", "172.32.0.1", "100.128.0.1", "203.0.113.9", "2001:db8::1"] {
+            assert!(!is_private(public.parse().unwrap()), "{public}");
+        }
+    }
     use std::net::TcpStream;
 
     #[test]
