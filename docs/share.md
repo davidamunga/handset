@@ -35,6 +35,8 @@ viewers or you see. **Full screen** hides everything but the page.
 
 <p><img src="images/share-page-style.png" alt="The same page with the Style panel open" width="760"></p>
 
+<p><img src="images/share-page-save.png" alt="The Save list: PNG, transparent PNG and JPEG" width="760"></p>
+
 **Save** downloads what the viewer sees as a PNG, a PNG with a transparent background, or a JPEG, at the phone's own
 resolution (at least 1600 pixels on the long side). Anyone who can watch can save a picture, as they could with a
 screenshot, so only allow people you would trust with one.
