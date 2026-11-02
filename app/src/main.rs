@@ -30,6 +30,7 @@ mod render;
 mod restyle;
 mod server;
 mod settings;
+mod share;
 mod stream;
 mod style;
 mod tap;

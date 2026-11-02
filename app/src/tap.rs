@@ -10,7 +10,6 @@ use std::sync::{Arc, Mutex};
 const BACKLOG: usize = 64;
 
 /// One picture's worth of Annex B data. A keyframe starts with the SPS and PPS, so a unit stands on its own.
-#[cfg_attr(not(test), allow(dead_code))] // Share is the first reader
 pub struct Unit {
     pub pts_us: u64,
     pub key: bool,
@@ -34,7 +33,6 @@ pub struct Tap {
     state: Mutex<State>,
 }
 
-#[cfg_attr(not(test), allow(dead_code))] // Share is the first subscriber
 impl Tap {
     /// Units from the next keyframe on. Dropping the receiver unsubscribes.
     pub fn subscribe(&self) -> Receiver<Arc<Unit>> {
@@ -43,12 +41,11 @@ impl Tap {
         rx
     }
 
+    #[cfg(test)]
     pub fn subscribers(&self) -> usize {
         self.state.lock().unwrap().subscribers.len()
     }
-}
 
-impl Tap {
     /// The SPS and PPS the server sends apart from the pictures; the next keyframes carry them.
     pub fn config(&self, data: &[u8]) {
         let mut st = self.state.lock().unwrap();

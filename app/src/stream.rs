@@ -19,6 +19,8 @@ pub enum UserEvent {
     /// A native menu item was chosen.
     #[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
     Menu(String),
+    /// Someone started or stopped watching through Share.
+    Share,
     /// The phone's installed apps, or why they could not be listed.
     Apps(Result<Vec<crate::apps::AppEntry>, String>),
     /// The latest `adb devices`, or why it could not be run.

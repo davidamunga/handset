@@ -12,6 +12,7 @@ const TYPE_EXPAND_NOTIFICATION_PANEL: u8 = 5;
 const TYPE_COLLAPSE_PANELS: u8 = 7;
 const TYPE_ROTATE_DEVICE: u8 = 11;
 const TYPE_START_APP: u8 = 16;
+const TYPE_RESET_VIDEO: u8 = 17;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Touch {
@@ -116,6 +117,11 @@ impl Control {
     /// Close the notification shade and the quick settings.
     pub fn collapse_panels(&mut self) -> io::Result<()> {
         self.send(&[TYPE_COLLAPSE_PANELS])
+    }
+
+    /// Make the encoder send a keyframe, with the SPS and PPS before it.
+    pub fn request_keyframe(&mut self) -> io::Result<()> {
+        self.send(&[TYPE_RESET_VIDEO])
     }
 
     /// Toggle the device between portrait and landscape.
