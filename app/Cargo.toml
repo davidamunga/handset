@@ -20,7 +20,7 @@ opus = "0.4.0"
 png = "0.18.1"
 pollster = "1.0.1"
 qrcode = { version = "0.14", default-features = false }
-rfd = "0.15"
+rfd = "0.17"
 sha2 = "0.10"
 str0m = { version = "0.24.1", default-features = false, features = ["rust-crypto"] }
 tiny_http = "0.12"
