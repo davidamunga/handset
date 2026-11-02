@@ -3,6 +3,7 @@
 
 use crate::render::Yuv;
 use crate::server::{self, Packet};
+use crate::tap::Tap;
 use openh264::decoder::{Decoder, DecoderConfig, Flush};
 use openh264::formats::YUVSource;
 use std::net::TcpStream;
@@ -76,7 +77,7 @@ fn new_decoder() -> Result<Decoder, openh264::Error> {
     Decoder::with_api_config(openh264::OpenH264API::from_source(), config)
 }
 
-pub fn spawn(mut video: TcpStream, slot: Arc<Mutex<Slot>>, proxy: EventLoopProxy<UserEvent>) {
+pub fn spawn(mut video: TcpStream, slot: Arc<Mutex<Slot>>, proxy: EventLoopProxy<UserEvent>, tap: Arc<Tap>) {
     std::thread::spawn(move || {
         let fail = |msg: String| {
             eprintln!("{msg}");
@@ -98,10 +99,13 @@ pub fn spawn(mut video: TcpStream, slot: Arc<Mutex<Slot>>, proxy: EventLoopProxy
                 }
                 Ok(Packet::Config(d)) => {
                     eprintln!("video config: {}", describe(&d));
+                    tap.config(&d);
                     config = d.clone();
                     (d, false)
                 }
-                Ok(Packet::Frame { data, key, .. }) => {
+                Ok(Packet::Frame { pts_us, data, key }) => {
+                    // before the decoder's own keyframe wait: a subscriber keeps its own
+                    tap.frame(pts_us, key, &data);
                     if seen < 3 {
                         seen += 1;
                         eprintln!("video frame (key={key}): {}", describe(&data));
