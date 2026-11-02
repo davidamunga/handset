@@ -16,7 +16,7 @@ small native Rust app that implements the desktop side of the scrcpy protocol an
 | `app/src/adb.rs`, `server.rs` | Run adb, push and start the server, read its sockets |
 | `app/src/stream.rs` | Video thread: read packets, decode H.264, publish the latest frame |
 | `app/src/tap.rs` | A copy of the phone's H.264 packets before decoding, for Share (keyframes carry the SPS and PPS; a slow reader loses frames, never the video thread) |
-| `app/src/share.rs`, `share_input.rs`, `share_audio.rs` | Share: a small HTTP server hands a browser the viewer page and answers its WebRTC offer; the host approves every viewer (watch or control) first; the phone's H.264 goes out through `str0m` untouched; what a controlling viewer sends is parsed strictly and gated |
+| `app/src/share.rs`, `share_input.rs`, `share_audio.rs` | Share: a small HTTP server hands a browser the viewer page and answers its WebRTC offer; the host approves every viewer (watch or control) first; the phone's H.264 goes out through `str0m` untouched; what a controlling viewer sends is parsed strictly and gated; the phone's raw sound is cut into 20 ms frames and encoded to Opus once for all viewers |
 | `app/src/render.rs`, `shader.wgsl` | wgpu renderer: YUV to RGB on the GPU, bezel, overlays, offscreen capture |
 | `app/src/app.rs` | winit window, input, toolbar, toast, menu events, recording timer |
 | `app/src/control.rs` | Control messages sent to the phone (touch, scroll, keys, text, rotate) |

@@ -53,7 +53,7 @@ impl Mirror {
             .then(|| audio::Playback::new().map_err(|e| eprintln!("no local playback: {e}")).ok())
             .flatten();
         if let Some(a) = &session.audio {
-            audio::spawn(a.try_clone().unwrap(), playback.as_ref().map(|p| p.ring()), audio_sink);
+            audio::spawn(a.try_clone().unwrap(), playback.as_ref().map(|p| p.ring()), audio_sink, tap.clone());
         }
 
         let control = Control::new(session.control.try_clone().unwrap());

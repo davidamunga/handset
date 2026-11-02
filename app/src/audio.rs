@@ -106,7 +106,7 @@ pub fn push_samples(ring: &Ring, pcm: &[u8]) {
     }
 }
 
-pub fn spawn(mut stream: TcpStream, ring: Option<Ring>, sink: RecSink) {
+pub fn spawn(mut stream: TcpStream, ring: Option<Ring>, sink: RecSink, tap: Arc<crate::tap::Tap>) {
     std::thread::spawn(move || {
         use std::io::Read;
         let mut id = [0u8; 4];
@@ -129,6 +129,7 @@ pub fn spawn(mut stream: TcpStream, ring: Option<Ring>, sink: RecSink) {
             }
         }
         eprintln!("audio: capturing (48 kHz stereo)");
+        tap.set_has_audio(true);
         if let (Some(r), true) = (ring.clone(), std::env::var_os("HANDSET_DEBUG").is_some()) {
             std::thread::spawn(move || {
                 loop {
@@ -144,7 +145,8 @@ pub fn spawn(mut stream: TcpStream, ring: Option<Ring>, sink: RecSink) {
             });
         }
         while let Ok(packet) = server::read_packet(&mut stream) {
-            let Packet::Frame { data, .. } = packet else { continue };
+            let Packet::Frame { pts_us, data, .. } = packet else { continue };
+            tap.audio(pts_us, &data);
             RECEIVED.fetch_add(data.len() as u64 / 2, Relaxed);
             if let Some(r) = &ring {
                 push_samples(r, &data);
