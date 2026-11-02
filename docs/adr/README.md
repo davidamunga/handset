@@ -47,3 +47,4 @@ Copy [`0000-template.md`](0000-template.md) to start a new one.
 | [0035](0035-draw-the-menu-ourselves-on-linux.md) | Draw the right-click menu ourselves on Linux | accepted |
 | [0036](0036-update-linux-installs-by-how-they-were-made.md) | Update Linux installs by how they were made, and swap only the program of an unpacked tarball | accepted |
 | [0037](0037-tilt-captures-in-3d-with-a-homography-warp.md) | Tilt the phone in 3D with a homography: in the window and in saved pictures | accepted |
+| [0039](0039-share-the-phone-by-forwarding-its-h264-over-webrtc.md) | Share the phone by forwarding its H.264 over WebRTC | accepted |
