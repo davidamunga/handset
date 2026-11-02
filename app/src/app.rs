@@ -254,6 +254,22 @@ type OverlayWant = (String, Option<[u8; 3]>, f32);
 
 const AMBER_DOT: [u8; 3] = [255, 190, 60];
 const BLACK_HINT: &str = "BLACK SCREEN: PHONE ASLEEP OR APP BLOCKS CAPTURE";
+/// This computer has an address on the open internet: anyone can reach Share's port, not only people nearby.
+fn confirm_public_share() -> bool {
+    use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
+    let answer = MessageDialog::new()
+        .set_level(MessageLevel::Warning)
+        .set_title("Handset Share")
+        .set_description(
+            "This computer is directly on the internet, not behind a home or office router.\n\n\
+             Anyone who finds the link can ask to watch your phone. You still decide about each person, \
+             but their request will interrupt you.",
+        )
+        .set_buttons(MessageButtons::OkCancelCustom("Share Anyway".into(), "Cancel".into()))
+        .show();
+    matches!(answer, MessageDialogResult::Custom(s) if s == "Share Anyway")
+}
+
 const SHARE_BLUE: [u8; 3] = [80, 160, 255];
 const REC_RED: [u8; 3] = [235, 60, 60];
 const REC_DIM: [u8; 3] = [110, 35, 35];
@@ -1635,8 +1651,12 @@ impl App {
             return self.show_toast("NOT AVAILABLE ON IOS YET");
         };
         let device = m.device_name().to_string();
+        if !crate::share::network_is_private() && !confirm_public_share() {
+            return;
+        }
         let proxy = self.proxy.clone();
-        let approve: crate::share::Approve = Arc::new(move |ip| crate::share::ask_host(&device, ip));
+        let sound = tap.clone();
+        let approve: crate::share::Approve = Arc::new(move |ip| crate::share::ask_host(&device, ip, sound.has_audio()));
         let changed = Arc::new(move || {
             let _ = proxy.send_event(UserEvent::Share);
         });
