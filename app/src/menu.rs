@@ -197,12 +197,14 @@ pub fn build(s: &State) -> Vec<Entry> {
         recent.push(sub(name, items));
     }
 
-    let phone = vec![
-        item("conn:wifi", "Switch to Wi-Fi").enabled(s.mirroring && s.usb).into(),
-        item("conn:another", "Connect Another Phone\u{2026}").into(),
-        item("win:new", "New Window").into(),
-        item("conn:disconnect", "Disconnect").enabled(s.mirroring).into(),
-    ];
+    let mut phone = Vec::new();
+    // an iOS device has no Wi-Fi to switch to, but still needs a way back to the connect screen
+    if !s.ios {
+        phone.push(item("conn:wifi", "Switch to Wi-Fi").enabled(s.mirroring && s.usb).into());
+    }
+    phone.push(item("conn:another", "Connect Another Phone\u{2026}").into());
+    phone.push(item("win:new", "New Window").into());
+    phone.push(item("conn:disconnect", "Disconnect").enabled(s.mirroring).into());
     let mut open_app = Vec::new();
     if s.apps.is_empty() {
         open_app.push(note(if s.apps_loading { "Loading apps\u{2026}" } else { "No apps found" }).into());
@@ -234,9 +236,7 @@ pub fn build(s: &State) -> Vec<Entry> {
         .collect();
 
     let mut menu = Vec::new();
-    if !s.ios {
-        menu.push(sub("Phone", phone));
-    }
+    menu.push(sub("Phone", phone));
     menu.push(sub("Frame", frame));
     menu.push(sub("Tilt", tilt));
     if !s.ios {
