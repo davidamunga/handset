@@ -820,8 +820,8 @@ pub struct Model<'a> {
     pub doctor: Option<&'a [crate::doctor::Check]>,
     /// iPhones and iPads can be mirrored here (macOS), so say how.
     pub ios: bool,
-    /// An iOS device that is plugged in and can be mirrored: its capture id and name.
-    pub iphone: Option<(&'a str, &'a str)>,
+    /// The iOS devices that are plugged in and can be mirrored: capture id and name of each.
+    pub iphones: &'a [(String, String)],
     /// The text field open in the Wi-Fi or QR view, which then shows only the field.
     pub field: Option<&'a Field>,
 }
@@ -964,14 +964,9 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
             if let Some(phone) = m.usb {
                 stack(&mut bottom, &format!("Mirror {phone}"), Action::Mirror(phone.to_string()), &mut buttons);
             }
-            if let Some((uid, name)) = m.iphone {
+            for (uid, name) in m.iphones {
                 // the label says it, since the note above may not fit
-                stack(
-                    &mut bottom,
-                    &format!("Mirror {name} (view only)"),
-                    Action::MirrorIos(uid.to_string()),
-                    &mut buttons,
-                );
+                stack(&mut bottom, &format!("Mirror {name} (view only)"), Action::MirrorIos(uid.clone()), &mut buttons);
             }
             if let Some(last) = m.recent.first() {
                 stack(
@@ -1045,11 +1040,14 @@ pub fn render(w: u32, h: u32, m: &Model) -> Screen {
             // small print only while it clears the buttons
             let room = bottom - 30.0 * u;
             if both {
-                let text = match m.iphone {
-                    Some((_, name)) => {
+                let text = match m.iphones {
+                    [(_, name)] => {
                         format!("{name} is plugged in. Mirror it with the button below. It is view only.")
                     }
-                    None => {
+                    [_, ..] => {
+                        "More than one is plugged in. Pick one with the buttons below. They are view only.".to_string()
+                    }
+                    [] => {
                         "Plug it in with a cable (there is no Wi-Fi option), unlock it and tap Trust. It is view only."
                             .to_string()
                     }
@@ -1507,7 +1505,7 @@ mod tests {
             note,
             doctor: None,
             ios: false,
-            iphone: None,
+            iphones: &[],
             field: None,
         }
     }
@@ -1618,7 +1616,8 @@ mod tests {
         // the busiest home screen: an iPhone, a paused USB phone and a recent Wi-Fi phone
         let disconnected = Status::Disconnected;
         let mut m = model(&disconnected, View::Home, &[], Some("W82202003817"), None, None);
-        (m.ios, m.iphone, m.recent) = (true, Some(("uid-1", "iPhone")), &recent);
+        let phones = [("uid-1".to_string(), "iPhone".to_string())];
+        (m.ios, m.iphones, m.recent) = (true, &phones, &recent);
         let screen = render(w, h, &m);
         let mirror: Vec<_> = screen.buttons.iter().filter(|b| matches!(b.action, Action::MirrorIos(_))).collect();
         assert_eq!(mirror.len(), 1);
@@ -1659,7 +1658,7 @@ mod tests {
             Model { ios: true, ..model(&looking, View::Home, &[], None, None, None) },
             Model {
                 ios: true,
-                iphone: Some(("uid-1", "iPhone")),
+                iphones: &[("uid-1".to_string(), "iPhone".to_string())],
                 ..model(&looking, View::Home, &[], None, None, None)
             },
             Model { field: Some(&typed), ..model(&looking, View::Wifi, &[], None, None, None) },
