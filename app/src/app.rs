@@ -809,7 +809,11 @@ impl App {
     /// The Phone menu: end mirroring on purpose and open the connect screen, on `view`, without
     /// restarting by itself. Returns the serial that was mirrored.
     fn leave_session(&mut self, view: View) -> Option<String> {
+        let was_ios = self.is_ios();
         let serial = self.end_session()?;
+        if was_ios {
+            self.switch_frame_family(false);
+        }
         let mut wt = Waiting::new(None, false, Status::Disconnected);
         wt.paused = true;
         self.waiting = Some(wt);
