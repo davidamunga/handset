@@ -226,6 +226,14 @@ fn main() {
         let found = ios::devices(std::time::Duration::from_secs(4));
         let device = match &serial {
             Some(want) => found.iter().find(|d| d.uid == *want || d.name == *want),
+            None if found.len() > 1 => {
+                let names: Vec<_> = found.iter().map(|d| format!("  {} ({})", d.name, d.uid)).collect();
+                tools::die(&format!(
+                    "More than one iPhone or iPad is connected. Name the one to mirror, for example `handset --ios \"{}\"`:\n{}",
+                    found[0].name,
+                    names.join("\n")
+                ))
+            }
             None => found.first(),
         }
         .unwrap_or_else(|| {

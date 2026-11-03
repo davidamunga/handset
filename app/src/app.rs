@@ -105,8 +105,8 @@ struct Waiting {
     next_retry: Instant,
     /// Mirroring was ended on purpose: a ready phone is offered, not started.
     paused: bool,
-    /// An iOS device that is plugged in (macOS): its capture id and name. Offered, never started by itself.
-    iphone: Option<(String, String)>,
+    /// The iOS devices that are plugged in (macOS): capture id and name of each. Offered, never started by itself.
+    iphones: Vec<(String, String)>,
     /// The address or pairing code being typed, which takes the keyboard while it is open.
     field: Option<connect::Field>,
 }
@@ -136,7 +136,7 @@ impl Waiting {
             retry_addr: None,
             next_retry: Instant::now() + RECONNECT_EVERY,
             paused: false,
-            iphone: None,
+            iphones: Vec::new(),
             field: None,
             recent: crate::recent::load(),
         }
@@ -370,7 +370,7 @@ impl App {
                 note: wt.note.as_deref(),
                 doctor: wt.doctor.as_deref(),
                 ios: cfg!(target_os = "macos"),
-                iphone: wt.iphone.as_ref().map(|(uid, name)| (uid.as_str(), name.as_str())),
+                iphones: &wt.iphones,
                 field: wt.field.as_ref(),
             };
             connect::render(pw, ph, &model)
@@ -449,12 +449,12 @@ impl App {
         };
         // an iOS device is looked for on the same beat as adb (and must be, on the main thread)
         #[cfg(target_os = "macos")]
-        let iphone = crate::ios::connected().into_iter().next().map(|d| (d.uid, d.name));
+        let iphones: Vec<_> = crate::ios::connected().into_iter().map(|d| (d.uid, d.name)).collect();
         #[cfg(not(target_os = "macos"))]
-        let iphone = None;
-        let changed = next != wt.status || wt.usb != usb || wt.iphone != iphone;
+        let iphones = Vec::new();
+        let changed = next != wt.status || wt.usb != usb || wt.iphones != iphones;
         wt.usb = usb;
-        wt.iphone = iphone;
+        wt.iphones = iphones;
         wt.status = next;
         if changed {
             self.draw_connect();
@@ -728,7 +728,7 @@ impl App {
     #[cfg(target_os = "macos")]
     fn begin_ios(&mut self, uid: String) {
         let Some(wt) = self.waiting.as_mut() else { return };
-        let name = wt.iphone.as_ref().filter(|(u, _)| *u == uid).map_or("iPhone".to_string(), |(_, n)| n.clone());
+        let name = wt.iphones.iter().find(|(u, _)| *u == uid).map_or("iPhone".to_string(), |(_, n)| n.clone());
         wt.status = Status::Connecting(name.clone());
         self.draw_connect();
         let device = crate::ios::Device { uid, name };
