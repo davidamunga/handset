@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.2
+
+### Patch Changes
+
+- [#152](https://github.com/davidamunga/handset/pull/152) [`5e30f9c`](https://github.com/davidamunga/handset/commit/5e30f9cb04801d5b0d122de1ab30184fca1f09c9) - Keep the Phone menu while mirroring an iPhone or iPad, so you can connect another phone.
+
 ## 0.13.1
 
 ### Patch Changes
