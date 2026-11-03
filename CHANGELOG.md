@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.1
+
+### Patch Changes
+
+- [#149](https://github.com/davidamunga/handset/pull/149) [`82b076e`](https://github.com/davidamunga/handset/commit/82b076eb976cc475836be30fb874b99fce2e65e9) - Offer every iPhone and iPad that is plugged in on the connect screen, not only the first one.
+
 ## 0.13.0
 
 ### Minor Changes
