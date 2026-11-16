@@ -9,6 +9,7 @@ handset ctl info
 handset ctl screenshot screen.png     # the phone's picture, without frame or toolbar
 handset ctl ui                        # what is on screen, as text, with where to tap
 handset ctl tap-text "Sign in"        # tap by what it says
+handset ctl wait-text "Welcome" 15s   # wait for something slow to appear
 handset ctl tap 540 1200
 handset ctl swipe 540 1600 540 600 300
 handset ctl type "hello"
@@ -47,6 +48,24 @@ starts. If the helper cannot run on a phone (a new Android version, say) Handset
 [ADR 0045](adr/0045-read-the-screen-as-text-with-uiautomator.md) and
 [ADR 0046](adr/0046-describe-the-screen-with-a-small-helper-on-the-phone.md).
 
+## Looking right after an action
+
+An action returns when it has been sent, and the phone takes a moment to show it (an app takes about a second to
+open). So `ui`, `tap-text` and `tap-id` wait for the picture to change and then hold still before they look, and
+the next touch, key or text waits the same way, so a tap is not sent into a page that is turning. You can
+send commands one after another without sleeps; each costs about 0.7 s when the one before it changed the
+screen. An animation that never stops (a game) is cut off after 2.5 s.
+
+Some things take longer, such as search results or a network call. Wait for them on purpose:
+
+```sh
+handset ctl wait-text "Wi-Fi certificate" 15s     # until it is on the screen (default 10 s, at most 30)
+handset ctl wait-gone "Loading" 20s               # until it is gone
+```
+
+If the text is not found and something on the screen scrolls, the error says it may be out of view: scroll and
+look again.
+
 After each action, once the screen settles, Handset also describes it in the background, so the next `ui` or
 `tap-text` is ready when you ask. That read-ahead only runs while you are using `ui`. A `ui` straight after an
 action still waits for a fresh answer, never a stale one.
@@ -57,6 +76,8 @@ action still waits for a fresh answer, never a stale one.
 - Look, then act: `screenshot` (or `ui`), decide, tap, and look again. A tap returns when it has been sent,
   not when the app has finished drawing; give a screen a moment before reading it.
 - Text goes where the phone's keyboard focus is. Tap a field first. At most 300 characters at a time.
+- `open` and `type` can do nothing without saying so (a name that fits two apps; no text field in focus).
+  Look at the `package` on the first line of `ui`, and at the text of the field, to see what happened.
 - `open` takes a package name. `?<app name>` also works, but only when it matches exactly one app; if it matches
   several or none, nothing happens (the phone's server only logs why). A package name never fails that way.
 - `info` can show the old size for a moment after `rotate`; wait a second or two.

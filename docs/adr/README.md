@@ -55,3 +55,4 @@ Copy [`0000-template.md`](0000-template.md) to start a new one.
 | [0044](0044-let-a-program-drive-the-phone-through-a-local-socket.md) | Let a program drive the phone through a local socket | accepted |
 | [0045](0045-read-the-screen-as-text-with-uiautomator.md) | Read the screen as text with uiautomator | accepted |
 | [0046](0046-describe-the-screen-with-a-small-helper-on-the-phone.md) | Describe the screen with a small helper on the phone | accepted |
+| [0047](0047-wait-for-the-phone-to-show-what-was-done.md) | Wait for the phone to show what was done | accepted |
