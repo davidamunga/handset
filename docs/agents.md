@@ -36,16 +36,20 @@ screen 720x1600 package com.android.settings
 
 `tap-text <words>` taps the element that says them (an exact match first, then one that contains them), and
 `tap-id <id>` the one with that resource id. If several fit, nothing is tapped and the error lists them with
-positions. It reads the screen with Android's `uiautomator`, which needs nothing installed on the phone and works
-on Android only.
+positions. It works on Android only.
 
-Asking the phone takes about three seconds, so Handset hides most of that: the answer is kept while the picture
-has not changed (a repeat `ui` takes a few milliseconds), and after each action, once the screen settles, it
-describes the screen in the background so the next `ui` or `tap-text` is ready when you ask. That read-ahead
-only runs while you are using `ui`. A `ui` straight after an action still waits for a fresh answer, never a
-stale one. A screen that is still animating, or an app that draws its
-own pixels (many games), may come back empty or as an error; use `screenshot` then. Web pages describe their
-buttons. See [ADR 0045](adr/0045-read-the-screen-as-text-with-uiautomator.md).
+It uses a small helper that Handset puts on the phone (4 KB, nothing to install, ended by itself after a minute
+idle), so `ui` takes a few hundredths of a second, and about 1.3 s the first time after a pause while the helper
+starts. If the helper cannot run on a phone (a new Android version, say) Handset falls back to Android's own
+`uiautomator`, which takes about three seconds, and keeps the last answer while the picture has not changed.
+`HANDSET_NO_HELPER=1` forces the fallback. A screen that blocks description, or an app that draws its own pixels
+(many games), may come back empty or as an error; use `screenshot` then. Web pages describe their buttons. See
+[ADR 0045](adr/0045-read-the-screen-as-text-with-uiautomator.md) and
+[ADR 0046](adr/0046-describe-the-screen-with-a-small-helper-on-the-phone.md).
+
+After each action, once the screen settles, Handset also describes it in the background, so the next `ui` or
+`tap-text` is ready when you ask. That read-ahead only runs while you are using `ui`. A `ui` straight after an
+action still waits for a fresh answer, never a stale one.
 
 ## What an agent should know
 

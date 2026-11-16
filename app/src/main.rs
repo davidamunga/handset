@@ -18,6 +18,7 @@ mod docs_tests;
 mod doctor;
 mod editor;
 mod frame;
+mod helper;
 mod install;
 #[cfg(target_os = "macos")]
 mod ios;

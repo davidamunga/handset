@@ -54,3 +54,4 @@ Copy [`0000-template.md`](0000-template.md) to start a new one.
 | [0043](0043-tilt-the-live-phone-freely.md) | Tilt the live phone freely: drag, snap and nudge | accepted |
 | [0044](0044-let-a-program-drive-the-phone-through-a-local-socket.md) | Let a program drive the phone through a local socket | accepted |
 | [0045](0045-read-the-screen-as-text-with-uiautomator.md) | Read the screen as text with uiautomator | accepted |
+| [0046](0046-describe-the-screen-with-a-small-helper-on-the-phone.md) | Describe the screen with a small helper on the phone | accepted |

@@ -46,7 +46,8 @@ We will add `ui`, `tap-text` and `tap-id` to the control socket, and read the sc
   each action, once the picture settles, the next dump starts in the background (only while `ui` is in use).
   Anything done to the phone discards the kept description at once, because the picture takes a moment to show
   the change and would otherwise look unchanged. A dump that overlaps an action is not kept. The real fix
-  would be our own small helper on the phone, which needs a build step for Android code and is not done.
+  is a small helper on the phone, which [ADR 0046](0046-describe-the-screen-with-a-small-helper-on-the-phone.md)
+  adds; this path is what runs when the helper cannot.
 - A dump fails while something is still animating (Android reports no idle
   state); Handset retries once, then says so and points to `screenshot`. Games that draw their own pixels
   describe nothing; web pages do describe their buttons.
