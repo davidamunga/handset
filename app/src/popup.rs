@@ -839,6 +839,7 @@ mod tests {
             muted: false,
             toolbar: true,
             touches: false,
+            tilt_snap: 0,
             tilt: Default::default(),
             update_auto: true,
             update: Some("9.9.9".into()),
@@ -924,6 +925,7 @@ mod tests {
             let prefixed = [
                 "frame:",
                 "tilt:",
+                "tiltsnap:",
                 "app:",
                 "recent:open:",
                 "recent:edit:",

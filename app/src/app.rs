@@ -202,6 +202,10 @@ pub struct App {
     toolbar_start: bool,
     touches_start: bool,
     tilt_start: Tilt,
+    /// Degrees a turn snaps to (a saved setting; 0 is free).
+    tilt_snap: i32,
+    /// A turn by dragging: where the pointer was and the tilt then.
+    tilt_drag: Option<((f64, f64), Tilt)>,
     /// Look for newer releases by itself (a saved setting), and the newer release once one is found.
     update_auto: bool,
     /// Whether the first picture of the current iOS device was looked at to pick an iPad frame.
@@ -317,6 +321,8 @@ impl App {
             toolbar_start: init.toolbar,
             touches_start: init.touches,
             tilt_start: init.tilt,
+            tilt_snap: settings::Settings::load().get("tilt-snap").and_then(|v| v.parse().ok()).unwrap_or(0),
+            tilt_drag: None,
             update_auto: init.update_check,
             ipad_frame_checked: false,
             ipad: false,
@@ -1058,6 +1064,7 @@ impl App {
             toolbar: self.renderer.as_ref().is_some_and(|r| r.toolbar_visible()),
             touches: self.renderer.as_ref().is_some_and(|r| r.show_touches()),
             tilt: self.renderer.as_ref().map(|r| r.tilt()).unwrap_or_default(),
+            tilt_snap: self.tilt_snap,
             update_auto: self.update_auto,
             update: self.update.as_ref().map(|u| u.version.clone()),
             update_command: self.install.upgrade_command(),
@@ -1413,6 +1420,27 @@ impl App {
                 self.on_menu(el, &format!("tilt:{}", presets[next].1.to_spec()));
                 self.show_toast(&presets[next].0.to_uppercase());
             }
+            "tilt:flat" => self.set_tilt(Tilt::default(), true),
+            "tilt:left" | "tilt:right" | "tilt:up" | "tilt:down" | "tilt:ccw" | "tilt:cw" => {
+                let step = if self.tilt_snap > 0 { self.tilt_snap } else { 5 };
+                let (yaw, pitch, roll) = match id {
+                    "tilt:left" => (-step, 0, 0),
+                    "tilt:right" => (step, 0, 0),
+                    "tilt:up" => (0, step, 0),
+                    "tilt:down" => (0, -step, 0),
+                    "tilt:ccw" => (0, 0, -step),
+                    _ => (0, 0, step),
+                };
+                let current = self.renderer.as_ref().map(|r| r.tilt()).unwrap_or_default();
+                // from a tilt off the grid the first nudge lands on it
+                let next = current.nudged(yaw, pitch, roll);
+                let next = if self.tilt_snap > 0 { next.snapped(self.tilt_snap) } else { next };
+                self.set_tilt(next, true);
+            }
+            other if other.starts_with("tiltsnap:") => {
+                self.tilt_snap = other["tiltsnap:".len()..].parse().unwrap_or(0);
+                settings::save("tilt-snap", &self.tilt_snap.to_string());
+            }
             "shortcuts" => {
                 let exe = std::env::current_exe().unwrap_or_else(|_| "handset".into());
                 let _ = crate::tools::command(exe).arg("--shortcuts").spawn();
@@ -1420,16 +1448,30 @@ impl App {
             other => {
                 if let Some(name) = other.strip_prefix("frame:") {
                     self.set_frame(Some(name.to_string()));
-                } else if let Some(tilt) = other.strip_prefix("tilt:").and_then(Tilt::parse)
-                    && let Some(r) = self.renderer.as_mut()
-                {
-                    r.set_tilt(tilt);
-                    settings::save("tilt", &tilt.to_spec());
-                    if let Some(w) = &self.window {
-                        w.request_redraw();
-                    }
+                } else if let Some(tilt) = other.strip_prefix("tilt:").and_then(Tilt::parse) {
+                    self.set_tilt(tilt, true);
                 }
             }
+        }
+    }
+
+    /// Turn the phone; `save` keeps it for the next run (a drag saves only where it ends).
+    fn set_tilt(&mut self, tilt: Tilt, save: bool) {
+        let Some(r) = self.renderer.as_mut() else { return };
+        r.set_tilt(tilt);
+        if save {
+            settings::save("tilt", &tilt.to_spec());
+        }
+        if let Some(w) = &self.window {
+            w.request_redraw();
+        }
+    }
+
+    /// The step a turn snaps to now: the saved one, or 15 degrees while Shift is held.
+    fn snap_step(&self) -> i32 {
+        match (self.tilt_snap, self.mods.shift_key()) {
+            (0, true) => 15,
+            (n, _) => n,
         }
     }
 
@@ -2305,6 +2347,12 @@ impl ApplicationHandler<UserEvent> for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = (position.x, position.y);
+                if let Some((from, start)) = self.tilt_drag {
+                    let t = start.dragged(self.cursor.0 - from.0, self.cursor.1 - from.1);
+                    let step = self.snap_step();
+                    self.set_tilt(t.snapped(step), false);
+                    return;
+                }
                 if self.resizing.is_some() {
                     self.drag_resize();
                     return;
@@ -2410,6 +2458,20 @@ impl ApplicationHandler<UserEvent> for App {
                 self.refresh_overlay();
             }
             WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. }
+                if self.mods.alt_key() && self.mirror.is_some() && self.waiting.is_none() =>
+            {
+                let t = self.renderer.as_ref().map(|r| r.tilt()).unwrap_or_default();
+                self.tilt_drag = Some((self.cursor, t));
+            }
+            WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. }
+                if self.tilt_drag.is_some() =>
+            {
+                self.tilt_drag = None;
+                if let Some(r) = &self.renderer {
+                    settings::save("tilt", &r.tilt().to_spec());
+                }
+            }
+            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. }
                 if self.toolbar_button().is_some() =>
             {
                 if let Some(b) = self.toolbar_button() {
@@ -2466,6 +2528,13 @@ impl ApplicationHandler<UserEvent> for App {
                 };
                 if dx == 0.0 && dy == 0.0 {
                     // trackpad phase events carry no movement
+                } else if self.mods.alt_key() && self.mirror.is_some() {
+                    // Alt + scroll rolls the phone in its plane
+                    let t = self.renderer.as_ref().map(|r| r.tilt()).unwrap_or_default();
+                    let step = self.snap_step().max(1);
+                    let by = if self.snap_step() > 0 { dy.signum() as i32 * step } else { dy.round() as i32 };
+                    let next = t.nudged(0, 0, by);
+                    self.set_tilt(if step > 1 { next.snapped(step) } else { next }, true);
                 } else if self.mods.super_key() || self.mods.control_key() {
                     // Cmd/Ctrl + scroll resizes the window
                     self.zoom(1.0 + (dy as f64 * 0.04));

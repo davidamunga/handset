@@ -22,6 +22,9 @@ pub const MAX_YAW: i32 = 60;
 pub const MAX_PITCH: i32 = 60;
 pub const MAX_ROLL: i32 = 45;
 
+/// How far a drag of one pixel turns the phone.
+const DRAG_DEGREES_PER_PIXEL: f64 = 0.35;
+
 /// Camera distance in units of the picture's longer side; smaller is a stronger perspective.
 const DISTANCE: f32 = 2.6;
 
@@ -46,6 +49,38 @@ impl Tilt {
         ("Lean Back", Tilt { yaw: 0, pitch: 30, roll: 0 }),
         ("Floating", Tilt { yaw: -24, pitch: 12, roll: -4 }),
     ];
+
+    /// The same tilt with every angle held inside its limit.
+    pub fn clamped(self) -> Self {
+        Self {
+            yaw: self.yaw.clamp(-MAX_YAW, MAX_YAW),
+            pitch: self.pitch.clamp(-MAX_PITCH, MAX_PITCH),
+            roll: self.roll.clamp(-MAX_ROLL, MAX_ROLL),
+        }
+    }
+
+    /// Every angle moved to the nearest multiple of `step` degrees (0 or 1 leave it as it is), so a tilt close
+    /// to flat becomes flat.
+    pub fn snapped(self, step: i32) -> Self {
+        if step <= 1 {
+            return self;
+        }
+        let near = |v: i32| (v as f32 / step as f32).round() as i32 * step;
+        Self { yaw: near(self.yaw), pitch: near(self.pitch), roll: near(self.roll) }.clamped()
+    }
+
+    /// The tilt after dragging the pointer `dx`, `dy` pixels from where `self` was: the phone turns toward
+    /// the drag, as if its face were grabbed (right turns the right edge away, down brings the top edge
+    /// closer).
+    pub fn dragged(self, dx: f64, dy: f64) -> Self {
+        let r = |v: i32, d: f64| (v as f64 + d * DRAG_DEGREES_PER_PIXEL).round() as i32;
+        Self { yaw: r(self.yaw, dx), pitch: r(self.pitch, -dy), roll: self.roll }.clamped()
+    }
+
+    /// The tilt moved by whole degrees on each axis.
+    pub fn nudged(self, yaw: i32, pitch: i32, roll: i32) -> Self {
+        Self { yaw: self.yaw + yaw, pitch: self.pitch + pitch, roll: self.roll + roll }.clamped()
+    }
 
     pub fn to_spec(self) -> String {
         format!("{},{},{}", self.yaw, self.pitch, self.roll)
@@ -302,5 +337,31 @@ mod tests {
         // colour survives the unpremultiply
         let i = ((80 * 80 + 40) * 4) as usize;
         assert_eq!(&out.rgba[i..i + 3], &[200, 100, 50]);
+    }
+
+    #[test]
+    fn snapping_goes_to_the_nearest_step_and_back_to_flat() {
+        let t = Tilt { yaw: 12, pitch: -8, roll: 2 };
+        assert_eq!(t.snapped(15), Tilt { yaw: 15, pitch: -15, roll: 0 });
+        assert_eq!(t.snapped(5), Tilt { yaw: 10, pitch: -10, roll: 0 });
+        assert_eq!(Tilt { yaw: 4, pitch: -3, roll: 1 }.snapped(15), Tilt::default());
+        assert_eq!(t.snapped(0), t);
+        // 60 is a multiple of 15 but 45 is the roll limit
+        assert_eq!(Tilt { yaw: 0, pitch: 0, roll: 44 }.snapped(20).roll, 40);
+    }
+
+    #[test]
+    fn dragging_turns_toward_the_pointer_and_stays_inside_the_limits() {
+        let t = Tilt::default().dragged(100.0, 0.0);
+        assert!(t.yaw > 0 && t.pitch == 0);
+        let t = Tilt::default().dragged(0.0, 100.0);
+        assert!(t.pitch < 0 && t.yaw == 0);
+        assert_eq!(Tilt::default().dragged(9999.0, -9999.0), Tilt { yaw: MAX_YAW, pitch: MAX_PITCH, roll: 0 });
+    }
+
+    #[test]
+    fn nudging_adds_degrees_and_clamps() {
+        assert_eq!(Tilt::default().nudged(5, -5, 2), Tilt { yaw: 5, pitch: -5, roll: 2 });
+        assert_eq!(Tilt { yaw: 58, pitch: 0, roll: 0 }.nudged(5, 0, 0).yaw, MAX_YAW);
     }
 }
