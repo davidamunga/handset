@@ -255,6 +255,24 @@ impl Tree {
         out
     }
 
+    /// What to add to "not found" when the screen scrolls: it may be past the edge.
+    fn further_down(&self) -> &'static str {
+        if self.nodes.iter().any(|n| n.scrollable) { "; the screen scrolls, so it may be out of view" } else { "" }
+    }
+
+    /// Whether `text` is on the screen (an element whose words contain it, any case), and where: for waiting.
+    pub fn has_text(&self, text: &str) -> Option<&Node> {
+        let want = text.to_lowercase();
+        let seen = |n: &&Node| n.bounds.2 > n.bounds.0 && n.bounds.3 > n.bounds.1;
+        let says = |n: &Node, exact: bool| {
+            [&n.text, &n.desc].iter().any(|s| {
+                !s.is_empty() && if exact { s.to_lowercase() == want } else { s.to_lowercase().contains(&want) }
+            })
+        };
+        let mut seen_nodes = self.nodes.iter().filter(seen);
+        seen_nodes.clone().find(|n| says(n, true)).or_else(|| seen_nodes.find(|n| says(n, false)))
+    }
+
     /// The one element to tap for `text`: an exact match, else one that contains it (any case). Several that
     /// fit is an error that lists them, so the agent can pick by position instead.
     pub fn find_text(&self, text: &str) -> Result<&Node, String> {
@@ -275,7 +293,7 @@ impl Tree {
                 return Ok(n);
             }
         }
-        Err(format!("nothing on the screen says {text:?} (see `handset ctl ui`)"))
+        Err(format!("nothing on the screen says {text:?}{} (see `handset ctl ui`)", self.further_down()))
     }
 
     /// The element whose id is `id`, with or without its package (`login` or `com.app:id/login`).
@@ -285,7 +303,9 @@ impl Tree {
             .iter()
             .filter(|n| !n.id.is_empty() && (n.id == id || n.short_id() == id) && n.bounds.2 > n.bounds.0)
             .collect();
-        pick(&hits)?.ok_or_else(|| format!("nothing on the screen has the id {id:?} (see `handset ctl ui`)"))
+        pick(&hits)?.ok_or_else(|| {
+            format!("nothing on the screen has the id {id:?}{} (see `handset ctl ui`)", self.further_down())
+        })
     }
 }
 
@@ -539,6 +559,23 @@ mod tests {
         assert!(base.same(&base) && base.same(&noisy));
         assert!(!base.same(&moved) && !base.same(&other_size));
         assert!(!Thumb::default().same(&Thumb::default()), "no picture is never the same as no picture");
+    }
+
+    #[test]
+    fn waiting_looks_for_words_and_not_finding_them_hints_at_scrolling() {
+        let mut scroller = node("android.widget.ScrollView", "", "", "[0,0][720,1500]", false);
+        scroller = scroller.replace("scrollable=\"false\"", "scrollable=\"true\"");
+        let t = parse(&dump_of(
+            &[scroller, node("android.widget.TextView", "Loading results", "", "[0,0][100,50]", false)],
+            0,
+        ))
+        .unwrap();
+        assert_eq!(t.has_text("loading").unwrap().text, "Loading results");
+        assert!(t.has_text("done").is_none());
+        assert!(t.find_text("Battery").unwrap_err().contains("it may be out of view"));
+        assert!(t.find_id("nope").unwrap_err().contains("it may be out of view"));
+        let still = parse(&dump_of(&[node("android.widget.TextView", "x", "", "[0,0][10,10]", false)], 0)).unwrap();
+        assert!(!still.find_text("Battery").unwrap_err().contains("scrolls"));
     }
 
     #[test]

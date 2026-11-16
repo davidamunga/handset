@@ -26,6 +26,13 @@ const MAX_TEXT: usize = 300;
 const MAX_MS: u64 = 10_000;
 /// The pill shows while the last request is this recent.
 const ACTIVE_FOR: Duration = Duration::from_secs(4);
+/// The longest `wait-text` may wait.
+const MAX_WAIT_SECS: u64 = 30;
+/// After an action the phone takes a moment to show it: no sooner than this, and once the picture holds still
+/// for this long, or this long after the action at the latest, the screen is read.
+const EFFECT_MIN: Duration = Duration::from_millis(400);
+const EFFECT_STILL: Duration = Duration::from_millis(300);
+const EFFECT_CAP: Duration = Duration::from_millis(2500);
 /// The finger the agent touches with, so it is never mistaken for the mouse or a Share viewer.
 const POINTER: u64 = 0xA6E27;
 
@@ -37,6 +44,12 @@ pub enum Command {
     Ui,
     TapText(String),
     TapId(String),
+    /// Wait for words to appear on the screen, or (`gone`) to disappear.
+    Wait {
+        text: String,
+        secs: u64,
+        gone: bool,
+    },
     Tap {
         x: i32,
         y: i32,
@@ -72,6 +85,8 @@ commands:
   ui                         the elements on screen, with text and where to tap (Android)
   tap-text <text>            tap the element that says this
   tap-id <id>                tap the element with this resource id (the part after /)
+  wait-text <text> [<n>s]    wait for the text to appear (default 10 s, at most 30)
+  wait-gone <text> [<n>s]    wait for it to go away
   tap <x> <y>
   hold <x> <y> [ms]          a long press (default 600 ms)
   swipe <x1> <y1> <x2> <y2> [ms]
@@ -113,6 +128,22 @@ pub fn parse(line: &str) -> Result<Command, String> {
                 return Err(format!("{name} needs what to look for"));
             }
             if name == "tap-text" { Command::TapText(q.to_string()) } else { Command::TapId(q.to_string()) }
+        }
+        "wait-text" | "wait-gone" => {
+            let mut words: Vec<&str> = rest.split_whitespace().collect();
+            // a last word like `15s` is how long to wait
+            let secs = words
+                .last()
+                .and_then(|w| w.strip_suffix('s'))
+                .and_then(|n| n.parse::<u64>().ok())
+                .inspect(|_| {
+                    words.pop();
+                })
+                .map_or(10, |n| n.clamp(1, MAX_WAIT_SECS));
+            if words.is_empty() || rest.chars().any(char::is_control) {
+                return Err(format!("{name} needs the text to wait for"));
+            }
+            Command::Wait { text: words.join(" "), secs, gone: name == "wait-gone" }
         }
         "tap" => {
             need(2)?;
@@ -203,6 +234,8 @@ struct Shared {
     ui_done: Condvar,
     /// When `ui` was last asked for: only then is the screen read ahead.
     ui_used: Mutex<Option<Instant>>,
+    /// When something was last done to the phone, so a look at the screen waits for what it did to show.
+    last_action: Mutex<Option<Instant>>,
     /// Counts actions, so a read-ahead started by an older one gives way to a newer one.
     acted: AtomicU64,
     /// The helper on the phone that describes the screen quickly.
@@ -256,6 +289,7 @@ impl Server {
             ui_done: Condvar::new(),
             ui_used: Mutex::new(None),
             acted: AtomicU64::new(0),
+            last_action: Mutex::new(None),
             helper: Mutex::new(HelperSlot::default()),
         });
         let file = dir.join("ctl");
@@ -404,10 +438,15 @@ fn run(s: &Arc<Shared>, cmd: Command) -> Result<Vec<u8>, String> {
             png(&slot.yuv).map_err(|e| format!("screenshot failed: {e}"))
         }
         Command::Ui => Ok(screen(s, &h)?.render((w, ht)).into_bytes()),
+        Command::Wait { text, secs, gone } => {
+            wait_for(&|| screen(s, &h), w, &text, secs, gone, Duration::from_millis(250))
+        }
         Command::TapText(t) => tap_found(s, &mut h, |tree| tree.find_text(&t)),
         Command::TapId(id) => tap_found(s, &mut h, |tree| tree.find_id(&id)),
         other => {
             let c = h.control.as_mut().ok_or("this phone cannot be controlled (an iPhone or iPad is view only)")?;
+            // the last thing done may still be showing: a tap sent into a page that is turning is lost
+            wait_for_effects(s);
             let io = |e: std::io::Error| format!("the phone did not take it: {e}");
             match other {
                 Command::Tap { x, y } => {
@@ -433,7 +472,12 @@ fn run(s: &Arc<Shared>, cmd: Command) -> Result<Vec<u8>, String> {
                 Command::Open(app) => c.start_app(&app).map_err(io)?,
                 Command::Notifications => c.expand_notifications().map_err(io)?,
                 Command::Collapse => c.collapse_panels().map_err(io)?,
-                Command::Info | Command::Screenshot | Command::Ui | Command::TapText(_) | Command::TapId(_) => {
+                Command::Info
+                | Command::Screenshot
+                | Command::Ui
+                | Command::Wait { .. }
+                | Command::TapText(_)
+                | Command::TapId(_) => {
                     unreachable!()
                 }
             }
@@ -452,6 +496,7 @@ fn screen(s: &Arc<Shared>, h: &Handle) -> Result<Arc<crate::ui::Tree>, String> {
         return Err("no picture yet".into());
     }
     *s.ui_used.lock().unwrap() = Some(Instant::now());
+    wait_for_effects(s);
     tree_for(s, &h.serial, &|serial| describe(s, serial))
 }
 
@@ -496,6 +541,75 @@ fn describe(s: &Shared, serial: &str) -> Result<crate::ui::Tree, String> {
         }
     }
     crate::ui::dump(serial)
+}
+
+/// An action returns when it has been sent, not when the phone has shown it: an app takes about a second to
+/// open. So a look at the screen soon after an action waits for the picture to change and then hold still, and
+/// does not describe the screen as it was. An animation that never stops is cut off after a moment.
+fn wait_for_effects(s: &Shared) {
+    let Some(at) = *s.last_action.lock().unwrap() else { return };
+    if at.elapsed() >= EFFECT_CAP + EFFECT_STILL {
+        return;
+    }
+    if let Some(early) = (at + EFFECT_MIN).checked_duration_since(Instant::now()) {
+        std::thread::sleep(early);
+    }
+    let (mut last, mut since) = (look(s), Instant::now());
+    while at.elapsed() < EFFECT_CAP {
+        std::thread::sleep(Duration::from_millis(50));
+        let now = look(s);
+        if now.same(&last) {
+            if since.elapsed() >= EFFECT_STILL {
+                return;
+            }
+        } else {
+            (last, since) = (now, Instant::now());
+        }
+    }
+}
+
+/// Look until `text` has appeared (or, with `gone`, disappeared), or `secs` have passed. A look that fails is
+/// tried again: a busy screen can be hard to read for a moment.
+fn wait_for(
+    fetch: &dyn Fn() -> Result<Arc<crate::ui::Tree>, String>,
+    width: u16,
+    text: &str,
+    secs: u64,
+    gone: bool,
+    every: Duration,
+) -> Result<Vec<u8>, String> {
+    let deadline = Instant::now() + Duration::from_secs(secs);
+    let mut last_error: Option<String>;
+    loop {
+        match fetch() {
+            Ok(tree) => match (tree.has_text(text), gone) {
+                (Some(n), false) => {
+                    let (x, y) = n.center();
+                    let k = tree.scale(width);
+                    return Ok(format!(
+                        "found {:?} at {},{}\n",
+                        n.label(),
+                        (x as f32 * k).round(),
+                        (y as f32 * k).round()
+                    )
+                    .into_bytes());
+                }
+                (None, true) => return Ok(b"gone\n".to_vec()),
+                _ => last_error = None,
+            },
+            Err(e) => last_error = Some(e),
+        }
+        if Instant::now() >= deadline {
+            return Err(last_error.unwrap_or_else(|| {
+                if gone {
+                    format!("{text:?} was still there after {secs} s")
+                } else {
+                    format!("{text:?} did not appear within {secs} s")
+                }
+            }));
+        }
+        std::thread::sleep(every);
+    }
 }
 
 /// The picture now, as a thumbnail.
@@ -552,6 +666,7 @@ fn tree_for(
 /// it, so the next `ui` is ready (only while `ui` is being used, since it costs the phone some work).
 fn after_action(s: &Arc<Shared>, serial: &str) {
     let n = s.acted.fetch_add(1, Ordering::SeqCst) + 1;
+    *s.last_action.lock().unwrap() = Some(Instant::now());
     s.ui.lock().unwrap().entry = None;
     let used = *s.ui_used.lock().unwrap();
     if !used.is_some_and(|t| t.elapsed() < READ_AHEAD_FOR) {
@@ -721,7 +836,7 @@ fn send(file: &Path, request: &str) -> Result<Vec<u8>, String> {
     let mut conn = TcpStream::connect_timeout(&addr, Duration::from_secs(2))
         .map_err(|_| "Handset is not running (a stale file was left); start it with `handset --ctl`".to_string())?;
     // a swipe takes up to ten seconds
-    conn.set_read_timeout(Some(Duration::from_secs(30))).map_err(|e| e.to_string())?;
+    conn.set_read_timeout(Some(Duration::from_secs(MAX_WAIT_SECS + 30))).map_err(|e| e.to_string())?;
     conn.write_all(format!("{token} {request}\n").as_bytes()).map_err(|e| e.to_string())?;
     let mut reader = BufReader::new(conn);
     let mut head = String::new();
@@ -751,6 +866,16 @@ mod tests {
         assert_eq!(parse("tap-text Sign in"), Ok(Command::TapText("Sign in".into())));
         assert_eq!(parse("tap-id  login "), Ok(Command::TapId("login".into())));
         assert!(parse("tap-text").is_err() && parse("tap-id   ").is_err());
+        assert_eq!(parse("wait-text Wi-Fi"), Ok(Command::Wait { text: "Wi-Fi".into(), secs: 10, gone: false }));
+        assert_eq!(
+            parse("wait-gone  Loading results 15s"),
+            Ok(Command::Wait { text: "Loading results".into(), secs: 15, gone: true })
+        );
+        assert_eq!(
+            parse("wait-text Done 999s"),
+            Ok(Command::Wait { text: "Done".into(), secs: MAX_WAIT_SECS, gone: false })
+        );
+        assert!(parse("wait-text").is_err() && parse("wait-text 5s").is_err());
         assert_eq!(parse("key back"), Ok(Command::Key(keycode::BACK)));
         assert_eq!(parse("type hello, world"), Ok(Command::Text("hello, world".into())));
         assert_eq!(parse("scroll 5 5 0 -40"), Ok(Command::Scroll { x: 5, y: 5, h: 0.0, v: -16.0 }));
@@ -957,6 +1082,85 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 3);
         tree_for(s, "S1", &counted(&calls, 0, false)).unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 4, "the one taken during the action was not kept");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn tree_saying(words: &str) -> Arc<crate::ui::Tree> {
+        let node = crate::ui::Node { text: words.into(), bounds: (0, 100, 200, 140), ..Default::default() };
+        Arc::new(crate::ui::Tree { nodes: vec![node], rotation: 0, display: Some((720, 1600)) })
+    }
+
+    #[test]
+    fn waiting_returns_when_the_words_appear_or_go_and_says_so_when_they_do_not() {
+        let asked = std::cell::Cell::new(0);
+        let later = || {
+            asked.set(asked.get() + 1);
+            Ok(tree_saying(if asked.get() < 4 { "Loading" } else { "Wi-Fi certificate" }))
+        };
+        let every = Duration::from_millis(5);
+        let found = wait_for(&later, 360, "wi-fi", 5, false, every).unwrap();
+        assert_eq!(String::from_utf8(found).unwrap(), "found \"Wi-Fi certificate\" at 50,60\n");
+        assert_eq!(asked.get(), 4);
+
+        let asked2 = std::cell::Cell::new(0);
+        let spinner = || {
+            asked2.set(asked2.get() + 1);
+            Ok(tree_saying(if asked2.get() < 3 { "Loading" } else { "Ready" }))
+        };
+        assert_eq!(wait_for(&spinner, 720, "loading", 5, true, every).unwrap(), b"gone\n");
+
+        let e =
+            wait_for(&|| Ok(tree_saying("Loading")), 720, "Done", 1, false, Duration::from_millis(100)).unwrap_err();
+        assert_eq!(e, "\"Done\" did not appear within 1 s");
+        let e =
+            wait_for(&|| Ok(tree_saying("Loading")), 720, "Loading", 1, true, Duration::from_millis(100)).unwrap_err();
+        assert_eq!(e, "\"Loading\" was still there after 1 s");
+        let e =
+            wait_for(&|| Err("screen is moving".into()), 720, "x", 1, false, Duration::from_millis(100)).unwrap_err();
+        assert_eq!(e, "screen is moving", "a look that keeps failing says why");
+        let flaky = std::cell::Cell::new(0);
+        let once_bad = || {
+            flaky.set(flaky.get() + 1);
+            if flaky.get() == 1 { Err("busy".to_string()) } else { Ok(tree_saying("Done")) }
+        };
+        assert!(wait_for(&once_bad, 720, "done", 2, false, every).is_ok(), "one failed look is not the end");
+    }
+
+    #[test]
+    fn a_look_soon_after_an_action_waits_for_the_screen_to_show_it() {
+        let (server, dir, slot) = started("effects");
+        slot.lock().unwrap().yuv = stripes(4);
+        let s = server.shared.clone();
+
+        let t = Instant::now();
+        wait_for_effects(&s); // nothing was done: no wait
+        assert!(t.elapsed() < Duration::from_millis(100));
+
+        after_action(&s, "S1");
+        let t = Instant::now();
+        wait_for_effects(&s);
+        let waited = t.elapsed();
+        assert!(waited >= EFFECT_MIN - Duration::from_millis(60), "not sooner than the phone needs: {waited:?}");
+        assert!(waited < EFFECT_CAP, "a still screen is read once it has held still: {waited:?}");
+
+        // the screen changes under it: the wait lasts until it holds still again
+        after_action(&s, "S1");
+        let changer = {
+            let slot = slot.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(600));
+                slot.lock().unwrap().yuv = stripes(11);
+            })
+        };
+        let t = Instant::now();
+        wait_for_effects(&s);
+        changer.join().unwrap();
+        assert!(t.elapsed() >= Duration::from_millis(900), "it waited for the change and then for stillness");
+
+        *s.last_action.lock().unwrap() = Some(Instant::now() - Duration::from_secs(30));
+        let t = Instant::now();
+        wait_for_effects(&s); // long ago: nothing to wait for
+        assert!(t.elapsed() < Duration::from_millis(100));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
