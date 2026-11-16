@@ -205,6 +205,16 @@ struct Shared {
     ui_used: Mutex<Option<Instant>>,
     /// Counts actions, so a read-ahead started by an older one gives way to a newer one.
     acted: AtomicU64,
+    /// The helper on the phone that describes the screen quickly.
+    helper: Mutex<HelperSlot>,
+}
+
+#[derive(Default)]
+struct HelperSlot {
+    helper: Option<crate::helper::Helper>,
+    /// It broke twice, or could not start: use `uiautomator` from now on.
+    off: bool,
+    broken: u8,
 }
 
 #[derive(Default)]
@@ -246,6 +256,7 @@ impl Server {
             ui_done: Condvar::new(),
             ui_used: Mutex::new(None),
             acted: AtomicU64::new(0),
+            helper: Mutex::new(HelperSlot::default()),
         });
         let file = dir.join("ctl");
         write_private(&file, &format!("port={}\ntoken={}\npid={}\n", addr.port(), shared.token, std::process::id()))?;
@@ -441,7 +452,50 @@ fn screen(s: &Arc<Shared>, h: &Handle) -> Result<Arc<crate::ui::Tree>, String> {
         return Err("no picture yet".into());
     }
     *s.ui_used.lock().unwrap() = Some(Instant::now());
-    tree_for(s, &h.serial, &crate::ui::dump)
+    tree_for(s, &h.serial, &|serial| describe(s, serial))
+}
+
+/// Ask the phone what is on its screen: through the helper if it works, else through `uiautomator`, which is
+/// slower but needs nothing on the phone. A phone that cannot run the helper is only slower, never broken.
+fn describe(s: &Shared, serial: &str) -> Result<crate::ui::Tree, String> {
+    use crate::helper::{Fault, Helper};
+    {
+        let mut slot = s.helper.lock().unwrap();
+        // HANDSET_NO_HELPER=1 turns it off, to compare with uiautomator or when it misbehaves
+        slot.off |= std::env::var_os("HANDSET_NO_HELPER").is_some();
+        if !slot.off {
+            if slot.helper.as_ref().is_some_and(|h| h.serial() != serial || h.is_stale()) {
+                slot.helper = None; // another phone, or one about to end by itself
+            }
+            if slot.helper.is_none() {
+                match Helper::start(serial) {
+                    Ok(h) => slot.helper = Some(h),
+                    Err(e) => {
+                        eprintln!("the helper on the phone could not start ({e}); using uiautomator");
+                        slot.off = true;
+                    }
+                }
+            }
+            if let Some(h) = slot.helper.as_mut() {
+                match h.dump().and_then(|xml| crate::ui::parse(&xml).map_err(Fault::Refused)) {
+                    Ok(tree) => {
+                        slot.broken = 0;
+                        return Ok(tree);
+                    }
+                    Err(Fault::Refused(why)) => {
+                        eprintln!("the helper could not describe the screen ({why}); trying uiautomator");
+                    }
+                    Err(Fault::Broken(why)) => {
+                        eprintln!("the helper on the phone stopped ({why})");
+                        slot.helper = None;
+                        slot.broken += 1;
+                        slot.off = slot.broken >= 2;
+                    }
+                }
+            }
+        }
+    }
+    crate::ui::dump(serial)
 }
 
 /// The picture now, as a thumbnail.
@@ -506,7 +560,7 @@ fn after_action(s: &Arc<Shared>, serial: &str) {
     let (s, serial) = (s.clone(), serial.to_string());
     std::thread::spawn(move || {
         if settled(&s, n) {
-            let _ = tree_for(&s, &serial, &crate::ui::dump);
+            let _ = tree_for(&s, &serial, &|serial| describe(&s, serial));
         }
     });
 }

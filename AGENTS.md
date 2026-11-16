@@ -18,6 +18,8 @@ small native Rust app that implements the desktop side of the scrcpy protocol an
 | `app/src/tap.rs` | A copy of the phone's H.264 packets before decoding, for Share (keyframes carry the SPS and PPS; a slow reader loses frames, never the video thread) |
 | `app/src/share.rs`, `share_input.rs`, `share_audio.rs` | Share: a small HTTP server hands a browser the viewer page and answers its WebRTC offer; the host approves every viewer (watch or control) first; the phone's H.264 goes out through `str0m` untouched; what a controlling viewer sends is parsed strictly and gated; the phone's raw sound is cut into 20 ms frames and encoded to Opus once for all viewers; the host also serves the frame and the editor's backgrounds to the page and tells it how to draw the phone (the contract is `docs/share-protocol.md`) |
 | `app/src/render.rs`, `shader.wgsl` | wgpu renderer: YUV to RGB on the GPU, bezel, overlays, offscreen capture |
+| `app/src/ctl.rs`, `ui.rs`, `helper.rs` | The control socket and `handset ctl` (`docs/agents.md`); reading the screen as text from `uiautomator` XML; the client for the helper on the phone |
+| `helper/` | The Java helper that describes the screen quickly on the phone; `helper/build.sh` builds `app/assets/handset-helper.jar` (`docs/runbooks/rebuild-helper.md`) |
 | `app/src/app.rs` | winit window, input, toolbar, toast, menu events, recording timer |
 | `app/src/control.rs` | Control messages sent to the phone (touch, scroll, keys, text, rotate) |
 | `app/src/frame.rs`, `overlay.rs`, `toolbar.rs` | Bezel loading, bitmap-font pills, toolbar icons |
@@ -35,7 +37,7 @@ small native Rust app that implements the desktop side of the scrcpy protocol an
 | `app/src/verify.rs` | Release signature and checksum checks (Ed25519 over `SHA256SUMS`), and `--verify-release` |
 | `app/src/menu.rs`, `tools.rs` | The right-click menu as data, shown natively on macOS and Windows; tool lookup, error dialogs, default arguments |
 | `app/src/popup.rs` | The same menu drawn in the window (Linux, or `HANDSET_DRAWN_MENU=1`): layout, placement at edges, pointer and keys |
-| `app/assets/` | Embedded scrcpy server, the built-in phone frames, the Inter fonts and the Share viewer page |
+| `app/assets/` | Embedded scrcpy server, the on-phone helper jar, the built-in phone frames, the Inter fonts and the Share viewer page |
 | `site/` | The website (Vite, React, Tailwind): its own package, never shipped in a release; see `site/README.md` |
 | `frames/` | Script that generates the frame PNGs |
 | `app/packaging/` | App icon: SVG sources, `AppIcon.icns` and a README PNG (rebuild with `scripts/make-icon.sh`) |
