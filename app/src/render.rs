@@ -52,6 +52,8 @@ const DOT_MAX: usize = 6;
 
 struct BezelGpu {
     layer: Layer,
+    /// The same bezel drawn again at steps behind the front, in a darker metal, to give the phone a side.
+    slices: Vec<Layer>,
     hole: [f32; 4],
     aspect: f32,
 }
@@ -92,7 +94,15 @@ pub struct Renderer {
     tilt: Tilt,
     tilt_h: [f32; 9],
     tilt_inv: Option<[f32; 9]>,
+    /// The side of a phone drawn without a frame: the same slices of a plain opaque rectangle.
+    plain_edge: Vec<Layer>,
+    /// How many side slices are drawn this frame (none when flat, in a capture, or without a bezel).
+    edge_slices: usize,
 }
+
+/// Slices that make up a tilted phone's side, and its thickness as a share of the phone's shorter side.
+const EDGE_SLICES: usize = 14;
+const EDGE_DEPTH: f32 = 0.075;
 
 const IDENTITY: [f32; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 
@@ -276,7 +286,10 @@ impl Renderer {
             tilt: Tilt::default(),
             tilt_h: IDENTITY,
             tilt_inv: Some(IDENTITY),
+            edge_slices: 0,
+            plain_edge: Vec::new(),
         };
+        r.plain_edge = r.build_plain_edge();
         if let Some(b) = bezel {
             r.set_bezel(b);
         }
@@ -304,6 +317,28 @@ impl Renderer {
         Layer { ubuf, bind }
     }
 
+    /// Slices of one opaque white pixel, for the side of a phone that has no frame.
+    fn build_plain_edge(&self) -> Vec<Layer> {
+        let tex = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("plain edge"),
+            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        self.queue.write_texture(
+            tex.as_image_copy(),
+            &[40, 40, 44, 255],
+            wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(4), rows_per_image: None },
+            wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+        );
+        let view = tex.create_view(&Default::default());
+        (0..EDGE_SLICES).map(|_| self.make_layer([&view, &view, &view])).collect()
+    }
+
     fn set_bezel(&mut self, b: &Bezel) {
         let tex = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("bezel"),
@@ -323,7 +358,8 @@ impl Renderer {
         );
         let view = tex.create_view(&Default::default());
         let layer = self.make_layer([&view, &view, &view]);
-        self.bezel = Some(BezelGpu { layer, hole: b.hole, aspect: b.aspect() });
+        let slices = (0..EDGE_SLICES).map(|_| self.make_layer([&view, &view, &view])).collect();
+        self.bezel = Some(BezelGpu { layer, slices, hole: b.hole, aspect: b.aspect() });
     }
 
     fn build_overlay(&self, p: &crate::overlay::Pill, opacity: f32) -> OverlayGpu {
@@ -641,32 +677,50 @@ impl Renderer {
         }
 
         // only the window is turned; a capture is rendered flat
+        let mut sides: Vec<[f32; 9]> = Vec::new();
         let (h, inv) = if remember && !self.tilt.is_flat() {
             let (bw, bh) = (br[2] * ww, br[3] * wh);
             let flat = [(br[0], br[1]), (br[0] + br[2], br[1]), (br[0] + br[2], br[1] + br[3]), (br[0], br[1] + br[3])];
-            let turned = self.tilt.corners(bw, bh).map(|(x, y)| (br[0] + x / ww, br[1] + y / wh));
-            let h = crate::tilt::homography(flat, turned);
+            // a phone with a bezel has a thickness; one without is a flat picture
+            let (depth, slices) = (EDGE_DEPTH * bw.min(bh), EDGE_SLICES);
+            let body = self.tilt.body(bw, bh, depth, slices);
+            let to_window = |q: &[(f32, f32); 4]| q.map(|(x, y)| (br[0] + x / ww, br[1] + y / wh));
+            sides = body[1..].iter().filter_map(|q| crate::tilt::homography(flat, to_window(q))).collect();
+            let h = crate::tilt::homography(flat, to_window(&body[0]));
             (h.unwrap_or(IDENTITY), h.and_then(crate::tilt::invert3))
         } else {
             (IDENTITY, Some(IDENTITY))
         };
+        self.edge_slices = if sides.len() == EDGE_SLICES { sides.len() } else { 0 };
         self.tilt_h = h;
         self.tilt_inv = inv;
         let flat = IDENTITY;
-        let write_with = |buf: &wgpu::Buffer, r: [f32; 4], rot: f32, opacity: f32, h: &[f32; 9]| {
+        let write_with = |buf: &wgpu::Buffer, r: [f32; 4], rot: f32, opacity: f32, edge: f32, h: &[f32; 9]| {
             let data = [
-                r[0], r[1], r[2], r[3], rot, opacity, 0.0, 0.0, h[0], h[1], h[2], 0.0, h[3], h[4], h[5], 0.0, h[6],
+                r[0], r[1], r[2], r[3], rot, opacity, edge, 0.0, h[0], h[1], h[2], 0.0, h[3], h[4], h[5], 0.0, h[6],
                 h[7], h[8], 0.0,
             ];
             self.queue.write_buffer(buf, 0, bytemuck::cast_slice(&data));
         };
-        let write = |buf: &wgpu::Buffer, r: [f32; 4], rot: f32, opacity: f32| write_with(buf, r, rot, opacity, &flat);
+        let write =
+            |buf: &wgpu::Buffer, r: [f32; 4], rot: f32, opacity: f32| write_with(buf, r, rot, opacity, 0.0, &flat);
         let write_turned =
-            |buf: &wgpu::Buffer, r: [f32; 4], rot: f32, opacity: f32| write_with(buf, r, rot, opacity, &h);
+            |buf: &wgpu::Buffer, r: [f32; 4], rot: f32, opacity: f32| write_with(buf, r, rot, opacity, 0.0, &h);
         write_turned(&v.video.ubuf, video_rect, 0.0, 1.0);
         write_turned(&v.solid.ubuf, hole, 0.0, 1.0);
+        let rot = if self.landscape { 1.0 } else { 0.0 };
         if let Some(b) = &self.bezel {
-            write_turned(&b.layer.ubuf, br, if self.landscape { 1.0 } else { 0.0 }, 1.0);
+            write_turned(&b.layer.ubuf, br, rot, 1.0);
+        }
+        // the side is lit from the front: brightest where it meets the face, darker deeper in; without a
+        // frame it is the screen's own rectangle that gets one
+        let (layers, side_rect) = match &self.bezel {
+            Some(b) => (&b.slices, br),
+            None => (&self.plain_edge, video_rect),
+        };
+        for (i, (layer, sh)) in layers.iter().zip(&sides).enumerate() {
+            let t = (i + 1) as f32 / EDGE_SLICES as f32;
+            write_with(&layer.ubuf, side_rect, if self.bezel.is_some() { rot } else { 0.0 }, 1.0, 1.0 - 0.55 * t, sh);
         }
         // touch indicators follow the video, in the window and in captures
         let size = video_rect[2] * ww * 0.1;
@@ -711,6 +765,15 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            {
+                // the side of a tilted phone, deepest slice first, so the face covers the rest
+                let layers = self.bezel.as_ref().map_or(&self.plain_edge, |b| &b.slices);
+                for layer in layers[..self.edge_slices].iter().rev() {
+                    pass.set_pipeline(&self.p_bezel);
+                    pass.set_bind_group(0, &layer.bind, &[]);
+                    pass.draw(0..6, 0..1);
+                }
+            }
             if let Some(v) = &self.video {
                 if self.bezel.is_some() {
                     pass.set_pipeline(&self.p_solid);

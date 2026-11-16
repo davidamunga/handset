@@ -1,6 +1,6 @@
 struct U {
     rect: vec4<f32>, // x, y, w, h in window space (0..1, origin top-left)
-    extra: vec4<f32>, // x: 1 = sample the texture rotated 90 degrees clockwise; y: opacity
+    extra: vec4<f32>, // x: 1 = sample the texture rotated 90 degrees clockwise; y: opacity; z: > 0 = a slice of the phone's side, and how bright
     // Rows of a homography on window space (0..1); the identity for layers that stay flat.
     h0: vec4<f32>,
     h1: vec4<f32>,
@@ -63,6 +63,10 @@ fn fs_solid(in: VOut) -> @location(0) vec4<f32> {
 @fragment
 fn fs_bezel(in: VOut) -> @location(0) vec4<f32> {
     let c = textureSample(tex_a, samp, in.uv);
-    let a = c.a * u.extra.y;
-    return vec4(c.rgb * a, a);
+    // the art's soft shadow is nearly transparent; the side is only the solid body, so it has no haze
+    let solid = smoothstep(0.7, 1.0, c.a);
+    let a = select(c.a, solid, u.extra.z > 0.0) * u.extra.y;
+    // a slice of the side: the bezel's colour lifted toward brushed metal, then lit by depth
+    let rgb = select(c.rgb, (c.rgb * 0.55 + vec3(0.17)) * u.extra.z, u.extra.z > 0.0);
+    return vec4(rgb * a, a);
 }
