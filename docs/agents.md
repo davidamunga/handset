@@ -17,7 +17,8 @@ handset ctl key back
 handset ctl open com.android.settings
 ```
 
-Run `handset ctl help` for every command.
+Run `handset ctl help` for every command. To give the phone to an AI agent as tools, see
+[Using it from an AI agent](#using-it-from-an-ai-agent-mcp).
 
 ## Coordinates
 
@@ -69,6 +70,43 @@ look again.
 After each action, once the screen settles, Handset also describes it in the background, so the next `ui` or
 `tap-text` is ready when you ask. That read-ahead only runs while you are using `ui`. A `ui` straight after an
 action still waits for a fresh answer, never a stale one.
+
+## Using it from an AI agent (MCP)
+
+`handset mcp` offers the same commands as tools to any client that speaks the Model Context Protocol (Claude
+Code, Claude Desktop, Cursor, VS Code and others). The client starts it; you start Handset with `--ctl`.
+
+```sh
+handset --ctl                                   # the phone, with control switched on
+claude mcp add handset -- handset mcp           # Claude Code
+```
+
+Most other clients take a block like this in their MCP settings (`mcpServers` in Claude Desktop's and
+Cursor's, `servers` in VS Code's `.vscode/mcp.json`; check your client's documentation for where it goes):
+
+```json
+{ "mcpServers": { "handset": { "command": "handset", "args": ["mcp"] } } }
+```
+
+If `handset` is not on the client's `PATH`, give the full path. From the macOS app that is
+`/Applications/Handset.app/Contents/MacOS/handset`.
+
+The fifteen tools are named `phone_*`:
+
+| Look | Act | Wait |
+|---|---|---|
+| `phone_info`, `phone_ui`, `phone_screenshot` | `phone_tap_text`, `phone_tap_id`, `phone_tap`, `phone_hold`, `phone_swipe`, `phone_scroll`, `phone_type`, `phone_key`, `phone_rotate`, `phone_open`, `phone_notifications` | `phone_wait` |
+
+`phone_screenshot` returns an image; the others return text. A wrong argument, a position off the screen, a
+phone that is not there or text that is not found comes back as an error result the model can read and
+correct, not as a protocol failure. The tools that only look are marked read-only. Their descriptions say what
+this guide says in the next section, so the model is told as it goes.
+
+The server does not start Handset or switch control on: with Handset not running it still starts and lists
+its tools, and a call says how to start it. What the screen shows is data from the phone, and an agent that
+reads it can be told to do things by it; the server's instructions say so, but the only real protection is to
+run Handset with `--ctl` for the time you want, and to watch the window. See
+[ADR 0048](adr/0048-offer-the-phone-to-agents-as-an-mcp-server.md).
 
 ## What an agent should know
 
