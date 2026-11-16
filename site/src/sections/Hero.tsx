@@ -1,74 +1,100 @@
+import { useState } from 'react'
 import { RELEASES, REPO } from '../links'
 import { useReleaseInfo } from '../release'
-import type { Platform, Release } from '../useRelease'
+import type { Release } from '../useRelease'
+
+type Os = 'mac' | 'windows' | 'linux'
+const SYSTEMS: { os: Os; word: string }[] = [
+  { os: 'mac', word: 'Mac' },
+  { os: 'windows', word: 'PC' },
+  { os: 'linux', word: 'Linux PC' },
+]
+const DEVICES = ['phone', 'Pixel', 'Galaxy', 'foldable']
 
 const img = (name: string) => `/shared/${name}`
 
+/** A highlighted word that changes to the next one when you tap it. */
+function Swap({ words, i, next, label }: { words: string[]; i: number; next: () => void; label: string }) {
+  return (
+    <button type="button" className="hl" onClick={next} aria-label={`${label}: ${words[i]}. Tap to change.`}>
+      {words[i]}
+    </button>
+  )
+}
+
+/** A small round label stuck on a picture. */
+function Chip({ children, className = '' }: { children: string; className?: string }) {
+  return <span className={`label absolute z-20 rounded-full bg-marker px-3 py-1.5 text-ink ${className}`}>{children}</span>
+}
+
 export function Hero() {
   const { release, platform } = useReleaseInfo()
-  const primary = primaryDownload(release, platform)
+  const [sys, setSys] = useState(() => Math.max(0, SYSTEMS.findIndex((s) => s.os === platform)))
+  const [dev, setDev] = useState(0)
+  const cycle = (n: number, set: (f: (v: number) => number) => void) => () => set((v) => (v + 1) % n)
+  const primary = primaryDownload(release, SYSTEMS[sys].os)
   return (
-    <section className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-20 pt-8 sm:px-8 md:grid-cols-[1.15fr_1fr] md:gap-8 md:pb-28 md:pt-14">
-      <div>
-        <h1
-          className="rise font-display text-[clamp(3rem,8vw,5.75rem)] font-extrabold leading-[0.94] tracking-[-0.035em]"
-          style={{ ['--i' as string]: 0 }}
-        >
-          Your phone,
+    <section className="mx-auto grid max-w-6xl 2xl:max-w-7xl items-center gap-8 px-5 pb-12 pt-2 sm:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-4 lg:pb-16">
+      <div className="@container text-center lg:text-left">
+        {/* sized to its column, one unbroken line each, so a longer swapped word never wraps its pill */}
+        <h1 className="display rise whitespace-nowrap" style={{ fontSize: 'clamp(1.9rem, 10cqw, 4.8rem)' }}>
+          Your <Swap words={DEVICES} i={dev} next={cycle(DEVICES.length, setDev)} label="Device" />
           <br />
-          on your desktop.
+          on your <span className="whitespace-nowrap"><Swap words={SYSTEMS.map((s) => s.word)} i={sys} next={cycle(SYSTEMS.length, setSys)} label="Computer" />.</span>
         </h1>
-        <div className="rise mt-7 flex items-center gap-2" style={{ ['--i' as string]: 1 }} aria-hidden="true">
-          <span className="h-1.5 w-14 rounded-full bg-android" />
-          <span className="h-1.5 w-14 rounded-full bg-ios" />
-        </div>
-        <p className="rise mt-7 max-w-[34rem] text-xl leading-snug text-ink-2" style={{ ['--i' as string]: 2 }}>
-          Handset mirrors and controls your Android phone from a Mac, a Windows PC or Linux, inside a real device frame. Capture
-          it, style it, share it.
-        </p>
-        <div className="rise mt-9 flex flex-wrap items-center gap-3" style={{ ['--i' as string]: 3 }}>
-          <a
-            href={primary.url}
-            className="rounded-xl bg-ink px-6 py-3.5 text-lg font-semibold text-paper transition-transform hover:-translate-y-px active:translate-y-0"
-          >
+        <div className="rise mt-7 flex flex-wrap justify-center gap-3 lg:justify-start" style={{ ['--i' as string]: 1 }}>
+          <a href={primary.url} className="btn text-lg">
             {primary.label}
           </a>
-          <a
-            href={REPO}
-            className="rounded-xl border border-line px-6 py-3.5 text-lg font-semibold transition-colors hover:bg-paper-2"
-          >
-            View on GitHub
+          <a href={REPO} className="btn btn-light text-lg">
+            GitHub
           </a>
         </div>
-        <p className="rise mt-5 text-sm text-ink-2" style={{ ['--i' as string]: 4 }}>
-          Free and open source, Apache-2.0. macOS 12 or later, Windows 10 or 11, and Linux (experimental).
+        <p className="label rise mt-6 text-fade" style={{ ['--i' as string]: 2 }}>
+          Free · open source
         </p>
       </div>
 
-      <div className="relative mx-auto w-[min(78vw,21rem)] md:w-full md:max-w-[22rem]" aria-hidden="true">
-        <div className="echo-left absolute left-[-4%] top-[9%] aspect-[80/128] w-[68%] rounded-[2.2rem] bg-android p-[3.5%]">
-          <div className="size-full rounded-[1.7rem] bg-android-deep" />
-        </div>
-        <div className="echo-right absolute right-[-4%] top-[1%] aspect-[80/128] w-[68%] rounded-[2.2rem] bg-ios p-[3.5%]">
-          <div className="size-full rounded-[1.7rem] bg-ios-deep" />
-        </div>
-        <img
-          src={img('connect-home.png')}
-          alt=""
-          width={529}
-          height={1000}
-          className="rise relative"
-          style={{ ['--i' as string]: 3 }}
-        />
+      {/* the app itself: the phone in its frame, with the style editor and the share page behind it */}
+      <div className="relative mx-auto aspect-[1.3] w-full max-w-[46rem] 2xl:max-w-[52rem]">
+        <figure className="rise absolute left-0 top-[4%] w-[47%] -rotate-3" style={{ ['--i' as string]: 3 }}>
+          <img
+            src={img('editor.png')}
+            alt="The Handset style editor: presets, background and layout controls beside a live preview"
+            width={1280}
+            height={933}
+            className="card w-full"
+          />
+          <Chip className="-bottom-3 left-4">Style</Chip>
+        </figure>
+        <figure className="rise absolute bottom-[3%] right-0 w-[45%] rotate-2" style={{ ['--i' as string]: 4 }}>
+          <img
+            src={img('share-page.png')}
+            alt="The page Share shows in a browser: the phone in its frame with its keys beside it"
+            width={1440}
+            height={900}
+            className="card w-full"
+          />
+          <Chip className="-top-3 right-4">Share</Chip>
+        </figure>
+        <figure className="rise absolute inset-y-0 left-1/2 z-10 aspect-[880/1550] h-full -translate-x-1/2" style={{ ['--i' as string]: 2 }}>
+          <img
+            src={img('mirroring.png')}
+            alt="Handset mirroring an Android phone inside a device frame, with its toolbar beside it"
+            width={880}
+            height={1550}
+            className="h-full w-full"
+          />
+          <Chip className="left-0 top-[8%]">Mirror</Chip>
+        </figure>
       </div>
     </section>
   )
 }
 
-function primaryDownload(release: Release | null, platform: Platform): { label: string; url: string } {
+function primaryDownload(release: Release | null, os: Os): { label: string; url: string } {
   const fall = release?.page ?? RELEASES
-  if (platform === 'windows') return { label: 'Download for Windows', url: release?.windows?.url ?? fall }
-  if (platform === 'mac') return { label: 'Download for macOS', url: release?.mac?.url ?? fall }
-  if (platform === 'linux') return { label: 'Get it for Linux', url: '#download' }
-  return { label: 'Download', url: '#download' }
+  if (os === 'windows') return { label: 'Download for Windows', url: release?.windows?.url ?? fall }
+  if (os === 'mac') return { label: 'Download for macOS', url: release?.mac?.url ?? fall }
+  return { label: 'Get it for Linux', url: '#download' }
 }

@@ -2,9 +2,9 @@ import { AUTHOR, REPO } from '../links'
 
 export function About() {
   return (
-    <section id="about" className="mx-auto max-w-6xl px-5 py-16 sm:px-8 md:py-24">
+    <section id="about" className="mx-auto max-w-6xl 2xl:max-w-7xl px-5 py-16 sm:px-8 md:py-24">
       <div className="grid gap-10 md:grid-cols-12">
-        <h2 className="font-display text-[clamp(2rem,4.5vw,3.25rem)] font-bold leading-none tracking-[-0.03em] md:col-span-5">
+        <h2 className="display h2 md:col-span-5">
           Open source, built on scrcpy
         </h2>
         <div className="space-y-5 text-ink-2 md:col-span-7">
@@ -36,12 +36,19 @@ export function About() {
             phone. Handset is an independent app. It is not affiliated with or endorsed by Genymobile.
           </p>
           <p>
-            Text is set in{' '}
-            <a className="font-medium text-ink underline underline-offset-4" href="https://rsms.me/inter/">
-              Inter
+            Headlines are set in{' '}
+            <a className="font-medium text-ink underline underline-offset-4" href="https://github.com/googlefonts/rubik">
+              Rubik
             </a>{' '}
-            by the Inter Project Authors, under the SIL Open Font License 1.1, and in Bricolage Grotesque by Mathieu Triay,
-            under the same licence.
+            by the Rubik Project Authors, text in{' '}
+            <a className="font-medium text-ink underline underline-offset-4" href="https://github.com/googlefonts/atkinson-hyperlegible-next">
+              Atkinson Hyperlegible Next
+            </a>{' '}
+            by the Atkinson Hyperlegible Next Project Authors, and labels in{' '}
+            <a className="font-medium text-ink underline underline-offset-4" href="https://github.com/evilmartians/mono">
+              Martian Mono
+            </a>{' '}
+            by the Martian Mono Project Authors, all under the SIL Open Font License 1.1.
           </p>
         </div>
       </div>

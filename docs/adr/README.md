@@ -50,4 +50,5 @@ Copy [`0000-template.md`](0000-template.md) to start a new one.
 | [0039](0039-share-the-phone-by-forwarding-its-h264-over-webrtc.md) | Share the phone by forwarding its H.264 over WebRTC | accepted |
 | [0040](0040-let-people-change-the-keyboard-shortcuts.md) | Let people change the keyboard shortcuts | accepted |
 | [0041](0041-give-a-tilted-phone-a-side.md) | Give a tilted phone a side | accepted |
+| [0042](0042-set-the-site-in-rubik-atkinson-and-martian-mono.md) | Give the site a warm, rounded look in Rubik, Atkinson Hyperlegible Next and Martian Mono | accepted |
 | [0043](0043-tilt-the-live-phone-freely.md) | Tilt the live phone freely: drag, snap and nudge | accepted |

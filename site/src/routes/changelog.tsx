@@ -42,7 +42,7 @@ function Changelog() {
               </a>
             </h2>
           ),
-          h3: ({ children }) => <h3 className="mt-6 font-display text-lg font-bold">{children}</h3>,
+          h3: ({ children }) => <h3 className="label mt-6 inline-block rounded-full bg-marker px-3 py-1">{children}</h3>,
           a: ({ href, children }) => (
             <a href={href} rel={href?.startsWith('http') ? 'noreferrer' : undefined}>
               {children}

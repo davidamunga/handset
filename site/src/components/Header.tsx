@@ -3,34 +3,33 @@ import { Mark } from './Mark'
 import { RELEASES, REPO } from '../links'
 import { useReleaseInfo } from '../release'
 
+const nav = 'hidden whitespace-nowrap rounded-full px-3.5 py-2 text-[0.95rem] text-ink-2 hover:bg-paper-2 hover:text-ink md:block'
+
 export function Header() {
   const { release } = useReleaseInfo()
   return (
-    <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5 sm:px-8">
-      <Link to="/" className="flex items-center gap-2.5 font-display text-xl font-bold tracking-tight">
-        <Mark className="size-9" />
+    <header className="mx-auto flex max-w-6xl 2xl:max-w-7xl items-center justify-between px-5 py-4 sm:px-8">
+      <Link to="/" className="display flex items-center gap-2.5 text-2xl">
+        <Mark className="size-10" />
         Handset
       </Link>
-      <nav aria-label="Main" className="flex items-center gap-1 text-[0.95rem] sm:gap-2">
-        <Link to="/" hash="features" className="hidden rounded-lg px-3 py-2 hover:bg-paper-2 sm:block">
+      <nav aria-label="Main" className="flex items-center gap-1">
+        <Link to="/" hash="features" className={nav}>
           What it does
         </Link>
-        <Link to="/" hash="download" className="hidden rounded-lg px-3 py-2 hover:bg-paper-2 sm:block">
+        <Link to="/" hash="download" className={nav}>
           Download
         </Link>
-        <Link to="/changelog" className="hidden rounded-lg px-3 py-2 hover:bg-paper-2 sm:block">
+        <Link to="/changelog" className={nav}>
           Changelog
         </Link>
-        <Link to="/faq" className="hidden rounded-lg px-3 py-2 hover:bg-paper-2 sm:block">
+        <Link to="/faq" className={nav}>
           FAQ
         </Link>
-        <a className="hidden rounded-lg px-3 py-2 hover:bg-paper-2 min-[400px]:block" href={REPO}>
+        <a className={nav} href={REPO}>
           GitHub
         </a>
-        <a
-          href={release?.page ?? RELEASES}
-          className="ml-1 rounded-xl bg-ink px-4 py-2 font-medium text-paper transition-transform hover:-translate-y-px active:translate-y-0"
-        >
+        <a href={release?.page ?? RELEASES} className="btn ml-2 shrink-0 whitespace-nowrap !px-4 !py-2 text-[0.95rem]">
           {release ? `v${release.version}` : 'Releases'}
         </a>
       </nav>

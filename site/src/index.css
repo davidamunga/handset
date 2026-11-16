@@ -1,26 +1,31 @@
 @import 'tailwindcss';
-@import '@fontsource-variable/inter';
-@import '@fontsource-variable/bricolage-grotesque';
+@import '@fontsource-variable/rubik';
+@import '@fontsource-variable/atkinson-hyperlegible-next';
+@import '@fontsource-variable/martian-mono';
 
-/* Device Gray: the greys of the app, tinted a touch toward blue. Green and blue are the two echo phones in the
-   logo (Android and iOS) and the only colours on the page. */
+/* Warm paper, soft rounded pills and a yellow highlighter on the words that matter. The two echo phones of the logo
+   (Android green, iOS blue) are the only other colours. No gradients, no glow, no drop shadows. */
 @theme {
-  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Bricolage Grotesque Variable', 'Inter Variable', ui-sans-serif, sans-serif;
+  --font-sans: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Rubik Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Martian Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
 
-  --color-paper: oklch(0.96 0.004 255);
-  --color-paper-2: oklch(0.925 0.006 255);
-  --color-line: oklch(0.87 0.007 255);
-  --color-ink: oklch(0.18 0.008 265);
-  --color-ink-2: oklch(0.42 0.012 265);
-  --color-stage: oklch(0.15 0.006 265);
-  --color-stage-2: oklch(0.21 0.007 265);
-  --color-stage-line: oklch(0.31 0.008 265);
-  --color-stage-text: oklch(0.78 0.008 265);
+  --color-paper: oklch(0.985 0.006 90);
+  --color-paper-2: oklch(0.955 0.014 88);
+  --color-card: oklch(1 0 0);
+  --color-ink: oklch(0.2 0.012 80);
+  --color-ink-2: oklch(0.42 0.015 80);
+  --color-fade: oklch(0.66 0.02 80);
+  --color-line: oklch(0.9 0.012 85);
+  --color-stage: var(--color-ink);
+  --color-stage-2: oklch(0.27 0.012 80);
+  --color-stage-line: oklch(0.38 0.012 80);
+  --color-stage-text: oklch(0.84 0.014 88);
   --color-android: oklch(0.8 0.19 152);
   --color-android-deep: oklch(0.68 0.17 152);
   --color-ios: oklch(0.62 0.21 255);
   --color-ios-deep: oklch(0.5 0.2 258);
+  --color-marker: oklch(0.88 0.15 92);
 
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
 }
@@ -34,21 +39,112 @@ body {
   background: var(--color-paper);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-size: 1.0625rem;
+  font-size: 1.125rem;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
 ::selection {
-  background: var(--color-android);
+  background: var(--color-marker);
   color: var(--color-ink);
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-ios);
+  outline: 3px solid var(--color-ios);
   outline-offset: 3px;
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
+}
+
+@layer components {
+  /* Headlines: Rubik, heavy, set tight. */
+  .display {
+    font-family: var(--font-display);
+    font-weight: 800;
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+  }
+  .h2 {
+    font-size: clamp(2rem, 4.6vw, 3.4rem);
+  }
+
+  /* The second half of a headline, in a quieter colour. */
+  .fade {
+    color: var(--color-fade);
+  }
+
+  /* Small mono labels: the nav, numbers, specs. */
+  .label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  /* Buttons are pills. The dark one is the main action. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 1.5px solid var(--color-ink);
+    border-radius: 999px;
+    background: var(--color-ink);
+    color: var(--color-paper);
+    padding: 0.8rem 1.5rem;
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1.1;
+    transition:
+      transform 140ms var(--ease-out-quart),
+      background-color 140ms var(--ease-out-quart);
+  }
+  .btn:hover {
+    transform: translateY(-2px);
+  }
+  .btn:active {
+    transform: translateY(0) scale(0.98);
+  }
+  .btn-light {
+    background: var(--color-card);
+    color: var(--color-ink);
+  }
+  .btn-green {
+    background: var(--color-android);
+    color: var(--color-ink);
+  }
+
+  /* A panel or a picture on the page: white, rounded, a thin warm edge. */
+  .card {
+    border: 1.5px solid var(--color-line);
+    border-radius: 1.75rem;
+    background: var(--color-card);
+    overflow: hidden;
+  }
+
+  /* The highlighter: a yellow pill behind a word, tipped a little, like it was drawn on. */
+  .hl {
+    display: inline-block;
+    border-radius: 0.55em;
+    background: var(--color-marker);
+    padding: 0 0.28em 0.04em;
+    color: var(--color-ink);
+    transform: rotate(-1.2deg);
+  }
+  button.hl {
+    cursor: pointer;
+    font: inherit;
+    letter-spacing: inherit;
+    transition: transform 160ms var(--ease-out-quart);
+  }
+  button.hl:hover {
+    transform: rotate(1deg) scale(1.03);
+  }
+  .hl-flat {
+    background: linear-gradient(var(--color-marker), var(--color-marker)) 0 90% / 100% 0.4em no-repeat;
+  }
 }
 
 /* One staggered entrance for the hero; the echo phones slide out from behind the screenshot. */
@@ -113,9 +209,9 @@ body {
 .legal h2 {
   margin-top: 2.5rem;
   font-family: var(--font-display);
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.1;
   letter-spacing: -0.02em;
 }
 .legal p,
@@ -145,9 +241,11 @@ body {
 }
 .legal code {
   overflow-wrap: anywhere;
-  border-radius: 0.375rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.5rem;
   background: var(--color-paper-2);
-  padding: 0.1em 0.35em;
-  font-size: 0.9em;
+  padding: 0.05em 0.35em;
+  font-family: var(--font-mono);
+  font-size: 0.78em;
   color: var(--color-ink);
 }
