@@ -10,6 +10,7 @@ mod capture;
 mod clipboard;
 mod connect;
 mod control;
+mod ctl;
 mod discover;
 mod dock;
 #[cfg(test)]
@@ -58,8 +59,9 @@ fn usage() -> ! {
          \x20      handset --restyle <png|mp4|gif> [--style <look name|style>]\n\
          \x20      handset --edit [png|mp4|gif]\n\
          \x20      handset --verify-release <folder>\n\
+         \x20      handset ctl <command>   (drive a running Handset started with --ctl; `handset ctl help`)\n\
          \x20      handset --doctor\n\
-         \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--show-touches] [--tilt <yaw,pitch,roll>] [--shortcuts] [--style <look>] [--style-captures] [--no-update-check] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
+         \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--show-touches] [--tilt <yaw,pitch,roll>] [--ctl] [--shortcuts] [--style <look>] [--style-captures] [--no-update-check] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
          built-in frames: {}\n\
          right-click the phone for the menu; keys: Cmd/Ctrl+S screenshot, Cmd/Ctrl+E record, Cmd/Ctrl+R rotate (--shortcuts changes them)",
         frame::builtin_names().collect::<Vec<_>>().join(", ")
@@ -70,6 +72,11 @@ fn usage() -> ! {
 fn main() {
     #[cfg(windows)]
     tools::attach_console();
+    // `handset ctl ...` talks to a running Handset and never opens a window
+    if std::env::args().nth(1).as_deref() == Some("ctl") {
+        let rest: Vec<String> = std::env::args().skip(2).collect();
+        std::process::exit(ctl::client(&rest));
+    }
     // what was changed in the menus last time; the command line below overrides it
     let saved = settings::Settings::load();
     shortcuts::reload();
@@ -104,6 +111,7 @@ fn main() {
     let mut tilt = saved.get("tilt").and_then(tilt::Tilt::parse).unwrap_or_default();
     let mut sync_clipboard = saved.get_bool("sync-clipboard").unwrap_or(true);
     let mut start_app: Option<String> = None;
+    let mut ctl = saved.get_bool("ctl").unwrap_or(false);
     // no arguments: use the saved defaults (and `--audio` inside the app bundle)
     let given: Vec<String> = std::env::args().skip(1).collect();
     let mut args = if given.is_empty() { tools::default_args() } else { given }.into_iter();
@@ -140,6 +148,7 @@ fn main() {
             "--no-clipboard" => cap.clipboard = false,
             "--no-clipboard-sync" => sync_clipboard = false,
             "--show-touches" => touches = true,
+            "--ctl" => ctl = true,
             "--tilt" => tilt = args.next().and_then(|v| tilt::Tilt::parse(&v)).unwrap_or_else(|| usage()),
             "--no-update-check" => update_check = false,
             "--version" => {
@@ -319,6 +328,7 @@ fn main() {
         mute,
         sync,
         start_app,
+        ctl,
         toolbar: saved.get_bool("toolbar").unwrap_or(true),
         touches,
         tilt,

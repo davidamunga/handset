@@ -49,6 +49,8 @@ pub struct Init {
     pub sync: Arc<Mutex<crate::clipboard::Sync>>,
     /// `--start-app`: open this app once the phone is mirrored.
     pub start_app: Option<String>,
+    /// Take commands from `handset ctl` (`--ctl`, or `ctl=on` in the settings).
+    pub ctl: bool,
     /// Show the toolbar at start (a saved setting).
     pub toolbar: bool,
     /// Show touch indicators at start (a saved setting or `--show-touches`).
@@ -225,6 +227,8 @@ pub struct App {
     mirror: Option<Mirror>,
     /// Someone may be watching the phone in a browser.
     share: Option<crate::share::Share>,
+    /// A program may drive the phone through the control socket.
+    ctl: Option<crate::ctl::Server>,
     waiting: Option<Waiting>,
     proxy: EventLoopProxy<UserEvent>,
     opts: server::Options,
@@ -275,12 +279,21 @@ fn confirm_public_share() -> bool {
 }
 
 const SHARE_BLUE: [u8; 3] = [80, 160, 255];
+const AGENT_VIOLET: [u8; 3] = [170, 120, 255];
 const REC_RED: [u8; 3] = [235, 60, 60];
 const REC_DIM: [u8; 3] = [110, 35, 35];
 
 impl App {
     pub fn new(init: Init) -> Self {
-        Self {
+        let ctl = init.ctl.then(|| {
+            let proxy = init.proxy.clone();
+            crate::ctl::Server::start(init.slot.clone(), move || {
+                let _ = proxy.send_event(UserEvent::Ctl);
+            })
+            .map_err(|e| eprintln!("could not open the control socket: {e}"))
+            .ok()
+        });
+        let mut app = Self {
             bezel: init.bezel,
             title: init.title,
             slot: init.slot,
@@ -334,6 +347,7 @@ impl App {
             home_height: 0,
             mirror: init.mirror,
             share: None,
+            ctl: ctl.flatten(),
             waiting: init.wait.map(|w| Waiting::new(w.serial, w.wifi, Status::Looking)),
             proxy: init.proxy,
             opts: init.opts,
@@ -342,6 +356,21 @@ impl App {
             start_app: init.start_app,
             apps: Vec::new(),
             apps_loading: false,
+        };
+        app.sync_ctl();
+        app
+    }
+
+    /// Tell the control socket which phone it now drives (or that there is none).
+    fn sync_ctl(&mut self) {
+        let Some(ctl) = &self.ctl else { return };
+        ctl.set_target(self.mirror.as_ref().map(|m| crate::ctl::Target {
+            control: m.control_clone(),
+            name: m.device_name().to_string(),
+            serial: m.serial().to_string(),
+        }));
+        if self.ctl.is_some() && self.mirror.is_some() {
+            eprintln!("control socket ready: handset ctl help");
         }
     }
 
@@ -669,6 +698,9 @@ impl App {
     fn end_session(&mut self) -> Option<String> {
         let mirror = self.mirror.take()?;
         self.share = None;
+        if let Some(c) = &self.ctl {
+            c.set_target(None);
+        }
         let serial = mirror.serial().to_string();
         self.stop_recording();
         drop(mirror); // kills the server and removes the adb forward
@@ -755,6 +787,7 @@ impl App {
                     w.set_cursor(Cursor::Icon(CursorIcon::Default));
                 }
                 self.mirror = Some(mirror);
+                self.sync_ctl();
                 self.black = Default::default();
                 self.hint = None;
                 self.waiting = None;
@@ -893,6 +926,7 @@ impl App {
                 }
                 self.title = mirror.device_name().to_string();
                 self.mirror = Some(mirror);
+                self.sync_ctl();
                 self.black = Default::default();
                 self.hint = None;
                 self.waiting = None;
@@ -1800,6 +1834,8 @@ impl App {
             let dot = if (e.as_millis() / 500).is_multiple_of(2) { REC_RED } else { REC_DIM };
             let secs = e.as_secs();
             Some((format!("REC {}:{:02}", secs / 60, secs % 60), Some(dot), 1.0))
+        } else if self.ctl.as_ref().is_some_and(|c| c.active()) {
+            Some(("AUTOMATION ACTIVE".to_string(), Some(AGENT_VIOLET), 1.0))
         } else {
             self.share.as_ref().map(|s| {
                 let text = match s.controllers() {
@@ -2241,7 +2277,7 @@ impl ApplicationHandler<UserEvent> for App {
             },
             UserEvent::Adb(result) => self.on_adb(result),
             UserEvent::Landing(event) => self.on_landing(event),
-            UserEvent::Share => {
+            UserEvent::Share | UserEvent::Ctl => {
                 self.refresh_overlay();
             }
             UserEvent::Frame => {

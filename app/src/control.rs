@@ -54,6 +54,11 @@ impl Control {
         Self { stream: None, clip_seq: 0 }
     }
 
+    /// A second writer on the same socket, for something that runs beside the window (the control socket).
+    pub fn try_clone(&self) -> Option<Control> {
+        self.stream.as_ref()?.try_clone().ok().map(Control::new)
+    }
+
     fn send(&mut self, msg: &[u8]) -> io::Result<()> {
         let Some(stream) = self.stream.as_mut() else { return Ok(()) };
         let r = stream.write_all(msg);
