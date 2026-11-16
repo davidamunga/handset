@@ -51,7 +51,7 @@ export function Hero() {
           </a>
         </div>
         <p className="label rise mt-6 text-fade" style={{ ['--i' as string]: 2 }}>
-          Free · open source · tap a highlighted word
+          Free · open source
         </p>
       </div>
 
