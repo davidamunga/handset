@@ -16,6 +16,7 @@ export function Footer() {
           <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-3">
             <a className={link} href={REPO}>GitHub</a>
             <a className={link} href={`${REPO}/releases`}>Releases</a>
+            <Link className={link} to="/agents">AI agents</Link>
             <Link className={link} to="/faq">FAQ</Link>
             <Link className={link} to="/changelog">Changelog</Link>
             <a className={link} href={`${REPO}/issues`}>Report a problem</a>

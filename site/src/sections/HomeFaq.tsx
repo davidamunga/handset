@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 
-const items: { q: string; a: string }[] = [
+const items: { q: string; a: string; more?: { to: string; label: string } }[] = [
   {
     q: 'Is it free?',
     a: 'Yes. Handset is free and open source under the Apache-2.0 licence.',
@@ -16,6 +16,11 @@ const items: { q: string; a: string }[] = [
   {
     q: 'Does it run on Linux?',
     a: 'Yes, but it is experimental: it has not run on a real Linux desktop yet. Releases include a tarball for x86_64 and aarch64; elsewhere you build it from source.',
+  },
+  {
+    q: 'Can an AI agent use my phone?',
+    a: 'Yes. Handset has an MCP server, so agents such as Claude Code, Cursor, VS Code, Codex and Gemini CLI can read the screen and tap and type on your Android phone. It is off until you start Handset with --ctl, and it stays on your computer.',
+    more: { to: '/agents', label: 'Read the setup guide' },
   },
   {
     q: 'Can someone watch my phone in a browser?',
@@ -36,7 +41,18 @@ export function HomeFaq() {
                 +
               </span>
             </summary>
-            <p className="mt-3 text-ink-2">{it.a}</p>
+            <p className="mt-3 text-ink-2">
+              {it.a}
+              {it.more && (
+                <>
+                  {' '}
+                  <Link to={it.more.to} className="font-medium text-ink underline underline-offset-4 hover:bg-marker">
+                    {it.more.label}
+                  </Link>
+                  .
+                </>
+              )}
+            </p>
           </details>
         ))}
       </div>

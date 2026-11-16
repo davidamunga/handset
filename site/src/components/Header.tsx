@@ -20,6 +20,9 @@ export function Header() {
         <Link to="/" hash="download" className={nav}>
           Download
         </Link>
+        <Link to="/agents" className={nav}>
+          AI agents
+        </Link>
         <Link to="/changelog" className={nav}>
           Changelog
         </Link>

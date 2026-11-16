@@ -1,13 +1,14 @@
 @import 'tailwindcss';
-@import '@fontsource-variable/rubik';
-@import '@fontsource-variable/atkinson-hyperlegible-next';
+/* Allo for every word on the page (the variable font with roundness fixed at 50, half the size of the full one),
+   and Martian Mono only where there is code. */
+@import 'allo-font/friendly';
 @import '@fontsource-variable/martian-mono';
 
 /* Warm paper, soft rounded pills and a yellow highlighter on the words that matter. The two echo phones of the logo
    (Android green, iOS blue) are the only other colours. No gradients, no glow, no drop shadows. */
 @theme {
-  --font-sans: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Rubik Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Allo', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Allo', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Martian Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
 
   --color-paper: oklch(0.985 0.006 90);
@@ -57,12 +58,12 @@ body {
 }
 
 @layer components {
-  /* Headlines: Rubik, heavy, set tight. */
+  /* Headlines: Allo, heavy, set tight. Its Display optical size takes over by itself at large sizes. */
   .display {
     font-family: var(--font-display);
     font-weight: 800;
     line-height: 1.02;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.022em;
     text-wrap: balance;
   }
   .h2 {
@@ -74,13 +75,14 @@ body {
     color: var(--color-fade);
   }
 
-  /* Small mono labels: the nav, numbers, specs. */
+  /* Small capital labels: the nav, numbers, specs. */
   .label {
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
+    font-family: var(--font-sans);
+    font-size: 0.74rem;
     font-weight: 600;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
   }
 
   /* Buttons are pills. The dark one is the main action. */
@@ -231,6 +233,63 @@ body {
   font-weight: 500;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+.legal h2 a {
+  font-weight: inherit;
+  text-decoration: none;
+}
+.legal h2 a:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+.legal h3 {
+  margin-top: 2rem;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+}
+.legal ol {
+  margin-top: 0.9rem;
+  list-style: decimal;
+  padding-left: 1.25rem;
+  color: var(--color-ink-2);
+}
+.legal table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+.legal th {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--color-ink-2);
+}
+.legal th,
+.legal td {
+  border-bottom: 1px solid var(--color-line);
+  padding: 0.55rem 1rem 0.55rem 0;
+  vertical-align: top;
+}
+.legal td:first-child {
+  white-space: nowrap;
+}
+.legal blockquote {
+  margin-top: 1rem;
+  border: 1.5px solid var(--color-line);
+  border-radius: 1.25rem;
+  background: var(--color-card);
+  padding: 0.85rem 1.25rem;
+}
+.legal blockquote p {
+  margin-top: 0;
+  color: var(--color-ink);
 }
 .legal strong {
   color: var(--color-ink);
