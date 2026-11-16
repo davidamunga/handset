@@ -22,6 +22,8 @@ mod helper;
 mod install;
 #[cfg(target_os = "macos")]
 mod ios;
+mod json;
+mod mcp;
 mod menu;
 mod mirror;
 mod overlay;
@@ -62,6 +64,7 @@ fn usage() -> ! {
          \x20      handset --edit [png|mp4|gif]\n\
          \x20      handset --verify-release <folder>\n\
          \x20      handset ctl <command>   (drive a running Handset started with --ctl; `handset ctl help`)\n\
+         \x20      handset mcp              (the same as tools for an AI agent, over MCP; see docs/agents.md)\n\
          \x20      handset --doctor\n\
          \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--show-touches] [--tilt <yaw,pitch,roll>] [--ctl] [--shortcuts] [--style <look>] [--style-captures] [--no-update-check] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
          built-in frames: {}\n\
@@ -72,6 +75,11 @@ fn usage() -> ! {
 }
 
 fn main() {
+    // `handset mcp` is started by an AI agent and talks over its pipes: nothing else may touch the console or
+    // standard output
+    if std::env::args().nth(1).as_deref() == Some("mcp") {
+        std::process::exit(mcp::run());
+    }
     #[cfg(windows)]
     tools::attach_console();
     // `handset ctl ...` talks to a running Handset and never opens a window

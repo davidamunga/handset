@@ -823,7 +823,7 @@ pub fn client(args: &[String]) -> i32 {
     }
 }
 
-fn send(file: &Path, request: &str) -> Result<Vec<u8>, String> {
+pub fn send(file: &Path, request: &str) -> Result<Vec<u8>, String> {
     let text = std::fs::read_to_string(file).map_err(|_| {
         "Handset is not taking commands. Start it with `handset --ctl`, or put ctl=on in ~/.config/handset/settings."
             .to_string()
