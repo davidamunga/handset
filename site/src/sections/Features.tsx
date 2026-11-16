@@ -1,3 +1,5 @@
+import { Link } from '@tanstack/react-router'
+import { CopyBlock } from '../components/CopyBlock'
 import { REPO } from '../links'
 
 const img = (name: string) => `/shared/${name}`
@@ -87,6 +89,26 @@ export function Features() {
           </figcaption>
         </figure>
       </Row>
+
+      <Row
+        number="05"
+        title="Let an AI agent use your phone"
+        body="Handset can be an MCP server. Claude Code, Cursor, VS Code, Codex, Gemini CLI and other AI agents can then read your phone's screen, tap, type and open apps, while you watch it work in the frame. It is off until you switch it on, and it stays on your computer."
+        points={['Works with the agents you already use', 'Reads the screen as text, so taps are exact', 'You watch it in the window, and can stop it any time']}
+        link={{ to: '/agents', label: 'Read the setup guide' }}
+      >
+        <div className="card p-6 sm:p-8">
+          <p className="label text-ink-2">Add it to Claude Code</p>
+          <CopyBlock text="claude mcp add handset -- handset mcp" />
+          <p className="label mt-6 text-ink-2">Then ask</p>
+          <p className="display mt-2 text-[clamp(1.15rem,2vw,1.4rem)] !leading-snug !tracking-[-0.01em]">
+            &ldquo;Walk through sign-up on my phone and tell me where a first-time user gets stuck.&rdquo;
+          </p>
+          <p className="mt-5 text-[0.95rem] text-ink-2">
+            The same one line, with small changes, adds it to Cursor, VS Code, Codex, Gemini CLI, Zed and more.
+          </p>
+        </div>
+      </Row>
     </section>
   )
 }
@@ -99,7 +121,7 @@ function Row(props: {
   children: React.ReactNode
   stage?: boolean
   flip?: boolean
-  link?: { href: string; label: string }
+  link?: { href?: string; to?: string; label: string }
 }) {
   return (
     <article className="mt-16 grid items-center gap-8 md:mt-28 md:grid-cols-12 md:gap-14">
@@ -117,9 +139,15 @@ function Row(props: {
         </ul>
         {props.link && (
           <p className="mt-6">
-            <a href={props.link.href} className="btn btn-light !px-4 !py-2 text-[0.95rem]">
-              {props.link.label} &rarr;
-            </a>
+            {props.link.to ? (
+              <Link to={props.link.to} className="btn btn-light !px-4 !py-2 text-[0.95rem]">
+                {props.link.label} &rarr;
+              </Link>
+            ) : (
+              <a href={props.link.href} className="btn btn-light !px-4 !py-2 text-[0.95rem]">
+                {props.link.label} &rarr;
+              </a>
+            )}
           </p>
         )}
       </div>

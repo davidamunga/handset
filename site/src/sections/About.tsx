@@ -36,19 +36,19 @@ export function About() {
             phone. Handset is an independent app. It is not affiliated with or endorsed by Genymobile.
           </p>
           <p>
-            Headlines are set in{' '}
-            <a className="font-medium text-ink underline underline-offset-4" href="https://github.com/googlefonts/rubik">
-              Rubik
+            The page is set in{' '}
+            <a className="font-medium text-ink underline underline-offset-4" href="https://allo.joshpuckett.me">
+              Allo
             </a>{' '}
-            by the Rubik Project Authors, text in{' '}
-            <a className="font-medium text-ink underline underline-offset-4" href="https://github.com/googlefonts/atkinson-hyperlegible-next">
-              Atkinson Hyperlegible Next
-            </a>{' '}
-            by the Atkinson Hyperlegible Next Project Authors, and labels in{' '}
+            by Josh Puckett, which grew from Inter by Rasmus Andersson and the Inter Project Authors, and code in{' '}
             <a className="font-medium text-ink underline underline-offset-4" href="https://github.com/evilmartians/mono">
               Martian Mono
             </a>{' '}
-            by the Martian Mono Project Authors, all under the SIL Open Font License 1.1.
+            by the Martian Mono Project Authors. Both are free under the SIL Open Font License 1.1;{' '}
+            <a className="font-medium text-ink underline underline-offset-4" href="/fonts/Allo-OFL.txt">
+              Allo&apos;s licence
+            </a>{' '}
+            is here.
           </p>
         </div>
       </div>

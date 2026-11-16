@@ -1,6 +1,6 @@
 # 0042. Give the site a warm, rounded look in Rubik, Atkinson Hyperlegible Next and Martian Mono
 
-- Status: accepted
+- Status: accepted (the fonts are superseded by [0049](0049-set-the-site-in-allo-and-add-a-prerendered-agents-guide.md); the rest stands)
 - Date: 2026-11-16
 
 ## Context
