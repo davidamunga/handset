@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.15.0
+
+### Minor Changes
+
+- [#164](https://github.com/davidamunga/handset/pull/164) [`efb015b`](https://github.com/davidamunga/handset/commit/efb015b428f115f45de12212ba139337db3164dd) - Let a script or an AI agent drive the phone. Start Handset with `--ctl` (or set `ctl=on`) and use `handset ctl screenshot`, `tap`, `swipe`, `type`, `key` and more to see and control the phone without touching the window. It is off by default, protected by a secret only you can read, and the window shows when a program is using it. See `docs/agents.md`.
+
+- [#167](https://github.com/davidamunga/handset/pull/167) [`8780e4a`](https://github.com/davidamunga/handset/commit/8780e4a1abc051a2b763285d11dba6d67671d3e9) - `handset ctl` now waits for the phone to show what was done, so a script or an agent can send commands one after another without sleeps and `ui` right after a tap describes the new screen, not the old one. New `wait-text` and `wait-gone` wait for something slow to appear or go, and a missing item on a scrolling screen says it may be out of view.
+
+- [#166](https://github.com/davidamunga/handset/pull/166) [`966bf3d`](https://github.com/davidamunga/handset/commit/966bf3d37431d0767c2e2bc84c25d21d30e75cb7) - `handset ctl ui` and `tap-text` are now about as quick as a tap. Handset puts a tiny helper (4 KB, nothing to install) on the phone for a minute at a time, and the screen is described in a few hundredths of a second instead of three seconds. A phone that cannot run it falls back to the slower way.
+
+- [#165](https://github.com/davidamunga/handset/pull/165) [`ea88787`](https://github.com/davidamunga/handset/commit/ea88787d2aaaf5f14bb785290d2f529d6dfeb59b) - `handset ctl ui` lists what is on the phone's screen as text, and `tap-text` and `tap-id` tap an element by what it says or its id, so a script or an agent no longer has to guess where a button is. Android only. See `docs/agents.md`. The screen is described once and kept while it does not change, and read ahead after each action, so repeated calls are almost instant.
+
 ## 0.14.0
 
 ### Minor Changes
