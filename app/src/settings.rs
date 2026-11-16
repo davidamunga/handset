@@ -23,6 +23,11 @@ impl Settings {
         Self(std::fs::read_to_string(dir.join("settings")).map(|t| parse(&t)).unwrap_or_default())
     }
 
+    #[cfg(test)]
+    pub fn from_text(text: &str) -> Self {
+        Self(parse(text))
+    }
+
     pub fn get(&self, key: &str) -> Option<&str> {
         self.0.get(key).map(String::as_str)
     }

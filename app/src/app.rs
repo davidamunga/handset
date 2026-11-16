@@ -1406,6 +1406,17 @@ impl App {
                 let _ = self.control.start_app(package);
                 self.show_toast(&toast);
             }
+            "tilt:next" => {
+                let current = self.renderer.as_ref().map(|r| r.tilt()).unwrap_or_default();
+                let presets = &Tilt::PRESETS;
+                let next = presets.iter().position(|(_, t)| *t == current).map_or(1, |i| (i + 1) % presets.len());
+                self.on_menu(el, &format!("tilt:{}", presets[next].1.to_spec()));
+                self.show_toast(&presets[next].0.to_uppercase());
+            }
+            "shortcuts" => {
+                let exe = std::env::current_exe().unwrap_or_else(|_| "handset".into());
+                let _ = crate::tools::command(exe).arg("--shortcuts").spawn();
+            }
             other => {
                 if let Some(name) = other.strip_prefix("frame:") {
                     self.set_frame(Some(name.to_string()));
@@ -2287,7 +2298,11 @@ impl ApplicationHandler<UserEvent> for App {
                 self.refresh_overlay();
             }
             WindowEvent::DroppedFile(path) => self.drop_file(path),
-            WindowEvent::Focused(true) => self.send_clipboard(),
+            WindowEvent::Focused(true) => {
+                // the shortcuts window is its own process: pick up what it saved
+                crate::shortcuts::reload();
+                self.send_clipboard();
+            }
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = (position.x, position.y);
                 if self.resizing.is_some() {
@@ -2481,24 +2496,10 @@ impl ApplicationHandler<UserEvent> for App {
                     Key::Named(NamedKey::ArrowRight) => Some(keycode::DPAD_RIGHT),
                     _ => None,
                 };
-                let cmd = self.mods.super_key() || self.mods.control_key();
-                let ch = |k: &str| matches!(&event.logical_key, Key::Character(c) if c.eq_ignore_ascii_case(k));
-                if cmd && ch("r") {
-                    let _ = self.control.rotate_device();
-                } else if cmd && (ch("+") || ch("=")) {
-                    self.on_menu(el, "zoom:in");
-                } else if cmd && ch("-") {
-                    self.on_menu(el, "zoom:out");
-                } else if cmd && ch("0") {
-                    self.on_menu(el, "zoom:reset");
-                } else if cmd && ch("s") {
-                    self.screenshot();
-                } else if cmd && ch("e") {
-                    if self.recorder.is_some() {
-                        self.stop_recording();
-                    } else {
-                        self.start_recording();
-                    }
+                let bound = crate::shortcuts::Combo::from_event(&event, self.mods)
+                    .and_then(|combo| crate::shortcuts::lookup(&combo));
+                if let Some(id) = bound {
+                    self.on_menu(el, id);
                 } else if let Some(c) = code {
                     let _ = self.control.key(c);
                 } else if !self.mods.super_key()
