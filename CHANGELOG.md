@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.0
+
+### Minor Changes
+
+- [#170](https://github.com/davidamunga/handset/pull/170) [`1cbad4b`](https://github.com/davidamunga/handset/commit/1cbad4bf3550b15f12e483ece08a79d01f200ee6) - `handset mcp` gives AI agents the phone as tools. It is an MCP server for Claude Code, Claude Desktop, Cursor, VS Code and other MCP clients: `claude mcp add handset -- handset mcp`, with Handset running with `--ctl`. The agent can read the screen as text or as an image, tap by what an element says, swipe, type, press keys, open apps and wait for something to appear. See `docs/agents.md`.
+
 ## 0.15.0
 
 ### Minor Changes
