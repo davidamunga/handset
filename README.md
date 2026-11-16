@@ -215,12 +215,18 @@ that is plugged in, or the Wi-Fi and QR options.
   shade, frames, **Open App**, screenshot, recording, recent captures, rotate, quit. Hover a toolbar button for
   its name. Open App lists the phone's apps (yours first, system apps in a submenu), fetched in the
   background a few seconds after the phone connects.
-- **Shortcuts** (Cmd or Ctrl): `S` screenshot, `E` start or stop recording, `R` rotate the phone.
+- **Shortcuts** (Cmd or Ctrl): `S` screenshot, `E` start or stop recording, `R` rotate the phone, `T` next tilt,
+  `N` new window, `Shift+T` toolbar, `Shift+O` touches, `Shift+M` mute, `,` the shortcuts window.
   `Esc` is Back, `Home` is Home, `End` is Recents.
+- **Keyboard Shortcuts...** (right-click menu, or `--shortcuts`) opens a window to change any of them: click one,
+  press the new keys, and the menus show it. Clear takes a shortcut away, Reset brings the default back. A shortcut
+  needs Cmd or Ctrl, or Alt, or is an F-key, so typing still reaches the phone. They are saved as `key.<action>`
+  lines in the settings file.
 - **Show Touches** (right-click menu, or `--show-touches`) draws a translucent dot where you touch the phone, fading
   when you let go. It is part of screenshots and recordings too, which makes demos easier to follow.
 - **Tilt** (right-click menu, or `--tilt yaw,pitch,roll` in degrees, for example `--tilt -25,10,0`) turns the phone in
-  3D with perspective, and touch still lands where you point. Screenshots and recordings of the live window stay flat;
+  3D with perspective, and touch still lands where you point. **Next Tilt** (Cmd or Ctrl and `T`) steps through the
+  looks. Screenshots and recordings of the live window stay flat;
   the editor's Tilt sliders turn a saved screenshot.
 
 <p align="center"><img src="docs/images/tilt.png" alt="A phone mirrored with a tilt: turned and leaning back, with perspective" width="300"></p>
@@ -307,6 +313,7 @@ in `~/.config/handset/args`. Why it works this way: [ADR 0025](docs/adr/0025-mir
 | `--doctor` | Check `adb`, `ffmpeg` and each connected phone (authorised, online, Android version, screen on) and say what to fix; exits 1 when something blocks mirroring |
 | `--wifi` | Switch a USB-connected phone to Wi-Fi, connect, and mirror (you can unplug the cable) |
 | `--start-app <package>` | Open an app on the phone once it is mirrored, e.g. `--start-app com.android.chrome` (a leading `?` searches app names) |
+| `--shortcuts` | Open the window to change the keyboard shortcuts |
 | `--ios [name]` | Mirror an iPhone or iPad connected by USB instead of an Android phone (macOS, experimental, view only; see above) |
 | `[serial]` | Pick a device when several are connected |
 
