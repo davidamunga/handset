@@ -56,30 +56,6 @@ body {
   border-radius: 0.75rem;
 }
 
-@keyframes bob {
-  0%,
-  100% {
-    translate: 0 0;
-  }
-  50% {
-    translate: 0 -5px;
-  }
-}
-.float {
-  animation: bob 4.5s ease-in-out infinite;
-}
-.float:nth-child(2n) {
-  animation-delay: -1.6s;
-}
-.float:nth-child(3n) {
-  animation-delay: -3s;
-}
-@media (prefers-reduced-motion: reduce) {
-  .float {
-    animation: none;
-  }
-}
-
 @layer components {
   /* Headlines: Rubik, heavy, set tight. */
   .display {

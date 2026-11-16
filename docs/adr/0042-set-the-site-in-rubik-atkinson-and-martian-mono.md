@@ -20,8 +20,11 @@ inspiration: its spirit, not its pieces.
 - Headlines are two-tone: ink, then a quieter colour (`.fade`).
 - Small interactive parts, all plain React state: the hero's highlighted words swap when tapped (and the download
   button follows the chosen system), the "Is Handset for you?" list is tappable, the FAQ opens with `<details>`.
-- New home sections: a dark announcement strip with the latest version, a row of little frames with the logo marked
-  "yours", a story paragraph, "for you", a short FAQ, a closing card and a floating Download pill.
+- The hero shows the app, not words about it: a short headline and the download buttons beside a collage of the real
+  app (the mirrored phone, the style editor and the share page, each with a one-word label), so the first screen
+  already says how it looks and works.
+- New home sections: a dark announcement strip with the latest version, a story paragraph, "for you", a short FAQ,
+  a closing card and a floating Download pill.
 - Component classes (`.btn`, `.card`, `.display`, `.label`, `.hl`, `.fade`) live in the Tailwind components layer so
   a utility can still override them. Routes and the download logic are unchanged.
 
