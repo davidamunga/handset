@@ -14,8 +14,8 @@ use crate::stream::Slot;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 /// A request line this long is nonsense.
@@ -33,10 +33,30 @@ const POINTER: u64 = 0xA6E27;
 pub enum Command {
     Info,
     Screenshot,
-    Tap { x: i32, y: i32 },
-    Hold { x: i32, y: i32, ms: u64 },
-    Swipe { from: (i32, i32), to: (i32, i32), ms: u64 },
-    Scroll { x: i32, y: i32, h: f32, v: f32 },
+    /// The elements on screen, as text.
+    Ui,
+    TapText(String),
+    TapId(String),
+    Tap {
+        x: i32,
+        y: i32,
+    },
+    Hold {
+        x: i32,
+        y: i32,
+        ms: u64,
+    },
+    Swipe {
+        from: (i32, i32),
+        to: (i32, i32),
+        ms: u64,
+    },
+    Scroll {
+        x: i32,
+        y: i32,
+        h: f32,
+        v: f32,
+    },
     Text(String),
     Key(u32),
     Rotate,
@@ -49,6 +69,9 @@ pub const HELP: &str = "\
 commands:
   info                       the phone's name and screen size
   screenshot <file|->        the screen as a PNG (- for standard output)
+  ui                         the elements on screen, with text and where to tap (Android)
+  tap-text <text>            tap the element that says this
+  tap-id <id>                tap the element with this resource id (the part after /)
   tap <x> <y>
   hold <x> <y> [ms]          a long press (default 600 ms)
   swipe <x1> <y1> <x2> <y2> [ms]
@@ -83,6 +106,14 @@ pub fn parse(line: &str) -> Result<Command, String> {
         "rotate" => Command::Rotate,
         "notifications" => Command::Notifications,
         "collapse" => Command::Collapse,
+        "ui" => Command::Ui,
+        "tap-text" | "tap-id" => {
+            let q = rest.trim();
+            if q.is_empty() || q.chars().any(char::is_control) {
+                return Err(format!("{name} needs what to look for"));
+            }
+            if name == "tap-text" { Command::TapText(q.to_string()) } else { Command::TapId(q.to_string()) }
+        }
         "tap" => {
             need(2)?;
             Command::Tap { x: int(a[0], "x")?, y: int(a[1], "y")? }
@@ -167,7 +198,23 @@ struct Shared {
     last: Mutex<Option<Instant>>,
     stop: AtomicBool,
     notify: Box<dyn Fn() + Send + Sync>,
+    /// The last description of the screen, and whether one is being taken (see `tree_for`).
+    ui: Mutex<UiCache>,
+    ui_done: Condvar,
+    /// When `ui` was last asked for: only then is the screen read ahead.
+    ui_used: Mutex<Option<Instant>>,
+    /// Counts actions, so a read-ahead started by an older one gives way to a newer one.
+    acted: AtomicU64,
 }
+
+#[derive(Default)]
+struct UiCache {
+    busy: bool,
+    entry: Option<(String, crate::ui::Thumb, Arc<crate::ui::Tree>)>,
+}
+
+/// How long after a `ui` the screen is still read ahead after each action.
+const READ_AHEAD_FOR: Duration = Duration::from_secs(120);
 
 pub struct Server {
     shared: Arc<Shared>,
@@ -195,6 +242,10 @@ impl Server {
             last: Mutex::new(None),
             stop: AtomicBool::new(false),
             notify: Box::new(notify),
+            ui: Mutex::new(UiCache::default()),
+            ui_done: Condvar::new(),
+            ui_used: Mutex::new(None),
+            acted: AtomicU64::new(0),
         });
         let file = dir.join("ctl");
         write_private(&file, &format!("port={}\ntoken={}\npid={}\n", addr.port(), shared.token, std::process::id()))?;
@@ -266,7 +317,7 @@ fn same(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0, |d, (x, y)| d | (x ^ y)) == 0
 }
 
-fn handle(s: &Shared, conn: TcpStream) {
+fn handle(s: &Arc<Shared>, conn: TcpStream) {
     let _ = conn.set_read_timeout(Some(Duration::from_secs(5)));
     let _ = conn.set_write_timeout(Some(Duration::from_secs(10)));
     let mut line = Vec::new();
@@ -316,7 +367,7 @@ fn handle_of(s: &Shared) -> Result<Handle, String> {
     })
 }
 
-fn run(s: &Shared, cmd: Command) -> Result<Vec<u8>, String> {
+fn run(s: &Arc<Shared>, cmd: Command) -> Result<Vec<u8>, String> {
     let mut h = handle_of(s)?;
     let (w, ht) = h.size;
     let inside = |x: i32, y: i32| {
@@ -341,6 +392,9 @@ fn run(s: &Shared, cmd: Command) -> Result<Vec<u8>, String> {
             let slot = s.slot.lock().unwrap();
             png(&slot.yuv).map_err(|e| format!("screenshot failed: {e}"))
         }
+        Command::Ui => Ok(screen(s, &h)?.render((w, ht)).into_bytes()),
+        Command::TapText(t) => tap_found(s, &mut h, |tree| tree.find_text(&t)),
+        Command::TapId(id) => tap_found(s, &mut h, |tree| tree.find_id(&id)),
         other => {
             let c = h.control.as_mut().ok_or("this phone cannot be controlled (an iPhone or iPad is view only)")?;
             let io = |e: std::io::Error| format!("the phone did not take it: {e}");
@@ -368,11 +422,131 @@ fn run(s: &Shared, cmd: Command) -> Result<Vec<u8>, String> {
                 Command::Open(app) => c.start_app(&app).map_err(io)?,
                 Command::Notifications => c.expand_notifications().map_err(io)?,
                 Command::Collapse => c.collapse_panels().map_err(io)?,
-                Command::Info | Command::Screenshot => unreachable!(),
+                Command::Info | Command::Screenshot | Command::Ui | Command::TapText(_) | Command::TapId(_) => {
+                    unreachable!()
+                }
             }
+            after_action(s, &h.serial);
             Ok(Vec::new())
         }
     }
+}
+
+/// The screen as Android describes it. An iPhone has no such description.
+fn screen(s: &Arc<Shared>, h: &Handle) -> Result<Arc<crate::ui::Tree>, String> {
+    if h.control.is_none() {
+        return Err("an iPhone or iPad cannot describe its screen as text; use `screenshot`".into());
+    }
+    if h.size.0 == 0 {
+        return Err("no picture yet".into());
+    }
+    *s.ui_used.lock().unwrap() = Some(Instant::now());
+    tree_for(s, &h.serial, &crate::ui::dump)
+}
+
+/// The picture now, as a thumbnail.
+fn look(s: &Shared) -> crate::ui::Thumb {
+    crate::ui::Thumb::of(&s.slot.lock().unwrap().yuv)
+}
+
+/// A description of the screen that is true now. Asking the phone takes a few seconds, so the last answer is
+/// reused for as long as the picture has not changed, and two askers at once share one question.
+fn tree_for(
+    s: &Shared,
+    serial: &str,
+    dump: &dyn Fn(&str) -> Result<crate::ui::Tree, String>,
+) -> Result<Arc<crate::ui::Tree>, String> {
+    let mut cache = s.ui.lock().unwrap();
+    loop {
+        let now = look(s);
+        if let Some((from, seen, tree)) = &cache.entry
+            && from == serial
+            && seen.same(&now)
+        {
+            return Ok(tree.clone());
+        }
+        if !cache.busy {
+            break;
+        }
+        let (c, waited) = s.ui_done.wait_timeout(cache, Duration::from_secs(30)).unwrap();
+        cache = c;
+        if waited.timed_out() {
+            return Err("the phone did not describe its screen in time".into());
+        }
+    }
+    cache.busy = true;
+    drop(cache);
+    let acted = s.acted.load(Ordering::SeqCst);
+    let before = look(s);
+    let result = dump(serial).map(Arc::new);
+    let after = look(s);
+    let mut cache = s.ui.lock().unwrap();
+    cache.busy = false;
+    // only a description taken while the picture held still, and nothing was done to the phone, can stand for it
+    cache.entry = match &result {
+        Ok(tree) if before.same(&after) && s.acted.load(Ordering::SeqCst) == acted => {
+            Some((serial.to_string(), after, tree.clone()))
+        }
+        _ => None,
+    };
+    s.ui_done.notify_all();
+    result
+}
+
+/// After something was done to the phone. What was known about the screen is no longer so: the picture takes a
+/// moment to show the change, and until it does it looks the same. Then, once the picture settles, describe
+/// it, so the next `ui` is ready (only while `ui` is being used, since it costs the phone some work).
+fn after_action(s: &Arc<Shared>, serial: &str) {
+    let n = s.acted.fetch_add(1, Ordering::SeqCst) + 1;
+    s.ui.lock().unwrap().entry = None;
+    let used = *s.ui_used.lock().unwrap();
+    if !used.is_some_and(|t| t.elapsed() < READ_AHEAD_FOR) {
+        return;
+    }
+    let (s, serial) = (s.clone(), serial.to_string());
+    std::thread::spawn(move || {
+        if settled(&s, n) {
+            let _ = tree_for(&s, &serial, &crate::ui::dump);
+        }
+    });
+}
+
+/// Wait for the picture to hold still for a moment. False if another action came, or it never settled.
+fn settled(s: &Shared, n: u64) -> bool {
+    const STEP: Duration = Duration::from_millis(100);
+    let (mut last, mut still) = (look(s), 0);
+    for _ in 0..50 {
+        std::thread::sleep(STEP);
+        if s.acted.load(Ordering::SeqCst) != n || s.stop.load(Ordering::Relaxed) {
+            return false;
+        }
+        let now = look(s);
+        still = if now.same(&last) { still + 1 } else { 0 };
+        last = now;
+        if still >= 4 {
+            return true;
+        }
+    }
+    false
+}
+
+/// Tap the middle of the element `find` picks, in the picture's pixels, and say what was tapped.
+fn tap_found(
+    s: &Arc<Shared>,
+    h: &mut Handle,
+    find: impl FnOnce(&crate::ui::Tree) -> Result<&crate::ui::Node, String>,
+) -> Result<Vec<u8>, String> {
+    let (w, ht) = h.size;
+    let tree = screen(s, h)?;
+    let node = find(&tree)?;
+    let scale = tree.scale(w);
+    let (cx, cy) = node.center();
+    let x = ((cx as f32 * scale).round() as i32).clamp(0, w as i32 - 1);
+    let y = ((cy as f32 * scale).round() as i32).clamp(0, ht as i32 - 1);
+    let c = h.control.as_mut().ok_or("this phone cannot be controlled")?;
+    press(c, x, y, Duration::from_millis(40), w, ht).map_err(|e| format!("the phone did not take it: {e}"))?;
+    after_action(s, &h.serial);
+    Ok(format!("tapped {:?} at {x},{y}\n", node.label()).into_bytes())
 }
 
 fn press(c: &mut Control, x: i32, y: i32, held: Duration, w: u16, h: u16) -> std::io::Result<()> {
@@ -519,6 +693,10 @@ mod tests {
         assert_eq!(parse("hold 1 2"), Ok(Command::Hold { x: 1, y: 2, ms: 600 }));
         assert_eq!(parse("hold 1 2 99999"), Ok(Command::Hold { x: 1, y: 2, ms: MAX_MS }));
         assert_eq!(parse("swipe 1 2 3 4"), Ok(Command::Swipe { from: (1, 2), to: (3, 4), ms: 300 }));
+        assert_eq!(parse("ui"), Ok(Command::Ui));
+        assert_eq!(parse("tap-text Sign in"), Ok(Command::TapText("Sign in".into())));
+        assert_eq!(parse("tap-id  login "), Ok(Command::TapId("login".into())));
+        assert!(parse("tap-text").is_err() && parse("tap-id   ").is_err());
         assert_eq!(parse("key back"), Ok(Command::Key(keycode::BACK)));
         assert_eq!(parse("type hello, world"), Ok(Command::Text("hello, world".into())));
         assert_eq!(parse("scroll 5 5 0 -40"), Ok(Command::Scroll { x: 5, y: 5, h: 0.0, v: -16.0 }));
@@ -650,6 +828,114 @@ mod tests {
         server.set_target(None);
         assert!(send(&file, "info").unwrap_err().contains("no phone"));
         assert!(server.active(), "a request makes the window say so");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn counted(
+        calls: &Arc<std::sync::atomic::AtomicUsize>,
+        pause: u64,
+        fail: bool,
+    ) -> impl Fn(&str) -> Result<crate::ui::Tree, String> {
+        let calls = calls.clone();
+        move |_| {
+            calls.fetch_add(1, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(pause));
+            if fail { Err("no".into()) } else { Ok(crate::ui::Tree::default()) }
+        }
+    }
+
+    fn stripes(shift: u32) -> Yuv {
+        let mut y = picture(48, 96, 0);
+        for (i, v) in y.y.iter_mut().enumerate() {
+            *v = (((i as u32 % 48) / 4 + (i as u32 / 48) / 4 + shift) % 16 * 14) as u8;
+        }
+        y
+    }
+
+    #[test]
+    fn the_screen_is_described_once_while_the_picture_holds_still() {
+        let (server, dir, slot) = started("cache");
+        slot.lock().unwrap().yuv = stripes(0);
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let s = &server.shared;
+        let ask = |d: &dyn Fn(&str) -> Result<crate::ui::Tree, String>| tree_for(s, "S1", d);
+
+        ask(&counted(&calls, 0, false)).unwrap();
+        ask(&counted(&calls, 0, false)).unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "the second ask is answered from the first");
+
+        slot.lock().unwrap().yuv = stripes(5); // the screen changed
+        ask(&counted(&calls, 0, false)).unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        tree_for(s, "S2", &counted(&calls, 0, false)).unwrap(); // another phone is not the same screen
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+
+        slot.lock().unwrap().yuv = stripes(9);
+        assert!(ask(&counted(&calls, 0, true)).is_err());
+        assert!(ask(&counted(&calls, 0, true)).is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 5, "a failure is not remembered");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn anything_done_to_the_phone_makes_the_last_description_stale() {
+        let (server, dir, slot) = started("stale");
+        slot.lock().unwrap().yuv = stripes(3);
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let s = &server.shared;
+        tree_for(s, "S1", &counted(&calls, 0, false)).unwrap();
+        after_action(s, "S1"); // a tap: the picture has not caught up yet, but the screen has moved on
+        tree_for(s, "S1", &counted(&calls, 0, false)).unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        // an action that arrives while a description is being taken: that one is not kept
+        let during = {
+            let (s, calls) = (s.clone(), calls.clone());
+            move |_: &str| {
+                calls.fetch_add(1, Ordering::SeqCst);
+                after_action(&s, "S1");
+                Ok(crate::ui::Tree::default())
+            }
+        };
+        after_action(s, "S1");
+        tree_for(s, "S1", &during).unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        tree_for(s, "S1", &counted(&calls, 0, false)).unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 4, "the one taken during the action was not kept");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn two_askers_at_once_share_one_question() {
+        let (server, dir, slot) = started("share");
+        slot.lock().unwrap().yuv = stripes(2);
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let s = server.shared.clone();
+        let slow = counted(&calls, 300, false);
+        let second = {
+            let (s, calls) = (s.clone(), calls.clone());
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(80));
+                tree_for(&s, "S1", &counted(&calls, 300, false)).map(|_| ())
+            })
+        };
+        tree_for(&s, "S1", &slow).unwrap();
+        second.join().unwrap().unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reading_ahead_waits_for_the_picture_to_settle_and_gives_way_to_a_newer_action() {
+        let (server, dir, slot) = started("settle");
+        slot.lock().unwrap().yuv = stripes(1);
+        let s = server.shared.clone();
+        let t = Instant::now();
+        assert!(settled(&s, 0));
+        assert!(t.elapsed() >= Duration::from_millis(400), "it waits for a moment of stillness");
+        s.acted.store(7, Ordering::SeqCst);
+        assert!(!settled(&s, 3), "a newer action takes over");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

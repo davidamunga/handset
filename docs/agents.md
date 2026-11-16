@@ -7,6 +7,8 @@ working the window. It is off until you ask for it.
 handset --ctl                         # or put ctl=on in ~/.config/handset/settings
 handset ctl info
 handset ctl screenshot screen.png     # the phone's picture, without frame or toolbar
+handset ctl ui                        # what is on screen, as text, with where to tap
+handset ctl tap-text "Sign in"        # tap by what it says
 handset ctl tap 540 1200
 handset ctl swipe 540 1600 540 600 300
 handset ctl type "hello"
@@ -22,9 +24,33 @@ Positions are pixels of the picture `screenshot` returns, with 0, 0 at the top l
 The phone turns when it rotates, so read `info` again after `rotate`. A position outside the screen is an
 error that names the screen size.
 
+## Reading the screen as text
+
+`handset ctl ui` lists what is on the screen, one element per line, in the same pixels as `screenshot`:
+
+```
+screen 720x1600 package com.android.settings
+3 TextView "Search settings" @250,298 id=search_action_bar_title
+5 TextView "Network & internet" @271,423 clickable id=title
+```
+
+`tap-text <words>` taps the element that says them (an exact match first, then one that contains them), and
+`tap-id <id>` the one with that resource id. If several fit, nothing is tapped and the error lists them with
+positions. It reads the screen with Android's `uiautomator`, which needs nothing installed on the phone and works
+on Android only.
+
+Asking the phone takes about three seconds, so Handset hides most of that: the answer is kept while the picture
+has not changed (a repeat `ui` takes a few milliseconds), and after each action, once the screen settles, it
+describes the screen in the background so the next `ui` or `tap-text` is ready when you ask. That read-ahead
+only runs while you are using `ui`. A `ui` straight after an action still waits for a fresh answer, never a
+stale one. A screen that is still animating, or an app that draws its
+own pixels (many games), may come back empty or as an error; use `screenshot` then. Web pages describe their
+buttons. See [ADR 0045](adr/0045-read-the-screen-as-text-with-uiautomator.md).
+
 ## What an agent should know
 
-- Look, then act: `screenshot`, decide, `tap`, and `screenshot` again. A tap returns when it has been sent,
+- Prefer `ui` and `tap-text` where they work: they are exact and cheap. Fall back to `screenshot` and `tap`.
+- Look, then act: `screenshot` (or `ui`), decide, tap, and look again. A tap returns when it has been sent,
   not when the app has finished drawing; give a screen a moment before reading it.
 - Text goes where the phone's keyboard focus is. Tap a field first. At most 300 characters at a time.
 - `open` takes a package name. `?<app name>` also works, but only when it matches exactly one app; if it matches

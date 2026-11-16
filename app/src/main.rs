@@ -44,6 +44,7 @@ mod toolbar;
 mod tools;
 mod transfer;
 mod trim;
+mod ui;
 mod update;
 mod updater;
 mod verify;
