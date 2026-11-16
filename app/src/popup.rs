@@ -909,6 +909,7 @@ mod tests {
             "zoom:in",
             "zoom:out",
             "zoom:reset",
+            "shortcuts",
             "update-install",
             "update-open",
             "update-notes",

@@ -33,6 +33,8 @@ mod settings;
 mod share;
 mod share_audio;
 mod share_input;
+mod shortcuts;
+mod shortcuts_ui;
 mod stream;
 mod style;
 mod tap;
@@ -57,9 +59,9 @@ fn usage() -> ! {
          \x20      handset --edit [png|mp4|gif]\n\
          \x20      handset --verify-release <folder>\n\
          \x20      handset --doctor\n\
-         \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--show-touches] [--tilt <yaw,pitch,roll>] [--style <look>] [--style-captures] [--no-update-check] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
+         \x20                  [--audio [--mute] [--gain <dB>] [--no-normalize]] [--no-clipboard] [--no-clipboard-sync] [--show-touches] [--tilt <yaw,pitch,roll>] [--shortcuts] [--style <look>] [--style-captures] [--no-update-check] [--record-for <seconds>] [--record-format mp4|gif] [--record-size <px>] [--record-bg #rrggbb] [serial]\n\
          built-in frames: {}\n\
-         right-click the phone for the menu; keys: Cmd/Ctrl+S screenshot, Cmd/Ctrl+E record, Cmd/Ctrl+R rotate",
+         right-click the phone for the menu; keys: Cmd/Ctrl+S screenshot, Cmd/Ctrl+E record, Cmd/Ctrl+R rotate (--shortcuts changes them)",
         frame::builtin_names().collect::<Vec<_>>().join(", ")
     );
     std::process::exit(2)
@@ -70,6 +72,7 @@ fn main() {
     tools::attach_console();
     // what was changed in the menus last time; the command line below overrides it
     let saved = settings::Settings::load();
+    shortcuts::reload();
     let mut frame_spec = match saved.get("frame") {
         Some("none") => None,
         Some(spec) => Some(spec.to_string()),
@@ -123,6 +126,12 @@ fn main() {
             }
             "--style-captures" => cap.auto_style = true,
             "--edit" => edit = Some(args.next().unwrap_or_default()),
+            "--shortcuts" => {
+                if let Err(e) = shortcuts_ui::run() {
+                    tools::die(&e);
+                }
+                return;
+            }
             "--restyle" => restyle = Some(args.next().unwrap_or_else(|| usage())),
             "--audio" => opts.audio = true,
             "--ios" => ios = true,

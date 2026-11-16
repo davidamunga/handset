@@ -50,10 +50,6 @@ pub struct State {
 }
 
 #[cfg(target_os = "macos")]
-const MOD: &str = "\u{2318}";
-#[cfg(not(target_os = "macos"))]
-const MOD: &str = "Ctrl+";
-#[cfg(target_os = "macos")]
 const FILE_MANAGER: &str = "Finder";
 #[cfg(windows)]
 const FILE_MANAGER: &str = "Explorer";
@@ -78,8 +74,8 @@ pub struct Item {
     /// What a selection sends to `App::on_menu`; `None` for a line that only informs.
     pub id: Option<String>,
     pub label: String,
-    /// The key that goes with the platform's modifier, shown after the label.
-    pub shortcut: Option<&'static str>,
+    /// The shortcut as it is written, modifiers included.
+    pub shortcut: Option<String>,
     pub enabled: bool,
     /// `Some` for an item with a check mark, ticked or not.
     pub check: Option<bool>,
@@ -89,20 +85,22 @@ impl Item {
     /// The label with its shortcut, as the native menu shows it.
     #[cfg_attr(not(any(target_os = "macos", windows)), allow(dead_code))]
     pub fn full_label(&self) -> String {
-        match self.shortcut {
-            Some(key) => format!("{}    {MOD}{key}", self.label),
+        match &self.shortcut {
+            Some(key) => format!("{}    {key}", self.label),
             None => self.label.clone(),
         }
     }
 
-    /// The shortcut as it is written, modifier included.
     pub fn shortcut_text(&self) -> Option<String> {
-        self.shortcut.map(|key| format!("{MOD}{key}"))
+        self.shortcut.clone()
     }
 }
 
+/// An item that runs `id`, with the shortcut bound to it (if there is one).
 fn item(id: impl Into<String>, label: impl Into<String>) -> Item {
-    Item { id: Some(id.into()), label: label.into(), shortcut: None, enabled: true, check: None }
+    let id = id.into();
+    let shortcut = crate::shortcuts::text_for(&id);
+    Item { id: Some(id), label: label.into(), shortcut, enabled: true, check: None }
 }
 
 /// A line that cannot be chosen.
@@ -117,10 +115,6 @@ impl Item {
     }
     fn checked(mut self, on: bool) -> Self {
         self.check = Some(on);
-        self
-    }
-    fn key(mut self, key: &'static str) -> Self {
-        self.shortcut = Some(key);
         self
     }
 }
@@ -230,10 +224,12 @@ pub fn build(s: &State) -> Vec<Entry> {
         ],
     };
 
-    let tilt = crate::tilt::Tilt::PRESETS
+    let mut tilt: Vec<Entry> = crate::tilt::Tilt::PRESETS
         .iter()
         .map(|(name, t)| item(format!("tilt:{}", t.to_spec()), *name).checked(s.tilt == *t).into())
         .collect();
+    tilt.push(Entry::Separator);
+    tilt.push(item("tilt:next", "Next Tilt").into());
 
     let mut menu = Vec::new();
     menu.push(sub("Phone", phone));
@@ -243,8 +239,8 @@ pub fn build(s: &State) -> Vec<Entry> {
         menu.push(sub("Open App", open_app));
     }
     menu.push(Entry::Separator);
-    menu.push(item("shot", "Take Screenshot").key("S").into());
-    menu.push(item("rec", format!("{} Recording", if s.recording { "Stop" } else { "Start" })).key("E").into());
+    menu.push(item("shot", "Take Screenshot").into());
+    menu.push(item("rec", format!("{} Recording", if s.recording { "Stop" } else { "Start" })).into());
     menu.push(sub("Recent Captures", recent));
     menu.push(sub("Share", share));
     menu.push(sub("Recording", record));
@@ -257,16 +253,17 @@ pub fn build(s: &State) -> Vec<Entry> {
         menu.push(item("audio:on", "Turn On Audio").into());
     }
     if !s.ios {
-        menu.push(item("rotate", "Rotate Device").key("R").into());
+        menu.push(item("rotate", "Rotate Device").into());
         menu.push(item("sync", "Share Clipboard With Phone").checked(s.sync).into());
     }
     menu.push(item("toolbar", "Show Toolbar").checked(s.toolbar).into());
     if !s.ios {
         menu.push(item("touches", "Show Touches").checked(s.touches).into());
     }
-    menu.push(item("zoom:in", "Larger").key("+").into());
-    menu.push(item("zoom:out", "Smaller").key("-").into());
-    menu.push(item("zoom:reset", "Default Size").key("0").into());
+    menu.push(item("zoom:in", "Larger").into());
+    menu.push(item("zoom:out", "Smaller").into());
+    menu.push(item("zoom:reset", "Default Size").into());
+    menu.push(item("shortcuts", "Keyboard Shortcuts\u{2026}").into());
     menu.push(Entry::Separator);
     if let Some(v) = &s.update {
         if s.update_install {
