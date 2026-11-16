@@ -1,67 +1,71 @@
+import { useState } from 'react'
+import { FrameRow } from '../components/FrameRow'
 import { RELEASES, REPO } from '../links'
 import { useReleaseInfo } from '../release'
-import type { Platform, Release } from '../useRelease'
+import type { Release } from '../useRelease'
 
-const img = (name: string) => `/shared/${name}`
+type Os = 'mac' | 'windows' | 'linux'
+const SYSTEMS: { os: Os; word: string }[] = [
+  { os: 'mac', word: 'Mac' },
+  { os: 'windows', word: 'Windows PC' },
+  { os: 'linux', word: 'Linux desktop' },
+]
+const DEVICES = ['phone', 'Pixel', 'Galaxy', 'foldable']
+const ACTIONS = ['capture', 'record', 'style', 'share']
+
+/** A highlighted word that changes to the next one when you tap it. */
+function Swap({ words, i, next, label }: { words: string[]; i: number; next: () => void; label: string }) {
+  return (
+    <button type="button" className="hl" onClick={next} aria-label={`${label}: ${words[i]}. Tap to change.`}>
+      {words[i]}
+    </button>
+  )
+}
 
 export function Hero() {
   const { release, platform } = useReleaseInfo()
-  const primary = primaryDownload(release, platform)
+  const [sys, setSys] = useState(() => Math.max(0, SYSTEMS.findIndex((s) => s.os === platform)))
+  const [dev, setDev] = useState(0)
+  const [act, setAct] = useState(0)
+  const cycle = (n: number, set: (f: (v: number) => number) => void) => () => set((v) => (v + 1) % n)
+  const primary = primaryDownload(release, SYSTEMS[sys].os)
   return (
-    <section className="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-16 pt-10 sm:px-8 md:grid-cols-[1.2fr_1fr] md:gap-8 md:pb-24 md:pt-16">
-      <div>
-        <p className="label rise" style={{ ['--i' as string]: 0 }}>
-          Android on macOS · Windows · Linux
-        </p>
-        <h1
-          className="display rise mt-5 text-[clamp(2.6rem,6.2vw,4.9rem)]"
-          style={{ ['--i' as string]: 1 }}
-        >
-          Your phone,
-          <br />
-          on your <span className="marker">desktop.</span>
-        </h1>
-        <p className="rise mt-7 max-w-[34rem] text-xl leading-snug" style={{ ['--i' as string]: 2 }}>
-          Handset mirrors and controls your Android phone from a Mac, a Windows PC or Linux, inside a real device frame. Capture
-          it, style it, share it.
-        </p>
-        <div className="rise mt-9 flex flex-wrap items-center gap-4" style={{ ['--i' as string]: 3 }}>
-          <a href={primary.url} className="btn btn-green text-lg">
-            {primary.label}
-          </a>
-          <a href={REPO} className="btn text-lg">
-            View on GitHub
-          </a>
-        </div>
-        <p className="label rise mt-7 max-w-[34rem] leading-relaxed text-ink-2" style={{ ['--i' as string]: 4 }}>
-          Free and open source · Apache-2.0 · macOS 12+ · Windows 10 or 11 · Linux (experimental)
-        </p>
+    <section className="mx-auto max-w-5xl px-5 pb-16 pt-4 text-center sm:px-8 md:pb-24">
+      <FrameRow />
+      <h1 className="display mt-10 text-[clamp(2.4rem,6.6vw,4.9rem)]">
+        Your <Swap words={DEVICES} i={dev} next={cycle(DEVICES.length, setDev)} label="Device" /> on your{' '}
+        <Swap words={SYSTEMS.map((s) => s.word)} i={sys} next={cycle(SYSTEMS.length, setSys)} label="Computer" />.
+        <br />
+        <span className="fade mt-2 block text-[0.56em] !leading-[1.15] !tracking-[-0.02em]">
+          Framed like a real device, ready to{' '}
+          <Swap words={ACTIONS} i={act} next={cycle(ACTIONS.length, setAct)} label="Action" />.
+        </span>
+      </h1>
+      <p className="mt-5 flex items-center justify-center gap-2 text-sm text-ink-2">
+        Tap a highlighted word to swap it.
+      </p>
+      <p className="mx-auto mt-6 max-w-[36rem] text-xl leading-snug text-ink-2">
+        Handset mirrors and controls your Android phone from a Mac, a Windows PC or Linux, inside a real device frame. Capture
+        it, style it, share it.
+      </p>
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+        <a href={primary.url} className="btn text-lg">
+          {primary.label}
+        </a>
+        <a href={REPO} className="btn btn-light text-lg">
+          View on GitHub
+        </a>
       </div>
-
-      <div className="relative mx-auto w-[min(78vw,21rem)] md:w-full md:max-w-[22rem]" aria-hidden="true">
-        <div className="echo-left absolute left-[-4%] top-[9%] aspect-[80/128] w-[68%] rounded-[2.2rem] border-2 border-ink bg-android p-[3.5%]">
-          <div className="size-full rounded-[1.7rem] bg-android-deep" />
-        </div>
-        <div className="echo-right absolute right-[-4%] top-[1%] aspect-[80/128] w-[68%] rounded-[2.2rem] border-2 border-ink bg-ios p-[3.5%]">
-          <div className="size-full rounded-[1.7rem] bg-ios-deep" />
-        </div>
-        <img
-          src={img('connect-home.png')}
-          alt=""
-          width={529}
-          height={1000}
-          className="rise relative"
-          style={{ ['--i' as string]: 3 }}
-        />
-      </div>
+      <p className="label mx-auto mt-7 max-w-[36rem] leading-relaxed text-fade">
+        Free and open source · Apache-2.0 · macOS 12+ · Windows 10 or 11 · Linux (experimental)
+      </p>
     </section>
   )
 }
 
-function primaryDownload(release: Release | null, platform: Platform): { label: string; url: string } {
+function primaryDownload(release: Release | null, os: Os): { label: string; url: string } {
   const fall = release?.page ?? RELEASES
-  if (platform === 'windows') return { label: 'Download for Windows', url: release?.windows?.url ?? fall }
-  if (platform === 'mac') return { label: 'Download for macOS', url: release?.mac?.url ?? fall }
-  if (platform === 'linux') return { label: 'Get it for Linux', url: '#download' }
-  return { label: 'Download', url: '#download' }
+  if (os === 'windows') return { label: 'Download for Windows', url: release?.windows?.url ?? fall }
+  if (os === 'mac') return { label: 'Download for macOS', url: release?.mac?.url ?? fall }
+  return { label: 'Get it for Linux', url: '#download' }
 }

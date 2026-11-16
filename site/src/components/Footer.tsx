@@ -25,7 +25,7 @@ export function Footer() {
             <Link className={link} to="/privacy">Privacy</Link>
           </nav>
         </div>
-        <p className="mt-8 max-w-3xl border-t-2 border-stage-line pt-6 text-sm leading-relaxed">
+        <p className="mt-8 max-w-3xl border-t border-stage-line pt-6 text-sm leading-relaxed">
           © 2026 <a className="underline underline-offset-4 hover:text-marker" href={AUTHOR.url}>{AUTHOR.name}</a> (<a className="underline underline-offset-4 hover:text-marker" href={AUTHOR.social}>{AUTHOR.handle}</a>). Handset is Apache-2.0 licensed. scrcpy is © Genymobile and Romain Vimont. Android is a
           trademark of Google LLC. iPhone, iPad and macOS are trademarks of Apple Inc. Windows is a trademark of
           Microsoft. Linux is the registered trademark of Linus Torvalds. They are named here only to say what Handset works with, and none of those companies is affiliated

@@ -1,32 +1,31 @@
 @import 'tailwindcss';
-@import '@fontsource-variable/archivo/wdth.css';
+@import '@fontsource-variable/rubik';
 @import '@fontsource-variable/atkinson-hyperlegible-next';
 @import '@fontsource-variable/martian-mono';
 
-/* Flat and printed, like a sticker sheet: warm paper, ink, and the two echo phones of the logo (Android green and
-   iOS blue) plus one marker yellow. No gradients, no glow, no soft shadows: edges are ink and shadows are hard. */
+/* Warm paper, soft rounded pills and a yellow highlighter on the words that matter. The two echo phones of the logo
+   (Android green, iOS blue) are the only other colours. No gradients, no glow, no drop shadows. */
 @theme {
   --font-sans: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Rubik Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Martian Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
 
-  --color-paper: oklch(0.962 0.016 88);
-  --color-paper-2: oklch(0.925 0.026 86);
-  --color-ink: oklch(0.19 0.02 275);
-  --color-ink-2: oklch(0.4 0.02 275);
-  --color-line: var(--color-ink);
+  --color-paper: oklch(0.985 0.006 90);
+  --color-paper-2: oklch(0.955 0.014 88);
+  --color-card: oklch(1 0 0);
+  --color-ink: oklch(0.2 0.012 80);
+  --color-ink-2: oklch(0.42 0.015 80);
+  --color-fade: oklch(0.66 0.02 80);
+  --color-line: oklch(0.9 0.012 85);
   --color-stage: var(--color-ink);
-  --color-stage-2: oklch(0.26 0.02 275);
-  --color-stage-line: oklch(0.38 0.02 275);
-  --color-stage-text: oklch(0.82 0.02 88);
+  --color-stage-2: oklch(0.27 0.012 80);
+  --color-stage-line: oklch(0.38 0.012 80);
+  --color-stage-text: oklch(0.84 0.014 88);
   --color-android: oklch(0.8 0.19 152);
   --color-android-deep: oklch(0.68 0.17 152);
   --color-ios: oklch(0.62 0.21 255);
   --color-ios-deep: oklch(0.5 0.2 258);
-  --color-marker: oklch(0.9 0.17 98);
-
-  --shadow-hard: 5px 5px 0 var(--color-ink);
-  --shadow-hard-sm: 3px 3px 0 var(--color-ink);
+  --color-marker: oklch(0.88 0.15 92);
 
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
 }
@@ -54,75 +53,122 @@ body {
 :focus-visible {
   outline: 3px solid var(--color-ios);
   outline-offset: 3px;
+  border-radius: 0.75rem;
+}
+
+@keyframes bob {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -5px;
+  }
+}
+.float {
+  animation: bob 4.5s ease-in-out infinite;
+}
+.float:nth-child(2n) {
+  animation-delay: -1.6s;
+}
+.float:nth-child(3n) {
+  animation-delay: -3s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .float {
+    animation: none;
+  }
 }
 
 @layer components {
-/* Headlines: Archivo at its widest and heaviest, set tight. */
-.display {
-  font-family: var(--font-display);
-  font-weight: 850;
-  font-stretch: 112%;
-  line-height: 0.95;
-  letter-spacing: -0.025em;
-  text-wrap: balance;
-}
-.h2 {
-  font-size: clamp(2rem, 4.6vw, 3.4rem);
-}
+  /* Headlines: Rubik, heavy, set tight. */
+  .display {
+    font-family: var(--font-display);
+    font-weight: 800;
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+    text-wrap: balance;
+  }
+  .h2 {
+    font-size: clamp(2rem, 4.6vw, 3.4rem);
+  }
 
-/* Small mono labels: numbers, specs, the nav. */
-.label {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
+  /* The second half of a headline, in a quieter colour. */
+  .fade {
+    color: var(--color-fade);
+  }
 
-/* A button is a flat block with an ink edge; it sinks onto its shadow when pressed. */
-.btn {
-  display: inline-block;
-  border: 2px solid var(--color-ink);
-  background: var(--color-paper);
-  color: var(--color-ink);
-  padding: 0.7rem 1.25rem;
-  font-family: var(--font-display);
-  font-weight: 750;
-  font-stretch: 112%;
-  line-height: 1.1;
-  box-shadow: var(--shadow-hard-sm);
-  transition:
-    transform 120ms var(--ease-out-quart),
-    box-shadow 120ms var(--ease-out-quart);
-}
-.btn:hover {
-  transform: translate(-1px, -1px);
-  box-shadow: 4px 4px 0 var(--color-ink);
-}
-.btn:active {
-  transform: translate(3px, 3px);
-  box-shadow: 0 0 0 var(--color-ink);
-}
-.btn-green {
-  background: var(--color-android);
-}
-.btn-blue {
-  background: var(--color-ios);
-  color: #fff;
-}
+  /* Small mono labels: the nav, numbers, specs. */
+  .label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
 
-/* A picture or a panel set on the page like a printed card. */
-.card {
-  border: 2px solid var(--color-ink);
-  background: var(--color-paper);
-  box-shadow: var(--shadow-hard);
-}
+  /* Buttons are pills. The dark one is the main action. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 1.5px solid var(--color-ink);
+    border-radius: 999px;
+    background: var(--color-ink);
+    color: var(--color-paper);
+    padding: 0.8rem 1.5rem;
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1.1;
+    transition:
+      transform 140ms var(--ease-out-quart),
+      background-color 140ms var(--ease-out-quart);
+  }
+  .btn:hover {
+    transform: translateY(-2px);
+  }
+  .btn:active {
+    transform: translateY(0) scale(0.98);
+  }
+  .btn-light {
+    background: var(--color-card);
+    color: var(--color-ink);
+  }
+  .btn-green {
+    background: var(--color-android);
+    color: var(--color-ink);
+  }
 
-/* The marker stroke behind a word. */
-.marker {
-  background: linear-gradient(var(--color-marker), var(--color-marker)) 0 88% / 100% 0.36em no-repeat;
-  padding: 0 0.08em;
-}
+  /* A panel or a picture on the page: white, rounded, a thin warm edge. */
+  .card {
+    border: 1.5px solid var(--color-line);
+    border-radius: 1.75rem;
+    background: var(--color-card);
+    overflow: hidden;
+  }
+
+  /* The highlighter: a yellow pill behind a word, tipped a little, like it was drawn on. */
+  .hl {
+    display: inline-block;
+    border-radius: 0.55em;
+    background: var(--color-marker);
+    padding: 0 0.28em 0.04em;
+    color: var(--color-ink);
+    transform: rotate(-1.2deg);
+  }
+  button.hl {
+    cursor: pointer;
+    font: inherit;
+    letter-spacing: inherit;
+    transition: transform 160ms var(--ease-out-quart);
+  }
+  button.hl:hover {
+    transform: rotate(1deg) scale(1.03);
+  }
+  .hl-flat {
+    background: linear-gradient(var(--color-marker), var(--color-marker)) 0 90% / 100% 0.4em no-repeat;
+  }
 }
 
 /* One staggered entrance for the hero; the echo phones slide out from behind the screenshot. */
@@ -188,10 +234,9 @@ body {
   margin-top: 2.5rem;
   font-family: var(--font-display);
   font-size: 1.6rem;
-  font-weight: 800;
-  font-stretch: 112%;
+  font-weight: 700;
   line-height: 1.1;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
 }
 .legal p,
 .legal ul {
@@ -220,7 +265,8 @@ body {
 }
 .legal code {
   overflow-wrap: anywhere;
-  border: 1.5px solid var(--color-ink);
+  border: 1px solid var(--color-line);
+  border-radius: 0.5rem;
   background: var(--color-paper-2);
   padding: 0.05em 0.35em;
   font-family: var(--font-mono);

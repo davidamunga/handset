@@ -37,10 +37,10 @@ export function About() {
           </p>
           <p>
             Headlines are set in{' '}
-            <a className="font-medium text-ink underline underline-offset-4" href="https://github.com/Omnibus-Type/Archivo">
-              Archivo
+            <a className="font-medium text-ink underline underline-offset-4" href="https://github.com/googlefonts/rubik">
+              Rubik
             </a>{' '}
-            by the Archivo Project Authors, text in{' '}
+            by the Rubik Project Authors, text in{' '}
             <a className="font-medium text-ink underline underline-offset-4" href="https://github.com/googlefonts/atkinson-hyperlegible-next">
               Atkinson Hyperlegible Next
             </a>{' '}

@@ -36,13 +36,13 @@ function Changelog() {
         remarkPlugins={[remarkGfm]}
         components={{
           h2: ({ children }) => (
-            <h2 id={slug(children)} className="scroll-mt-6 border-t-2 border-ink pt-8">
+            <h2 id={slug(children)} className="scroll-mt-6 border-t border-line pt-8">
               <a href={`#${slug(children)}`} className="no-underline">
                 {children}
               </a>
             </h2>
           ),
-          h3: ({ children }) => <h3 className="label mt-6 inline-block bg-marker px-2 py-0.5">{children}</h3>,
+          h3: ({ children }) => <h3 className="label mt-6 inline-block rounded-full bg-marker px-3 py-1">{children}</h3>,
           a: ({ href, children }) => (
             <a href={href} rel={href?.startsWith('http') ? 'noreferrer' : undefined}>
               {children}

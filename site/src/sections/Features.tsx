@@ -5,7 +5,9 @@ const img = (name: string) => `/shared/${name}`
 export function Features() {
   return (
     <section id="features" className="mx-auto max-w-6xl scroll-mt-4 px-5 py-12 sm:px-8 md:py-20">
-      <h2 className="display h2">What you can do with it</h2>
+      <h2 className="display h2">
+        What you can do <span className="fade">with it</span>
+      </h2>
 
       <Row
         number="01"
@@ -102,27 +104,27 @@ function Row(props: {
   return (
     <article className="mt-16 grid items-center gap-8 md:mt-28 md:grid-cols-12 md:gap-14">
       <div className={`md:col-span-5 ${props.flip ? 'md:order-2' : ''}`}>
-        <p className="label inline-block border-2 border-ink bg-marker px-2.5 py-1">{props.number}</p>
+        <p className="label inline-block rounded-full bg-marker px-3 py-1">{props.number}</p>
         <h3 className="display mt-4 text-[clamp(1.6rem,3vw,2.25rem)] !leading-[1.02]">{props.title}</h3>
         <p className="mt-4 text-ink-2">{props.body}</p>
         <ul className="mt-5 space-y-2.5">
           {props.points.map((p) => (
             <li key={p} className="flex gap-3">
-              <span className="mt-[0.62em] size-2.5 shrink-0 bg-ink" aria-hidden="true" />
+              <span className="mt-[0.62em] size-2.5 shrink-0 rounded-full bg-ink" aria-hidden="true" />
               {p}
             </li>
           ))}
         </ul>
         {props.link && (
           <p className="mt-6">
-            <a href={props.link.href} className="btn !px-4 !py-2 text-[0.95rem]">
+            <a href={props.link.href} className="btn btn-light !px-4 !py-2 text-[0.95rem]">
               {props.link.label} &rarr;
             </a>
           </p>
         )}
       </div>
       <div className={`md:col-span-7 ${props.flip ? 'md:order-1' : ''}`}>
-        {props.stage ? <div className="card bg-stage px-6 py-10 !shadow-[7px_7px_0_var(--color-android)] sm:py-12">{props.children}</div> : props.children}
+        {props.stage ? <div className="rounded-[2rem] bg-ink px-6 py-10 sm:py-12">{props.children}</div> : props.children}
       </div>
     </article>
   )

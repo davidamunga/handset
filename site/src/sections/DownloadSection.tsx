@@ -11,18 +11,20 @@ export function DownloadSection() {
   const order: ('mac' | 'windows' | 'linux')[] =
     platform === 'windows' ? ['windows', 'mac', 'linux'] : platform === 'linux' ? ['linux', 'mac', 'windows'] : ['mac', 'windows', 'linux']
   return (
-    <section id="download" className="scroll-mt-0 bg-stage text-paper">
-      <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 md:py-24">
+    <section id="download" className="scroll-mt-0">
+      <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8 md:py-20">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <h2 className="display h2">Get Handset</h2>
-          <p className="text-stage-text">
+          <h2 className="display h2">
+            Get <span className="hl">Handset</span>
+          </h2>
+          <p className="text-ink-2">
             {release ? (
               <>
-                Latest: <a className="underline underline-offset-4 hover:text-marker" href={release.page}>v{release.version}</a>
+                Latest: <a className="underline underline-offset-4 hover:bg-marker" href={release.page}>v{release.version}</a>
                 {release.downloads.total > 0 && <> · {count(release.downloads.total)} downloads</>}
               </>
             ) : (
-              <a className="underline underline-offset-4 hover:text-marker" href={RELEASES}>
+              <a className="underline underline-offset-4 hover:bg-marker" href={RELEASES}>
                 See the latest release
               </a>
             )}
@@ -83,11 +85,11 @@ export function DownloadSection() {
           )}
         </div>
 
-        <p className="mt-8 max-w-3xl text-[0.95rem] text-stage-text">
-          Handset needs <code className="border border-stage-line bg-stage-2 px-1.5 py-0.5 font-mono text-[0.8rem] text-paper">adb</code> to talk to an Android phone, and{' '}
-          <code className="border border-stage-line bg-stage-2 px-1.5 py-0.5 font-mono text-[0.8rem] text-paper">ffmpeg</code> for recordings. Homebrew and Scoop install what they need. With a
+        <p className="mt-8 max-w-3xl text-[0.95rem] text-ink-2">
+          Handset needs <code className="rounded-md border border-line bg-paper-2 px-1.5 py-0.5 font-mono text-[0.8rem] text-ink">adb</code> to talk to an Android phone, and{' '}
+          <code className="rounded-md border border-line bg-paper-2 px-1.5 py-0.5 font-mono text-[0.8rem] text-ink">ffmpeg</code> for recordings. Homebrew and Scoop install what they need. With a
           plain download or a Linux build, the{' '}
-          <a className="underline underline-offset-4 hover:text-marker" href={`${REPO}#install`}>
+          <a className="underline underline-offset-4 hover:bg-marker" href={`${REPO}#install`}>
             install notes
           </a>{' '}
           say how. Each release lists a checksum and a signature so you can check the file.
@@ -113,7 +115,7 @@ function Card(props: {
 }) {
   return (
     <div
-      className={`min-w-0 border-2 border-ink bg-paper p-7 text-ink sm:p-8 ${props.featured ? 'shadow-[7px_7px_0_var(--color-android)]' : 'shadow-[7px_7px_0_var(--color-stage-line)]'}`}
+      className={`card min-w-0 p-7 text-ink sm:p-8 ${props.featured ? '!border-ink' : ''}`}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h3 className="display text-3xl">{props.title}</h3>
