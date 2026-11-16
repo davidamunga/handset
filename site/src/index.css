@@ -1,26 +1,32 @@
 @import 'tailwindcss';
-@import '@fontsource-variable/inter';
-@import '@fontsource-variable/bricolage-grotesque';
+@import '@fontsource-variable/archivo/wdth.css';
+@import '@fontsource-variable/atkinson-hyperlegible-next';
+@import '@fontsource-variable/martian-mono';
 
-/* Device Gray: the greys of the app, tinted a touch toward blue. Green and blue are the two echo phones in the
-   logo (Android and iOS) and the only colours on the page. */
+/* Flat and printed, like a sticker sheet: warm paper, ink, and the two echo phones of the logo (Android green and
+   iOS blue) plus one marker yellow. No gradients, no glow, no soft shadows: edges are ink and shadows are hard. */
 @theme {
-  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Bricolage Grotesque Variable', 'Inter Variable', ui-sans-serif, sans-serif;
+  --font-sans: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Martian Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
 
-  --color-paper: oklch(0.96 0.004 255);
-  --color-paper-2: oklch(0.925 0.006 255);
-  --color-line: oklch(0.87 0.007 255);
-  --color-ink: oklch(0.18 0.008 265);
-  --color-ink-2: oklch(0.42 0.012 265);
-  --color-stage: oklch(0.15 0.006 265);
-  --color-stage-2: oklch(0.21 0.007 265);
-  --color-stage-line: oklch(0.31 0.008 265);
-  --color-stage-text: oklch(0.78 0.008 265);
+  --color-paper: oklch(0.962 0.016 88);
+  --color-paper-2: oklch(0.925 0.026 86);
+  --color-ink: oklch(0.19 0.02 275);
+  --color-ink-2: oklch(0.4 0.02 275);
+  --color-line: var(--color-ink);
+  --color-stage: var(--color-ink);
+  --color-stage-2: oklch(0.26 0.02 275);
+  --color-stage-line: oklch(0.38 0.02 275);
+  --color-stage-text: oklch(0.82 0.02 88);
   --color-android: oklch(0.8 0.19 152);
   --color-android-deep: oklch(0.68 0.17 152);
   --color-ios: oklch(0.62 0.21 255);
   --color-ios-deep: oklch(0.5 0.2 258);
+  --color-marker: oklch(0.9 0.17 98);
+
+  --shadow-hard: 5px 5px 0 var(--color-ink);
+  --shadow-hard-sm: 3px 3px 0 var(--color-ink);
 
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
 }
@@ -34,21 +40,89 @@ body {
   background: var(--color-paper);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-size: 1.0625rem;
+  font-size: 1.125rem;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
 ::selection {
-  background: var(--color-android);
+  background: var(--color-marker);
   color: var(--color-ink);
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-ios);
+  outline: 3px solid var(--color-ios);
   outline-offset: 3px;
-  border-radius: 0.5rem;
+}
+
+@layer components {
+/* Headlines: Archivo at its widest and heaviest, set tight. */
+.display {
+  font-family: var(--font-display);
+  font-weight: 850;
+  font-stretch: 112%;
+  line-height: 0.95;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+.h2 {
+  font-size: clamp(2rem, 4.6vw, 3.4rem);
+}
+
+/* Small mono labels: numbers, specs, the nav. */
+.label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* A button is a flat block with an ink edge; it sinks onto its shadow when pressed. */
+.btn {
+  display: inline-block;
+  border: 2px solid var(--color-ink);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  padding: 0.7rem 1.25rem;
+  font-family: var(--font-display);
+  font-weight: 750;
+  font-stretch: 112%;
+  line-height: 1.1;
+  box-shadow: var(--shadow-hard-sm);
+  transition:
+    transform 120ms var(--ease-out-quart),
+    box-shadow 120ms var(--ease-out-quart);
+}
+.btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--color-ink);
+}
+.btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--color-ink);
+}
+.btn-green {
+  background: var(--color-android);
+}
+.btn-blue {
+  background: var(--color-ios);
+  color: #fff;
+}
+
+/* A picture or a panel set on the page like a printed card. */
+.card {
+  border: 2px solid var(--color-ink);
+  background: var(--color-paper);
+  box-shadow: var(--shadow-hard);
+}
+
+/* The marker stroke behind a word. */
+.marker {
+  background: linear-gradient(var(--color-marker), var(--color-marker)) 0 88% / 100% 0.36em no-repeat;
+  padding: 0 0.08em;
+}
 }
 
 /* One staggered entrance for the hero; the echo phones slide out from behind the screenshot. */
@@ -113,10 +187,11 @@ body {
 .legal h2 {
   margin-top: 2.5rem;
   font-family: var(--font-display);
-  font-size: 1.5rem;
-  font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
+  font-size: 1.6rem;
+  font-weight: 800;
+  font-stretch: 112%;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
 }
 .legal p,
 .legal ul {
@@ -145,9 +220,10 @@ body {
 }
 .legal code {
   overflow-wrap: anywhere;
-  border-radius: 0.375rem;
+  border: 1.5px solid var(--color-ink);
   background: var(--color-paper-2);
-  padding: 0.1em 0.35em;
-  font-size: 0.9em;
+  padding: 0.05em 0.35em;
+  font-family: var(--font-mono);
+  font-size: 0.78em;
   color: var(--color-ink);
 }

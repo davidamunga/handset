@@ -16,9 +16,9 @@ export function LegalPage({
 }) {
   return (
     <article className="mx-auto max-w-3xl px-5 pb-24 pt-10 sm:px-8 md:pt-16">
-      <h1 className="font-display text-[clamp(2.4rem,6vw,4rem)] font-extrabold leading-none tracking-[-0.03em]">{title}</h1>
-      {stamp && <p className="mt-4 text-sm text-ink-2">Last updated {updated}</p>}
-      <p className="mt-6 text-xl leading-snug text-ink-2">{intro}</p>
+      <h1 className="display text-[clamp(2.4rem,6vw,4rem)]">{title}</h1>
+      {stamp && <p className="label mt-5 text-ink-2">Last updated {updated}</p>}
+      <p className="mt-6 text-xl leading-snug">{intro}</p>
       <div className="legal">{children}</div>
     </article>
   )

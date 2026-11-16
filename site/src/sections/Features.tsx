@@ -4,10 +4,8 @@ const img = (name: string) => `/shared/${name}`
 
 export function Features() {
   return (
-    <section id="features" className="mx-auto max-w-6xl scroll-mt-4 px-5 py-8 sm:px-8 md:py-16">
-      <h2 className="font-display text-[clamp(2rem,4.5vw,3.25rem)] font-bold leading-none tracking-[-0.03em]">
-        What you can do with it
-      </h2>
+    <section id="features" className="mx-auto max-w-6xl scroll-mt-4 px-5 py-12 sm:px-8 md:py-20">
+      <h2 className="display h2">What you can do with it</h2>
 
       <Row
         number="01"
@@ -40,7 +38,7 @@ export function Features() {
             width={1600}
             height={900}
             loading="lazy"
-            className="w-full rounded-3xl border border-line"
+            className="card w-full"
           />
           <figcaption className="mt-3 text-sm text-ink-2">
             Wallpaper: macOS Ventura, © Apple Inc., shown only as a desktop behind the phone. The phone is a stock
@@ -61,7 +59,7 @@ export function Features() {
           width={1280}
           height={933}
           loading="lazy"
-          className="w-full rounded-2xl border border-line"
+          className="card w-full"
         />
       </Row>
 
@@ -80,7 +78,7 @@ export function Features() {
             width={1440}
             height={900}
             loading="lazy"
-            className="w-full rounded-2xl border border-line"
+            className="card w-full"
           />
           <figcaption className="mt-3 text-sm text-ink-2">
             The page a viewer sees. The screen is a drawn demo, not a real phone. On the same Wi-Fi or network only, for now.
@@ -102,31 +100,29 @@ function Row(props: {
   link?: { href: string; label: string }
 }) {
   return (
-    <article className="mt-16 grid items-center gap-8 md:mt-24 md:grid-cols-12 md:gap-12">
+    <article className="mt-16 grid items-center gap-8 md:mt-28 md:grid-cols-12 md:gap-14">
       <div className={`md:col-span-5 ${props.flip ? 'md:order-2' : ''}`}>
-        <p className="font-display text-sm font-bold tracking-widest text-ink-2">{props.number}</p>
-        <h3 className="mt-3 font-display text-[clamp(1.6rem,3vw,2.2rem)] font-bold leading-[1.05] tracking-[-0.02em]">
-          {props.title}
-        </h3>
+        <p className="label inline-block border-2 border-ink bg-marker px-2.5 py-1">{props.number}</p>
+        <h3 className="display mt-4 text-[clamp(1.6rem,3vw,2.25rem)] !leading-[1.02]">{props.title}</h3>
         <p className="mt-4 text-ink-2">{props.body}</p>
-        <ul className="mt-5 space-y-2">
+        <ul className="mt-5 space-y-2.5">
           {props.points.map((p) => (
             <li key={p} className="flex gap-3">
-              <span className="mt-[0.7em] size-1.5 shrink-0 rounded-full bg-ink" aria-hidden="true" />
+              <span className="mt-[0.62em] size-2.5 shrink-0 bg-ink" aria-hidden="true" />
               {p}
             </li>
           ))}
         </ul>
         {props.link && (
-          <p className="mt-5">
-            <a href={props.link.href} className="font-medium underline underline-offset-4 hover:no-underline">
-              {props.link.label}
+          <p className="mt-6">
+            <a href={props.link.href} className="btn !px-4 !py-2 text-[0.95rem]">
+              {props.link.label} &rarr;
             </a>
           </p>
         )}
       </div>
       <div className={`md:col-span-7 ${props.flip ? 'md:order-1' : ''}`}>
-        {props.stage ? <div className="rounded-[2rem] bg-stage px-6 py-10 sm:py-12">{props.children}</div> : props.children}
+        {props.stage ? <div className="card bg-stage px-6 py-10 !shadow-[7px_7px_0_var(--color-android)] sm:py-12">{props.children}</div> : props.children}
       </div>
     </article>
   )

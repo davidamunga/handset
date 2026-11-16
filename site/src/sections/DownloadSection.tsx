@@ -14,17 +14,15 @@ export function DownloadSection() {
     <section id="download" className="scroll-mt-0 bg-stage text-paper">
       <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 md:py-24">
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <h2 className="font-display text-[clamp(2rem,4.5vw,3.25rem)] font-bold leading-none tracking-[-0.03em]">
-            Get Handset
-          </h2>
+          <h2 className="display h2">Get Handset</h2>
           <p className="text-stage-text">
             {release ? (
               <>
-                Latest: <a className="underline underline-offset-4 hover:text-paper" href={release.page}>v{release.version}</a>
+                Latest: <a className="underline underline-offset-4 hover:text-marker" href={release.page}>v{release.version}</a>
                 {release.downloads.total > 0 && <> · {count(release.downloads.total)} downloads</>}
               </>
             ) : (
-              <a className="underline underline-offset-4 hover:text-paper" href={RELEASES}>
+              <a className="underline underline-offset-4 hover:text-marker" href={RELEASES}>
                 See the latest release
               </a>
             )}
@@ -86,10 +84,10 @@ export function DownloadSection() {
         </div>
 
         <p className="mt-8 max-w-3xl text-[0.95rem] text-stage-text">
-          Handset needs <code className="rounded bg-stage-2 px-1.5 py-0.5 text-paper">adb</code> to talk to an Android phone, and{' '}
-          <code className="rounded bg-stage-2 px-1.5 py-0.5 text-paper">ffmpeg</code> for recordings. Homebrew and Scoop install what they need. With a
+          Handset needs <code className="border border-stage-line bg-stage-2 px-1.5 py-0.5 font-mono text-[0.8rem] text-paper">adb</code> to talk to an Android phone, and{' '}
+          <code className="border border-stage-line bg-stage-2 px-1.5 py-0.5 font-mono text-[0.8rem] text-paper">ffmpeg</code> for recordings. Homebrew and Scoop install what they need. With a
           plain download or a Linux build, the{' '}
-          <a className="underline underline-offset-4 hover:text-paper" href={`${REPO}#install`}>
+          <a className="underline underline-offset-4 hover:text-marker" href={`${REPO}#install`}>
             install notes
           </a>{' '}
           say how. Each release lists a checksum and a signature so you can check the file.
@@ -114,29 +112,28 @@ function Card(props: {
   featured: boolean
 }) {
   return (
-    <div className={`min-w-0 rounded-3xl p-7 sm:p-8 ${props.featured ? 'bg-stage-2 ring-1 ring-stage-line' : 'bg-stage ring-1 ring-stage-line'}`}>
-      <div className="flex items-baseline justify-between gap-4">
-        <h3 className="font-display text-2xl font-bold">{props.title}</h3>
+    <div
+      className={`min-w-0 border-2 border-ink bg-paper p-7 text-ink sm:p-8 ${props.featured ? 'shadow-[7px_7px_0_var(--color-android)]' : 'shadow-[7px_7px_0_var(--color-stage-line)]'}`}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h3 className="display text-3xl">{props.title}</h3>
         {props.file && (
-          <span className="text-sm text-stage-text">
+          <span className="label text-ink-2">
             {props.file.size}
             {props.downloads ? ` · ${count(props.downloads)} downloads` : ''}
           </span>
         )}
       </div>
-      <p className="mt-3 text-[0.95rem] text-stage-text">{props.note}</p>
-      <a
-        href={props.file?.url ?? props.fallback}
-        className="mt-6 inline-block rounded-xl bg-paper px-5 py-3 font-semibold text-ink transition-transform hover:-translate-y-px active:translate-y-0"
-      >
+      <p className="mt-3 text-[0.95rem] text-ink-2">{props.note}</p>
+      <a href={props.file?.url ?? props.fallback} className={`btn mt-6 ${props.featured ? 'btn-green' : ''}`}>
         {props.cta}
       </a>
       {props.alt && (
-        <a href={props.alt.url} className="ml-4 text-sm text-stage-text underline underline-offset-4 hover:text-paper">
+        <a href={props.alt.url} className="ml-4 text-sm underline underline-offset-4 hover:bg-marker">
           {props.alt.label}
         </a>
       )}
-      <p className="mt-7 text-sm text-stage-text">{props.commandLabel}</p>
+      <p className="mt-7 text-sm text-ink-2">{props.commandLabel}</p>
       <CopyBlock text={props.command} />
     </div>
   )
