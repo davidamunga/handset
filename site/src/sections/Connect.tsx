@@ -8,7 +8,7 @@ export function Connect() {
   ]
   return (
     <section className="bg-paper-2 py-16 md:py-24">
-      <div className="mx-auto max-w-6xl px-5 sm:px-8">
+      <div className="mx-auto max-w-6xl 2xl:max-w-7xl px-5 sm:px-8">
         <div className="max-w-2xl">
           <h2 className="display h2">
             Connect any way <span className="fade">you like</span>

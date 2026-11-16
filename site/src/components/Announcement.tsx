@@ -9,7 +9,7 @@ export function Announcement() {
   if (!release || !shown) return null
   return (
     <div className="bg-ink text-paper">
-      <div className="mx-auto flex max-w-6xl items-center justify-center gap-3 px-5 py-2 text-[0.92rem] sm:px-8">
+      <div className="mx-auto flex max-w-6xl 2xl:max-w-7xl items-center justify-center gap-3 px-5 py-2 text-[0.92rem] sm:px-8">
         <span className="size-2 shrink-0 rounded-full bg-android" aria-hidden="true" />
         <p className="min-w-0 truncate">
           Handset <strong className="font-semibold">v{release.version}</strong> is out

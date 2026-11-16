@@ -4,7 +4,7 @@ import { REPO } from '../links'
 /** The last call: a dark card with the one thing to do. */
 export function Closing() {
   return (
-    <section className="mx-auto max-w-6xl px-5 pb-16 sm:px-8 md:pb-24">
+    <section className="mx-auto max-w-6xl 2xl:max-w-7xl px-5 pb-16 sm:px-8 md:pb-24">
       <div className="rounded-[2rem] bg-ink px-6 py-14 text-center text-paper sm:px-12 md:py-20">
         <h2 className="display text-[clamp(2.2rem,6vw,4.2rem)]">
           Plug in <span className="text-marker">your phone.</span>

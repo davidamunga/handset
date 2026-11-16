@@ -12,7 +12,7 @@ export function DownloadSection() {
     platform === 'windows' ? ['windows', 'mac', 'linux'] : platform === 'linux' ? ['linux', 'mac', 'windows'] : ['mac', 'windows', 'linux']
   return (
     <section id="download" className="scroll-mt-0">
-      <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8 md:py-20">
+      <div className="mx-auto max-w-6xl 2xl:max-w-7xl px-5 py-12 sm:px-8 md:py-20">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <h2 className="display h2">
             Get <span className="hl">Handset</span>

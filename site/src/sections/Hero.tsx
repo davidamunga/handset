@@ -34,9 +34,9 @@ export function Hero() {
   const cycle = (n: number, set: (f: (v: number) => number) => void) => () => set((v) => (v + 1) % n)
   const primary = primaryDownload(release, SYSTEMS[sys].os)
   return (
-    <section className="mx-auto grid max-w-6xl items-center gap-8 px-5 pb-12 pt-2 sm:px-8 md:grid-cols-[0.72fr_1.28fr] md:gap-4 md:pb-16">
+    <section className="mx-auto grid max-w-6xl 2xl:max-w-7xl items-center gap-8 px-5 pb-12 pt-2 sm:px-8 md:grid-cols-[0.72fr_1.28fr] md:gap-4 md:pb-16">
       <div className="text-center md:text-left">
-        <h1 className="display rise text-[clamp(2.4rem,5.4vw,4.4rem)]">
+        <h1 className="display rise text-[clamp(2.4rem,5.4vw,4.4rem)] 2xl:text-[5rem]">
           Your <Swap words={DEVICES} i={dev} next={cycle(DEVICES.length, setDev)} label="Device" /> on your{' '}
           <Swap words={SYSTEMS.map((s) => s.word)} i={sys} next={cycle(SYSTEMS.length, setSys)} label="Computer" />.
         </h1>
@@ -54,7 +54,7 @@ export function Hero() {
       </div>
 
       {/* the app itself: the phone in its frame, with the style editor and the share page behind it */}
-      <div className="relative mx-auto aspect-[1.3] w-full max-w-[46rem]">
+      <div className="relative mx-auto aspect-[1.3] w-full max-w-[46rem] 2xl:max-w-[52rem]">
         <figure className="rise absolute left-0 top-[4%] w-[47%] -rotate-3" style={{ ['--i' as string]: 3 }}>
           <img
             src={img('editor.png')}

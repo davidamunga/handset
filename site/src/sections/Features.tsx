@@ -4,7 +4,7 @@ const img = (name: string) => `/shared/${name}`
 
 export function Features() {
   return (
-    <section id="features" className="mx-auto max-w-6xl scroll-mt-4 px-5 py-12 sm:px-8 md:py-20">
+    <section id="features" className="mx-auto max-w-6xl 2xl:max-w-7xl scroll-mt-4 px-5 py-12 sm:px-8 md:py-20">
       <h2 className="display h2">
         What you can do <span className="fade">with it</span>
       </h2>

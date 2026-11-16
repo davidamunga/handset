@@ -2,7 +2,7 @@ import { AUTHOR, REPO } from '../links'
 
 export function About() {
   return (
-    <section id="about" className="mx-auto max-w-6xl px-5 py-16 sm:px-8 md:py-24">
+    <section id="about" className="mx-auto max-w-6xl 2xl:max-w-7xl px-5 py-16 sm:px-8 md:py-24">
       <div className="grid gap-10 md:grid-cols-12">
         <h2 className="display h2 md:col-span-5">
           Open source, built on scrcpy

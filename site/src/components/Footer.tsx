@@ -7,7 +7,7 @@ const link = 'label hover:text-marker'
 export function Footer() {
   return (
     <footer className="bg-stage text-stage-text">
-      <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8">
+      <div className="mx-auto max-w-6xl 2xl:max-w-7xl px-5 py-12 sm:px-8">
         <div className="flex flex-wrap items-center justify-between gap-6">
           <div className="display flex items-center gap-2.5 text-2xl text-paper">
             <Mark className="size-10" />
