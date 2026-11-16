@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.14.0
+
+### Minor Changes
+
+- [#162](https://github.com/davidamunga/handset/pull/162) [`b1a583f`](https://github.com/davidamunga/handset/commit/b1a583fd370702815c972d072ff673d6647944cd) - Tilt the phone to any angle: hold Alt (Option) and drag to turn it toward where you drag, scroll to roll it, or nudge it with Alt and the arrow keys. Snap to every 5 or 15 degrees (or hold Shift while dragging) and get back to flat easily. The presets still work.
+
+- [#158](https://github.com/davidamunga/handset/pull/158) [`28daac2`](https://github.com/davidamunga/handset/commit/28daac2ff707077f29c77713eebb7b23116fc8bc) - Keyboard shortcuts you can change: right-click, Keyboard Shortcuts (or `--shortcuts`) opens a window to give any menu action a key, and the menus show it. New defaults include Cmd or Ctrl and T for the next tilt.
+
+- [#159](https://github.com/davidamunga/handset/pull/159) [`72531fd`](https://github.com/davidamunga/handset/commit/72531fddfd843d9daaaa8e7f5ce0630a1b772f06) - A tilted phone now has a thin metal side, with or without a frame, so it looks like a solid phone and not a flat picture.
+
 ## 0.13.2
 
 ### Patch Changes
