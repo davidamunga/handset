@@ -21,6 +21,8 @@ pub enum UserEvent {
     Menu(String),
     /// Someone started or stopped watching through Share.
     Share,
+    /// A program used the control socket.
+    Ctl,
     /// The phone's installed apps, or why they could not be listed.
     Apps(Result<Vec<crate::apps::AppEntry>, String>),
     /// The latest `adb devices`, or why it could not be run.

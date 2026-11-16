@@ -258,6 +258,13 @@ anything. It needs no install on their side, shows who is watching in the window
 The guide is in [docs/share.md](docs/share.md), and what the page and Handset say to each other is in
 [docs/share-protocol.md](docs/share-protocol.md).
 
+### Driving the phone from a script or an agent
+
+Start Handset with `--ctl` and a program can see and use the phone without the window:
+`handset ctl screenshot screen.png`, `handset ctl tap 540 1200`, `handset ctl swipe ...`, `handset ctl type ...`.
+It is off by default, needs a secret only you can read, and the window shows when a program is using it.
+The guide is in [docs/agents.md](docs/agents.md).
+
 ## iPhone and iPad (experimental)
 
 On macOS, Handset can also show an iPhone or iPad connected with a cable, with its sound. Plug it in while
