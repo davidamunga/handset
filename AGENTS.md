@@ -18,6 +18,7 @@ small native Rust app that implements the desktop side of the scrcpy protocol an
 | `app/src/tap.rs` | A copy of the phone's H.264 packets before decoding, for Share (keyframes carry the SPS and PPS; a slow reader loses frames, never the video thread) |
 | `app/src/share.rs`, `share_input.rs`, `share_audio.rs` | Share: a small HTTP server hands a browser the viewer page and answers its WebRTC offer; the host approves every viewer (watch or control) first; the phone's H.264 goes out through `str0m` untouched; what a controlling viewer sends is parsed strictly and gated; the phone's raw sound is cut into 20 ms frames and encoded to Opus once for all viewers; the host also serves the frame and the editor's backgrounds to the page and tells it how to draw the phone (the contract is `docs/share-protocol.md`) |
 | `app/src/render.rs`, `shader.wgsl` | wgpu renderer: YUV to RGB on the GPU, bezel, overlays, offscreen capture |
+| `app/src/mcp.rs`, `json.rs` | `handset mcp`: the control socket's commands as MCP tools over standard input and output; the small JSON reader and writer it uses |
 | `app/src/ctl.rs`, `ui.rs`, `helper.rs` | The control socket and `handset ctl` (`docs/agents.md`); reading the screen as text from `uiautomator` XML; the client for the helper on the phone |
 | `helper/` | The Java helper that describes the screen quickly on the phone; `helper/build.sh` builds `app/assets/handset-helper.jar` (`docs/runbooks/rebuild-helper.md`) |
 | `app/src/app.rs` | winit window, input, toolbar, toast, menu events, recording timer |

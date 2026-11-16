@@ -56,3 +56,4 @@ Copy [`0000-template.md`](0000-template.md) to start a new one.
 | [0045](0045-read-the-screen-as-text-with-uiautomator.md) | Read the screen as text with uiautomator | accepted |
 | [0046](0046-describe-the-screen-with-a-small-helper-on-the-phone.md) | Describe the screen with a small helper on the phone | accepted |
 | [0047](0047-wait-for-the-phone-to-show-what-was-done.md) | Wait for the phone to show what was done | accepted |
+| [0048](0048-offer-the-phone-to-agents-as-an-mcp-server.md) | Offer the phone to agents as an MCP server | accepted |
