@@ -54,25 +54,40 @@ impl Tilt {
     /// The four corners of a `w` x `h` picture (top-left, top-right, bottom-right, bottom-left) after the
     /// rotation and the projection, scaled to fill a `w` x `h` canvas and centred in it.
     pub(crate) fn corners(self, w: f32, h: f32) -> [(f32, f32); 4] {
+        self.body(w, h, 0.0, 0)[0]
+    }
+
+    /// The same corners for a phone with a thickness: `slices + 1` quads, the front face first, then
+    /// `slices` more at equal steps behind it down to `depth` (in the picture's units). Drawn back to front
+    /// they build the side of the phone. The fit to the canvas takes the front and the back together, so
+    /// the whole body stays inside it; with `slices` of 0 this is the plain front face.
+    pub(crate) fn body(self, w: f32, h: f32, depth: f32, slices: usize) -> Vec<[(f32, f32); 4]> {
         let d = DISTANCE * w.max(h);
         let (sr, cr) = (self.roll as f32).to_radians().sin_cos();
         let (sp, cp) = (self.pitch as f32).to_radians().sin_cos();
         let (sy, cy) = (self.yaw as f32).to_radians().sin_cos();
-        let project = |x: f32, y: f32| {
+        // `z` is how far behind the front face the point is, along the phone's own normal
+        let project = |x: f32, y: f32, z: f32| {
             let (x, y) = (x * cr - y * sr, x * sr + y * cr);
-            let (y, z) = (y * cp, -y * sp);
+            let (y, z) = (y * cp + z * sp, -y * sp + z * cp);
             let (x, z) = (x * cy - z * sy, x * sy + z * cy);
             let k = d / (d + z);
             (x * k, y * k)
         };
         let (hw, hh) = (w / 2.0, h / 2.0);
-        let p = [project(-hw, -hh), project(hw, -hh), project(hw, hh), project(-hw, hh)];
-        let min = p.iter().fold((f32::MAX, f32::MAX), |m, q| (m.0.min(q.0), m.1.min(q.1)));
-        let max = p.iter().fold((f32::MIN, f32::MIN), |m, q| (m.0.max(q.0), m.1.max(q.1)));
+        let quads: Vec<[(f32, f32); 4]> = (0..=slices)
+            .map(|i| {
+                let z = if slices == 0 { 0.0 } else { depth * i as f32 / slices as f32 };
+                [project(-hw, -hh, z), project(hw, -hh, z), project(hw, hh, z), project(-hw, hh, z)]
+            })
+            .collect();
+        let all = || quads.iter().flatten();
+        let min = all().fold((f32::MAX, f32::MAX), |m, q| (m.0.min(q.0), m.1.min(q.1)));
+        let max = all().fold((f32::MIN, f32::MIN), |m, q| (m.0.max(q.0), m.1.max(q.1)));
         // one pixel of margin keeps the anti-aliased edge inside the canvas
         let s = ((w - 2.0) / (max.0 - min.0)).min((h - 2.0) / (max.1 - min.1));
         let (cx, cy) = ((min.0 + max.0) / 2.0, (min.1 + max.1) / 2.0);
-        p.map(|(x, y)| ((x - cx) * s + hw, (y - cy) * s + hh))
+        quads.into_iter().map(|q| q.map(|(x, y)| ((x - cx) * s + hw, (y - cy) * s + hh))).collect()
     }
 }
 
@@ -221,6 +236,20 @@ mod tests {
         assert_eq!(Tilt::parse("999,-999,999"), Some(Tilt { yaw: MAX_YAW, pitch: -MAX_PITCH, roll: MAX_ROLL }));
         assert_eq!(Tilt::parse("1,2,3,4"), None);
         assert_eq!(Tilt::parse("a"), None);
+    }
+
+    #[test]
+    fn a_phone_with_a_side_fits_the_canvas_and_leaves_the_front_face_where_it_was() {
+        let t = Tilt { yaw: 30, pitch: 10, roll: 0 };
+        let body = t.body(200.0, 400.0, 15.0, 14);
+        assert_eq!(body.len(), 15);
+        for (x, y) in body.iter().flatten() {
+            assert!((0.0..=200.0).contains(x) && (0.0..=400.0).contains(y), "({x}, {y}) is outside");
+        }
+        // the back is shifted away from the front, so a side shows
+        assert!((body[14][0].0 - body[0][0].0).abs() > 1.0);
+        // no thickness is the plain picture
+        assert_eq!(t.body(200.0, 400.0, 0.0, 0), vec![t.corners(200.0, 400.0)]);
     }
 
     #[test]
