@@ -24,6 +24,8 @@ pub struct State {
     pub touches: bool,
     /// How the phone is turned in the window.
     pub tilt: crate::tilt::Tilt,
+    /// Degrees the tilt snaps to while turning it (0 is free).
+    pub tilt_snap: i32,
     /// Look for newer releases by itself, and the newer version once one was found.
     pub update_auto: bool,
     pub update: Option<String>,
@@ -226,10 +228,32 @@ pub fn build(s: &State) -> Vec<Entry> {
 
     let mut tilt: Vec<Entry> = crate::tilt::Tilt::PRESETS
         .iter()
-        .map(|(name, t)| item(format!("tilt:{}", t.to_spec()), *name).checked(s.tilt == *t).into())
+        .map(|(name, t)| {
+            let id = if t.is_flat() { "tilt:flat".to_string() } else { format!("tilt:{}", t.to_spec()) };
+            item(id, *name).checked(s.tilt == *t).into()
+        })
         .collect();
     tilt.push(Entry::Separator);
     tilt.push(item("tilt:next", "Next Tilt").into());
+    tilt.push(Entry::Separator);
+    tilt.push(note("Hold Alt and drag to turn it, scroll to roll it").into());
+    for (id, label) in [
+        ("tilt:left", "Turn Left"),
+        ("tilt:right", "Turn Right"),
+        ("tilt:up", "Lean Back"),
+        ("tilt:down", "Lean Forward"),
+        ("tilt:ccw", "Roll Left"),
+        ("tilt:cw", "Roll Right"),
+    ] {
+        tilt.push(item(id, format!("Nudge: {label}")).into());
+    }
+    tilt.push(sub(
+        "Snap Angles",
+        [(0, "Free"), (5, "Every 5\u{b0}"), (15, "Every 15\u{b0}")]
+            .into_iter()
+            .map(|(n, label)| item(format!("tiltsnap:{n}"), label).checked(s.tilt_snap == n).into())
+            .collect(),
+    ));
 
     let mut menu = Vec::new();
     menu.push(sub("Phone", phone));
