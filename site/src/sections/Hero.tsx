@@ -6,8 +6,8 @@ import type { Release } from '../useRelease'
 type Os = 'mac' | 'windows' | 'linux'
 const SYSTEMS: { os: Os; word: string }[] = [
   { os: 'mac', word: 'Mac' },
-  { os: 'windows', word: 'Windows PC' },
-  { os: 'linux', word: 'Linux desktop' },
+  { os: 'windows', word: 'PC' },
+  { os: 'linux', word: 'Linux PC' },
 ]
 const DEVICES = ['phone', 'Pixel', 'Galaxy', 'foldable']
 
@@ -34,13 +34,15 @@ export function Hero() {
   const cycle = (n: number, set: (f: (v: number) => number) => void) => () => set((v) => (v + 1) % n)
   const primary = primaryDownload(release, SYSTEMS[sys].os)
   return (
-    <section className="mx-auto grid max-w-6xl 2xl:max-w-7xl items-center gap-8 px-5 pb-12 pt-2 sm:px-8 md:grid-cols-[0.72fr_1.28fr] md:gap-4 md:pb-16">
-      <div className="text-center md:text-left">
-        <h1 className="display rise text-[clamp(2.4rem,5.4vw,4.4rem)] 2xl:text-[5rem]">
-          Your <Swap words={DEVICES} i={dev} next={cycle(DEVICES.length, setDev)} label="Device" /> on your{' '}
-          <Swap words={SYSTEMS.map((s) => s.word)} i={sys} next={cycle(SYSTEMS.length, setSys)} label="Computer" />.
+    <section className="mx-auto grid max-w-6xl 2xl:max-w-7xl items-center gap-8 px-5 pb-12 pt-2 sm:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-4 lg:pb-16">
+      <div className="@container text-center lg:text-left">
+        {/* sized to its column, one unbroken line each, so a longer swapped word never wraps its pill */}
+        <h1 className="display rise whitespace-nowrap" style={{ fontSize: 'clamp(1.9rem, 10cqw, 4.8rem)' }}>
+          Your <Swap words={DEVICES} i={dev} next={cycle(DEVICES.length, setDev)} label="Device" />
+          <br />
+          on your <span className="whitespace-nowrap"><Swap words={SYSTEMS.map((s) => s.word)} i={sys} next={cycle(SYSTEMS.length, setSys)} label="Computer" />.</span>
         </h1>
-        <div className="rise mt-7 flex flex-wrap justify-center gap-3 md:justify-start" style={{ ['--i' as string]: 1 }}>
+        <div className="rise mt-7 flex flex-wrap justify-center gap-3 lg:justify-start" style={{ ['--i' as string]: 1 }}>
           <a href={primary.url} className="btn text-lg">
             {primary.label}
           </a>
