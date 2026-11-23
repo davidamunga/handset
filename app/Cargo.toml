@@ -14,7 +14,7 @@ bytemuck = "1.25.2"
 cpal = "0.18.2"
 ed25519-dalek = "3"
 eframe = { version = "0.37", default-features = false, features = ["wgpu", "default_fonts"] }
-mdns-sd = "0.21.6"
+mdns-sd = "0.22.0"
 openh264 = "0.9.9"
 opus = "0.4.0"
 png = "0.18.1"
